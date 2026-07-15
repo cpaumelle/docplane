@@ -1,0 +1,64 @@
+# ⚠️  PARTIALLY GENERATED — read before editing.
+#
+# This file holds the HAND-MAINTAINED mkdocs config (site name, theme, plugins,
+# markdown_extensions, hooks) plus the API-managed redirect_maps block, which
+# docs-api appends to when a page is moved (small, rare, committable changes).
+#
+# The site NAV is NOT here. It is derived from PostgreSQL and regenerated on
+# every deploy into a separate, git-IGNORED child config, mkdocs.nav.yml
+# (INHERIT: mkdocs.yml + nav). The deploy builds that child config.
+#
+# SOURCE OF TRUTH: PostgreSQL (via docs-api).
+# → Change docs/nav:  PUT /api/docs/pages/{path}
+# → Then deploy:      automatic (or POST /api/docs/deploy)
+
+site_name: My Docs            # ← change me
+site_url: http://localhost:8080
+repo_url: ""
+
+theme:
+  name: material
+  font: false                 # no external font fetches — good for offline/private nets
+  palette:
+    scheme: default
+    primary: indigo
+    accent: indigo
+  features:
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.tabs.link
+  custom_dir: overrides
+
+hooks:
+  - hooks.py
+
+plugins:
+  - redirects:
+      redirect_maps:
+        # docs-api appends page-move redirects here (8-space indent, inserted
+        # just above the '  - search' line). The placeholder keeps this block a
+        # valid non-empty YAML mapping; its source path never exists so the
+        # only artifact is a harmless _moved/placeholder.html redirect page.
+        _moved/placeholder.md: index.md
+  - search
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - codehilite
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+extra:
+  generator: false

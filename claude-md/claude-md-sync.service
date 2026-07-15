@@ -1,0 +1,21 @@
+[Unit]
+Description=Sync CLAUDE.md from the docs API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/claude-md-sync
+# Don't flag the unit failed on a fetch hiccup — the timer retries hourly and
+# the previous CLAUDE.md stays in place.
+SuccessExitStatus=0 1
+
+# Hardening
+ProtectSystem=strict
+ReadWritePaths=/root/.claude /var/lib/docs-stack/claude-md-sync
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+
+# Limits
+TimeoutStartSec=60

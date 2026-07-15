@@ -1,0 +1,9 @@
+# Generated state — the database is the source of truth.
+# Rendered markdown, written by docs-api on every deploy:
+docs/
+# Built site, written by mkdocs build (rsynced atomically):
+site/
+# Generated nav child-config (INHERIT: mkdocs.yml + nav), rewritten every deploy:
+mkdocs.nav.yml
+# Search index sidecar written next to the rendered markdown:
+.search_index.json

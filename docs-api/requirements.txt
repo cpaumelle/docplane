@@ -1,0 +1,10 @@
+fastapi==0.111.0
+uvicorn==0.29.0
+psycopg2-binary==2.9.9
+pyyaml==6.0.1
+mkdocs-material==9.7.3
+mkdocs-redirects==1.2.2
+prometheus-client==0.20.0
+# Used directly by app/main.py (_fire_mcp_webhook). Was previously satisfied only
+# transitively via mkdocs-material — declare it so a dependency bump can't drop it.
+requests==2.32.3

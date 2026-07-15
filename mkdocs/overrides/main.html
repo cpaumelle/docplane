@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block scripts %}
+{{ super() }}
+<!-- Mermaid diagrams. pymdownx.superfences emits <pre class="mermaid"><code>…</code></pre>;
+     Mermaid v10+ wants <pre class="mermaid">…</pre> (no inner <code>), so unwrap first.
+     NOTE: loaded from a CDN for convenience — if your docs are private or must
+     work offline, download mermaid.min.js into docs-api-rendered assets or the
+     overrides dir and change this src to a local path. -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre.mermaid > code').forEach(function(code) {
+    var pre = code.parentElement;
+    pre.textContent = code.textContent;
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+    mermaid.run({ querySelector: 'pre.mermaid' });
+  }
+});
+</script>
+<script>
+// "Download as Markdown" button — fetches the page's true source from /raw/
+// (copied there by hooks.py on every build).
+document.addEventListener('DOMContentLoaded', function() {
+  const contentHeader = document.querySelector('.md-content__inner h1');
+  if (!contentHeader) return;
+
+  const path = window.location.pathname.replace(/\/$/, '').replace(/^\//, '');
+  // /guides/backups/ may be guides/backups.md OR guides/backups/index.md
+  // (both render to the same clean URL) — try in that order.
+  const candidates = path === ''
+    ? ['index.md']
+    : [path + '.md', path + '/index.md'];
+  const filename = (path === '' ? 'index' : path.split('/').pop()) + '.md';
+
+  const btn = document.createElement('button');
+  btn.className = 'md-download-source';
+  btn.title = 'Download as Markdown';
+  btn.setAttribute('aria-label', 'Download this page as Markdown');
+  btn.style.cssText = 'background:none;border:none;cursor:pointer;margin-left:.4rem;vertical-align:middle;width:1.2em;height:1.2em;color:inherit;opacity:.6;';
+  btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
+
+  btn.addEventListener('click', async function() {
+    for (const candidate of candidates) {
+      const rawUrl = '/raw/' + candidate;
+      try {
+        const resp = await fetch(rawUrl, { cache: 'no-cache' });
+        if (!resp.ok) continue;
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      } catch (e) { /* try next candidate */ }
+    }
+    window.open('/raw/' + candidates[0], '_blank');
+  });
+
+  contentHeader.appendChild(btn);
+});
+</script>
+{% endblock %}

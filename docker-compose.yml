@@ -1,0 +1,128 @@
+# Self-hosted docs stack: postgres + docs-api + docs-web (nginx) + docs-mcp.
+# All host ports bind to 127.0.0.1 — put your own reverse proxy + TLS in front
+# (see SECURITY.md). Secrets come from .env (cp .env.example .env).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: docs_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: docs
+      POSTGRES_USER: docs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docs -d docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - docs-net
+
+  docs-api:
+    build: ./docs-api
+    container_name: docs_api
+    restart: unless-stopped
+    # Non-root. uid 1000 must own ./mkdocs on the host (see README quickstart);
+    # adjust if your host user has a different uid.
+    user: "1000:1000"
+    environment:
+      HOME: /tmp                    # uid 1000 has no writable home in the image
+      PYTHONDONTWRITEBYTECODE: "1"  # /app is root-owned; skip __pycache__ writes
+      DB_HOST: postgres
+      DB_NAME: docs
+      DB_USER: docs
+      DB_PASS: ${POSTGRES_PASSWORD:?set in .env}
+      DOCS_API_KEY: ${DOCS_API_KEY:?set in .env}
+      # Shown in API error messages / the agent bootstrap payload:
+      DOCS_API_PUBLIC_URL: ${DOCS_API_PUBLIC_URL:-http://localhost:8010}
+      DOCS_GUIDE_URL: ${DOCS_GUIDE_URL:-http://localhost:8080/}
+      # /api/agent-config returns the API key; without a network boundary in
+      # front of this API it must require the key itself. See SECURITY.md.
+      DOCS_AGENT_CONFIG_REQUIRE_KEY: "true"
+      # Reindex webhook fired at the MCP after each deploy (url=bearer-key):
+      DOCS_MCP_WEBHOOKS: http://docs-mcp:8049/reindex=${MCP_API_KEY:?set in .env}
+    volumes:
+      - ./mkdocs/docs:/docs-content
+      - ./mkdocs:/mkdocs-config
+    ports:
+      - "127.0.0.1:8010:8010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - docs-net
+
+  docs-web:
+    image: nginx:alpine
+    container_name: docs_web
+    restart: unless-stopped
+    volumes:
+      - ./mkdocs/site:/usr/share/nginx/html:ro
+      - ./mkdocs/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:8080:80"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - docs-net
+
+  docs-mcp:
+    build: ./mcp
+    container_name: docs_mcp
+    restart: unless-stopped
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8049"
+      MCP_API_KEY: ${MCP_API_KEY:?set in .env}
+      # DNS-rebinding protection: extend when you serve this on a hostname.
+      MCP_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      MCP_ALLOWED_ORIGINS: "http://127.0.0.1:8049,http://localhost:8049"
+      DOCS_API_URL: http://docs-api:8010
+      DOCS_API_KEY: ${DOCS_API_KEY:?set in .env}
+      DOCS_MCP_INDEX_PATH: /data/mkdocs/site/search/search_index.json
+      DOCS_MCP_DOCS_DIR: /data/mkdocs/docs
+      DOCS_MCP_ALIASES_PATH: /app/aliases.yml
+    volumes:
+      - ./mkdocs:/data/mkdocs:ro
+      # Optional jargon resolver — cp mcp/aliases.example.yml mcp/aliases.yml,
+      # then uncomment:
+      # - ./mcp/aliases.yml:/app/aliases.yml:ro
+    ports:
+      - "127.0.0.1:8049:8049"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8049/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - docs-net
+
+volumes:
+  pgdata:
+
+networks:
+  docs-net:

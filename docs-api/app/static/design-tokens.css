@@ -1,0 +1,212 @@
+/* Difenn v4 Design Tokens */
+/* Trevarn Brand Color System - Slate & Warm / Slate & Ink */
+
+:root {
+  /* Brand Colors - Trevarn Palette */
+  --aour-balan: #D8A23A;        /* Gold - Primary accent */
+  --aour-balan-hover: #C4912E;  /* Gold hover state */
+  --aour-glaz: #4A6FA5;         /* Blue - Secondary accent */
+  --aour-glaz-hover: #3D5D8A;   /* Blue hover state */
+
+  /* Slate & Warm (Light Mode) Neutrals */
+  --pearl: #F8F9FA;             /* Background */
+  --sand: #F5F0E8;              /* Warm accent background */
+  --cloud: #E5E7EB;             /* Borders */
+  --storm: #556970;             /* Secondary text */
+  --mist: #8A9094;              /* Muted text */
+  --ink: #11181C;               /* Primary text */
+
+  /* Slate & Ink (Dark Mode) Neutrals */
+  --slate-dark: #1F3A4A;        /* Card background */
+  --ink-dark: #11181C;          /* Page background */
+  --slate-border: rgba(85, 105, 112, 0.5);  /* Dark borders */
+
+  /* Primary palette - Aour Glaz Blue */
+  --color-blue-50: #EEF3F9;
+  --color-blue-100: #D4E1F0;
+  --color-blue-200: #A9C3E1;
+  --color-blue-300: #7EA5D2;
+  --color-blue-400: #5B87BD;
+  --color-blue-500: #4A6FA5;
+  --color-blue-600: #3D5D8A;
+  --color-blue-700: #314A6F;
+  --color-blue-800: #253854;
+  --color-blue-900: #182539;
+
+  /* Secondary palette - Aour Balan Gold */
+  --color-gold-50: #FDF8ED;
+  --color-gold-100: #F9EDCF;
+  --color-gold-200: #F3DBA0;
+  --color-gold-300: #EDC970;
+  --color-gold-400: #E5B54A;
+  --color-gold-500: #D8A23A;
+  --color-gold-600: #C4912E;
+  --color-gold-700: #A17626;
+  --color-gold-800: #7E5B1D;
+  --color-gold-900: #5B4115;
+
+  /* Neutral palette - Slate */
+  --color-slate-50: #F8F9FA;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E5E7EB;
+  --color-slate-300: #D1D5DB;
+  --color-slate-400: #8A9094;
+  --color-slate-500: #556970;
+  --color-slate-600: #475569;
+  --color-slate-700: #1F3A4A;
+  --color-slate-800: #172A36;
+  --color-slate-900: #11181C;
+
+  /* Semantic colors */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'IBM Plex Sans', 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Spacing scale (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+
+  /* Z-index scale */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+
+  /* Sidebar dimensions */
+  --sidebar-width: 240px;
+  --sidebar-collapsed: 64px;
+}
+
+/* Light theme (default) - Slate & Warm */
+[data-theme="light"], :root {
+  --bg-primary: var(--pearl);
+  --bg-secondary: #ffffff;
+  --bg-tertiary: var(--color-slate-100);
+  --text-primary: var(--ink);
+  --text-secondary: var(--storm);
+  --text-muted: var(--mist);
+  --border-color: var(--cloud);
+  --accent-primary: var(--aour-glaz);
+  --accent-hover: var(--aour-glaz-hover);
+  --accent-gold: var(--aour-balan);
+  --accent-gold-hover: var(--aour-balan-hover);
+
+  /* Sidebar - ALWAYS dark Slate in both themes */
+  --sidebar-bg: #1F3A4A;
+  --sidebar-text: #E5E7EB;
+  --sidebar-text-muted: #8aa0ac;
+  --sidebar-border: rgba(85, 105, 112, 0.3);
+  --sidebar-nav-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-nav-active-bg: #FFFFFF;
+  --sidebar-nav-active-text: #1F3A4A;
+
+  /* Content area - Warm Sand */
+  --content-bg: #F5F1EB;
+  --card-bg: #FFFFFF;
+  --card-border: rgba(216, 162, 58, 0.15);
+  --card-shadow: 0 1px 3px rgba(17, 24, 28, 0.06);
+  --table-header-bg: #F8F5F0;
+
+  /* Login-specific */
+  --login-bg: var(--pearl);
+  --login-card-bg: #ffffff;
+  --login-card-border: rgba(216, 162, 58, 0.15);
+  --login-card-shadow: 0 4px 24px rgba(216, 162, 58, 0.08);
+  --login-input-bg: #ffffff;
+  --login-input-border: var(--cloud);
+  --login-input-focus: var(--aour-glaz);
+  --login-error-bg: #FEF2F2;
+  --login-error-border: #EF4444;
+  --login-error-text: #991B1B;
+
+  /* Login split-screen (light mode) */
+  --login-form-bg: #F5F1EB;
+  --login-form-input-bg: #FFFFFF;
+  --login-form-input-border: rgba(85, 105, 112, 0.3);
+  --login-form-text: #11181C;
+  --login-form-text-muted: #556970;
+  --login-form-toggle-bg: #FFFFFF;
+  --login-form-toggle-border: rgba(85, 105, 112, 0.2);
+}
+
+/* Dark theme - Slate & Ink */
+[data-theme="dark"] {
+  --bg-primary: var(--ink-dark);
+  --bg-secondary: var(--slate-dark);
+  --bg-tertiary: var(--color-slate-700);
+  --text-primary: var(--color-slate-50);
+  --text-secondary: var(--color-slate-300);
+  --text-muted: var(--mist);
+  --border-color: var(--slate-border);
+  --accent-primary: var(--aour-balan);
+  --accent-hover: var(--aour-balan-hover);
+  --accent-gold: var(--aour-balan);
+  --accent-gold-hover: var(--aour-balan-hover);
+
+  /* Sidebar - Same Slate as light mode */
+  --sidebar-bg: #1F3A4A;
+  --sidebar-text: #E5E7EB;
+  --sidebar-text-muted: #8aa0ac;
+  --sidebar-border: rgba(85, 105, 112, 0.3);
+  --sidebar-nav-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-nav-active-bg: #D8A23A;
+  --sidebar-nav-active-text: #11181C;
+
+  /* Content area - Ink dark */
+  --content-bg: #11181C;
+  --card-bg: #1A2530;
+  --card-border: rgba(85, 105, 112, 0.3);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --table-header-bg: #151D24;
+
+  /* Login-specific */
+  --login-bg: var(--ink-dark);
+  --login-card-bg: var(--slate-dark);
+  --login-card-border: var(--slate-border);
+  --login-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  --login-input-bg: #1A2530;
+  --login-input-border: var(--slate-border);
+  --login-input-focus: var(--aour-balan);
+  --login-error-bg: rgba(239, 68, 68, 0.15);
+  --login-error-border: #EF4444;
+  --login-error-text: #F87171;
+
+  /* Login split-screen (dark mode) */
+  --login-form-bg: #11181C;
+  --login-form-input-bg: #1A2530;
+  --login-form-input-border: rgba(85, 105, 112, 0.5);
+  --login-form-text: #E5E7EB;
+  --login-form-text-muted: #8A9094;
+  --login-form-toggle-bg: #1A2530;
+  --login-form-toggle-border: rgba(85, 105, 112, 0.3);
+}

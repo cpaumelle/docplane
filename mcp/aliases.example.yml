@@ -1,0 +1,22 @@
+# Jargon → canonical-concept map, served by the resolve_concept() MCP tool.
+# Copy to aliases.yml, mount it (see docker-compose.yml), and add your team's
+# vocabulary: internal project names, acronyms, nicknames. Hot-reloaded on
+# file change — no restart needed.
+#
+# Schema:
+#   aliases:
+#     <lowercase-term>:
+#       canonical: <short canonical name>
+#       summary:   <one-line description>
+#       docs:      [<doc path>, ...]     # paths as stored in the docs API
+aliases:
+  prod:
+    canonical: "Production environment"
+    summary: "The customer-facing deployment. Runbooks live under operations/."
+    docs:
+      - operations/production-runbook.md
+  the-pipeline:
+    canonical: "Data ingestion pipeline"
+    summary: "Nightly ETL from source systems into the warehouse."
+    docs:
+      - services/pipeline/index.md
