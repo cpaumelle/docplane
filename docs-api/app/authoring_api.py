@@ -91,8 +91,6 @@ def _diagnostics(content: str) -> list[AuthoringDiagnostic]:
     fence_line = None
 
     for line_number, raw in enumerate(content.splitlines(), start=1):
-        for match in _EXPLICIT_ID_RE.finditer(raw):
-            explicit.setdefault(match.group(1), []).append(line_number)
         fence = _FENCE_RE.match(raw)
         if fence:
             marker = fence.group(1)[0]
@@ -104,6 +102,10 @@ def _diagnostics(content: str) -> list[AuthoringDiagnostic]:
                 in_fence = False
                 fence_char = ""
                 fence_line = None
+            continue
+        if not in_fence:
+            for match in _EXPLICIT_ID_RE.finditer(raw):
+                explicit.setdefault(match.group(1), []).append(line_number)
 
     if in_fence:
         findings.append(
@@ -151,9 +153,31 @@ def _diagnostics(content: str) -> list[AuthoringDiagnostic]:
     return findings
 
 
+def _direct_section_map(content: str) -> dict[str, dict[str, Any]]:
+    """Hash each heading's own block, excluding nested child sections.
+
+    The general bounded-read parser intentionally includes descendants in a parent section. That is the
+    correct retrieval contract, but it makes a semantic diff noisy: editing one H2 would also mark its H1
+    parent as changed. Authoring diffs therefore compare each heading only through the next heading.
+    """
+    parsed = sorted(sections(content), key=lambda item: item.start_line)
+    lines = content.splitlines(keepends=True)
+    result: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(parsed):
+        start = item.start_line - 1
+        end = parsed[index + 1].start_line - 1 if index + 1 < len(parsed) else len(lines)
+        direct_content = "".join(lines[start:end])
+        result[item.heading_id] = {
+            "title": item.title,
+            "content_hash": _sha(direct_content),
+            "explicit_id": item.explicit_id,
+        }
+    return result
+
+
 def _semantic_diff(base: str, candidate: str) -> list[dict[str, Any]]:
-    before = {item.heading_id: item for item in sections(base)}
-    after = {item.heading_id: item for item in sections(candidate)}
+    before = _direct_section_map(base)
+    after = _direct_section_map(candidate)
     order = list(dict.fromkeys([*before.keys(), *after.keys()]))
     result: list[dict[str, Any]] = []
     for heading_id in order:
@@ -163,7 +187,7 @@ def _semantic_diff(base: str, candidate: str) -> list[dict[str, Any]]:
             state = "added"
         elif new is None:
             state = "removed"
-        elif old.content_hash != new.content_hash:
+        elif old["content_hash"] != new["content_hash"]:
             state = "changed"
         else:
             state = "unchanged"
@@ -171,12 +195,12 @@ def _semantic_diff(base: str, candidate: str) -> list[dict[str, Any]]:
             {
                 "heading_id": heading_id,
                 "state": state,
-                "title_before": old.title if old else None,
-                "title_after": new.title if new else None,
-                "hash_before": old.content_hash if old else None,
-                "hash_after": new.content_hash if new else None,
-                "explicit_id_before": old.explicit_id if old else None,
-                "explicit_id_after": new.explicit_id if new else None,
+                "title_before": old["title"] if old else None,
+                "title_after": new["title"] if new else None,
+                "hash_before": old["content_hash"] if old else None,
+                "hash_after": new["content_hash"] if new else None,
+                "explicit_id_before": old["explicit_id"] if old else None,
+                "explicit_id_after": new["explicit_id"] if new else None,
             }
         )
     return result
@@ -268,6 +292,7 @@ def preview_markdown(
         page_resource_id=request.page_resource_id,
         path=page["path"] if page else None,
         title=page["title"] if page else None,
+        workspace_key=page["workspace_key"] if page else None,
         scope=request.scope,
         heading_id=request.heading_id,
         rendered_html=_render(candidate),
