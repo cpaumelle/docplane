@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DocPlane Control Plane</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">DocPlane</p>
+      <h1>Control plane</h1>
+      <p class="subtitle">Manage knowledge, work, reorganisation, certification and operations through governed APIs.</p>
+    </div>
+    <div class="connection">
+      <label>
+        <span>Operator token</span>
+        <input id="token" type="password" autocomplete="off" placeholder="Short-lived bearer token">
+      </label>
+      <button id="connect" type="button">Connect</button>
+      <span class="status" id="status">Disconnected</span>
+    </div>
+  </header>
+
+  <div class="shell">
+    <nav class="sidebar" aria-label="Control plane domains">
+      <button class="nav-item active" data-view="overview">Overview</button>
+      <button class="nav-item" data-view="corpus">Corpus</button>
+      <button class="nav-item" data-view="reorganisation">Reorganisation</button>
+      <button class="nav-item" data-view="changes">Changes</button>
+      <button class="nav-item" data-view="certification">Certification</button>
+      <button class="nav-item" data-view="work">Active work</button>
+      <button class="nav-item" data-view="trust">Trust & maintenance</button>
+      <button class="nav-item" data-view="usage">Usage</button>
+      <button class="nav-item" data-view="catalog">Schema catalog</button>
+      <button class="nav-item" data-view="operations">Operations</button>
+    </nav>
+
+    <main>
+      <section class="view active" id="view-overview" aria-labelledby="overview-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="overview-title">Product overview</h2>
+            <p>One human control surface over the authoritative DocPlane APIs.</p>
+          </div>
+          <button id="refresh-overview" type="button">Refresh</button>
+        </div>
+        <div class="cards" id="module-cards"></div>
+        <div class="notice">
+          The dashboard never edits PostgreSQL or generated files directly. Every action is authenticated,
+          idempotent, validated and observable through the same API contracts used by agents.
+        </div>
+      </section>
+
+      <section class="view" id="view-corpus" aria-labelledby="corpus-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="corpus-title">Corpus</h2>
+            <p>Structure, navigation, lifecycle, ownership, redirects and review signals.</p>
+          </div>
+          <button id="refresh-corpus" type="button">Refresh</button>
+        </div>
+        <div class="cards" id="corpus-cards"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Section</th><th>Direct</th><th>Subtree</th><th>Concentration</th><th>Archived</th><th>Class</th></tr></thead>
+            <tbody id="sections"></tbody>
+          </table>
+        </div>
+        <div class="signals" id="signals"></div>
+      </section>
+
+      <section class="view" id="view-reorganisation" aria-labelledby="reorg-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="reorg-title">Reorganisation</h2>
+            <p>Plan and execute corpus moves through WP8-certified changes.</p>
+          </div>
+          <button id="refresh-reorganisation" type="button">Refresh</button>
+        </div>
+
+        <ol class="workflow" id="reorg-workflow">
+          <li data-step="PLAN">Plan</li>
+          <li data-step="ANALYZE_IMPACT">Analyze impact</li>
+          <li data-step="VALIDATE">Validate</li>
+          <li data-step="SUBMIT">Submit</li>
+          <li data-step="APPROVE">Approve</li>
+          <li data-step="EXECUTE">Execute</li>
+          <li data-step="CERTIFY">Certify</li>
+          <li data-step="STABILIZE">Stabilize</li>
+          <li data-step="CLOSE_OR_COMPENSATE">Close / compensate</li>
+        </ol>
+
+        <div class="control-grid">
+          <article class="panel">
+            <h3>Create plan</h3>
+            <label><span>Title</span><input id="plan-title" placeholder="Reorganise infrastructure reference"></label>
+            <label><span>Objective</span><textarea id="plan-objective" placeholder="Describe the intended information architecture and why it is better."></textarea></label>
+            <label><span>Scope</span><select id="plan-scope"><option value="PAGE_SET">Selected pages</option><option value="NAV_PREFIX">Navigation subtree</option><option value="SECTION">Top-level section</option><option value="CORPUS">Whole corpus</option></select></label>
+            <button id="create-plan" type="button">Create governed plan</button>
+          </article>
+
+          <article class="panel">
+            <h3>Add operation</h3>
+            <label><span>Operation</span><select id="operation-type"><option value="MOVE_PAGE">Move canonical page</option><option value="REPARENT_NAV">Reparent navigation</option><option value="BATCH_MOVE">Batch move</option><option value="REORDER_SECTIONS">Reorder sections</option><option value="ADD_REDIRECT">Add redirect</option><option value="REMOVE_REDIRECT">Remove redirect</option></select></label>
+            <label><span>Source</span><input id="operation-source" placeholder="services/old-page.md or Services/Old section"></label>
+            <label><span>Destination</span><input id="operation-destination" placeholder="reference/new-page.md or Reference/New section"></label>
+            <button id="add-operation" type="button" disabled>Add operation</button>
+          </article>
+        </div>
+
+        <div class="actionbar">
+          <button id="analyze-plan" type="button" disabled>Analyze impact</button>
+          <button id="validate-plan" type="button" disabled>Validate</button>
+          <button id="submit-plan" type="button" disabled>Submit for approval</button>
+          <button id="execute-plan" type="button" class="danger" disabled>Execute approved plan</button>
+          <button id="compensate-plan" type="button" disabled>Create compensating plan</button>
+        </div>
+
+        <div class="control-grid three">
+          <article class="panel"><h3>Open plans</h3><div id="reorg-plans" class="list"></div></article>
+          <article class="panel"><h3>Impact analysis</h3><div id="reorg-impact" class="list muted">Select a plan and analyze it.</div></article>
+          <article class="panel"><h3>Certification & deployment</h3><div id="reorg-certification" class="list muted">No plan selected.</div></article>
+        </div>
+
+        <div class="control-grid">
+          <article class="panel"><h3>Current tree</h3><div id="reorg-tree" class="tree muted">Unavailable until the reorganisation tree endpoint is present.</div></article>
+          <article class="panel"><h3>Required proof</h3><ul class="proof-list"><li>Destination and navigation collision analysis</li><li>Inbound link and redirect impact</li><li>Policy and certification findings</li><li>Immutable candidate identity</li><li>Deployment attempt and release seal</li><li>Post-promotion stabilization evidence</li><li>Compensating operation plan</li></ul></article>
+        </div>
+      </section>
+
+      <section class="view placeholder" id="view-changes"><h2>Changes</h2><p>Proposal review, operation diffs, validation findings, approvals and merge receipts.</p></section>
+      <section class="view placeholder" id="view-certification"><h2>Certification</h2><p>Working-state identity, policy, deployment attempts, releases, seals and CURRENT status.</p></section>
+      <section class="view placeholder" id="view-work"><h2>Active work</h2><p>Initiatives, blockers, soaks, parked work, activities, dependencies and promotion queues.</p></section>
+      <section class="view placeholder" id="view-trust"><h2>Trust & maintenance</h2><p>Ownership, verification, expiry, outdated content, metadata review and maintenance queues.</p></section>
+      <section class="view placeholder" id="view-usage"><h2>Usage</h2><p>Dashboard-owned human, agent and automation traffic analytics, search gaps and content review evidence.</p></section>
+      <section class="view placeholder" id="view-catalog"><h2>Schema catalog</h2><p>tbls sources, freshness, schema drift, relationships, migration coverage and generated artifacts.</p></section>
+      <section class="view placeholder" id="view-operations"><h2>Operations</h2><p>Health, backups, migrations, release storage, workers, webhooks and scheduled maintenance.</p></section>
+    </main>
+  </div>
+
+  <footer>
+    <span id="fingerprint">Not connected</span>
+    <span>Human control plane · API authority · no routine SSH or direct SQL</span>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
