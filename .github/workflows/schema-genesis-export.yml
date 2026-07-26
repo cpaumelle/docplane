@@ -8,7 +8,7 @@ on:
       - ".github/workflows/schema-genesis-export.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -36,6 +36,9 @@ jobs:
       PGPASSWORD: test-only-password
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -144,21 +147,46 @@ jobs:
               > "schema-export/${db}-seeds.txt"
             test "$(wc -l < "schema-export/${db}-seeds.txt" | tr -d ' ')" = 4
           done
-          if ! diff -u schema-export/docs-schema.sql schema-export/docs_genesis-schema.sql \
-              > schema-export/schema.diff; then
-            cat schema-export/schema.diff
-            exit 1
-          fi
-          if ! diff -u schema-export/docs-seeds.txt schema-export/docs_genesis-seeds.txt \
-              > schema-export/seeds.diff; then
-            cat schema-export/seeds.diff
-            exit 1
-          fi
-      - name: Upload genesis source
-        if: always()
+          diff -u schema-export/docs-schema.sql schema-export/docs_genesis-schema.sql \
+            > schema-export/schema.diff
+          diff -u schema-export/docs-seeds.txt schema-export/docs_genesis-seeds.txt \
+            > schema-export/seeds.diff
+      - name: Upload genesis evidence
         uses: actions/upload-artifact@v4
         with:
           name: docplane-schema-genesis
           path: schema-export/
           if-no-files-found: error
           retention-days: 7
+      - name: Commit consolidated genesis to the PR branch
+        run: |
+          cp schema-export/000_docplane_genesis.sql db/migrations/000_docplane_genesis.sql
+          find db/migrations -maxdepth 1 -type f \
+            -name '[0-9][0-9][0-9]_*.sql' \
+            ! -name '000_docplane_genesis.sql' \
+            -delete
+          cat > docs/architecture/SCHEMA_GENESIS.md <<'MD'
+          # Schema genesis and upgrades
+
+          DocPlane ships one authoritative fresh-install schema:
+
+          `db/migrations/000_docplane_genesis.sql`
+
+          The genesis represents the final product schema and deterministic system seed state. It is not a historical replay of development migrations.
+
+          The migration ledger is owned by `docs-api/migrate.py` and is deliberately excluded from the genesis SQL. On a new database, the runner creates the ledger, applies genesis once, records its checksum, and thereafter applies only numbered forward upgrades.
+
+          Future released schema changes begin at `001_*.sql` and remain immutable after publication. A checksum or filename mismatch fails closed.
+
+          The pre-release development chain that produced genesis was applied to disposable PostgreSQL 16, exported, restored into a clean database, and compared using normalized schema dumps plus semantic system-workspace seed evidence. Both comparisons were exact.
+
+          System workspaces use stable product UUIDs so API references and deployment tooling do not depend on install-time randomness. Their timestamps remain install-time values.
+
+          DocPlane does not support upgrading databases that recorded the discarded pre-release 000–015 development ledger. Those databases were never a released product contract and must be recreated or migrated through an explicit import path.
+          MD
+          rm .github/workflows/schema-genesis-export.yml
+          git config user.name 'docplane-schema-bot'
+          git config user.email 'docplane-schema-bot@users.noreply.github.com'
+          git add -A db/migrations docs/architecture/SCHEMA_GENESIS.md .github/workflows/schema-genesis-export.yml
+          git commit -m 'refactor(schema): consolidate pre-release chain into genesis'
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
