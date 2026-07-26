@@ -11,11 +11,13 @@ application or periodically copy application code out of an infrastructure monor
 DocPlane owns:
 
 - PostgreSQL-backed authored documentation and version history;
-- guarded mutations, page moves, redirects and navigation;
+- active-work spaces, initiatives, soaks and parking lots;
+- guarded mutations, change proposals, page moves, redirects and navigation;
 - immutable rendered releases and certification state;
-- the operator dashboard;
+- the human authoring application and operator dashboard;
 - MCP and HTTP interfaces for agents;
-- generated technical catalogs, including database-schema observations.
+- generated technical catalogs, including database-schema observations;
+- observer, event and usage-analytics APIs.
 
 A deployment repository owns only its implementation choices:
 
@@ -30,14 +32,40 @@ A deployment repository owns only its implementation choices:
 Deployment-specific hostnames, credentials, corpus content, network topology and policy
 exceptions must not enter this repository.
 
-## Authored knowledge and observed knowledge
+## API-first operations
 
-DocPlane has two distinct knowledge planes.
+DocPlane follows an endpoint-first operating model.
 
-### Authored documentation
+- Human applications, agents, CLIs and automations use versioned HTTP, MCP, event and webhook
+  contracts.
+- Normal discovery, reads, writes, moves, reviews, imports, exports, backup orchestration and
+  operational status do not require SSH, container access, filesystem inspection or direct SQL.
+- The product exposes the information needed to operate it: capabilities, health, readiness,
+  migrations, certification, deployment attempts, schema catalogs, usage, audit and task state.
+- Administrative endpoints are authenticated, scoped, auditable and fail closed.
+- Long-running operations return durable task or change identifiers and observable progress rather
+  than requiring an operator to watch a shell session.
+- SDKs and the CLI wrap the same public contracts; helper scripts are convenience clients, never the
+  control boundary.
 
-Authored pages are deliberate, versioned statements. They use the Docs API mutation path,
-optimistic concurrency, review policy, certification and immutable release promotion.
+SSH, direct database inspection and container shells remain break-glass diagnostic tools for a
+self-hosted operator. They are not a supported application workflow, not required by agents, and not
+used to compensate for missing product endpoints. When routine work repeatedly requires shell access,
+that is evidence of a missing DocPlane capability that should be added to the product.
+
+## Knowledge planes
+
+DocPlane has three distinct knowledge planes.
+
+### Durable authored knowledge
+
+Authored pages are deliberate, versioned statements. They use guarded mutation or change proposals,
+optimistic concurrency, review policy, verification, certification and immutable release promotion.
+
+### Active work
+
+Initiatives, WIP notes, blockers, soaks, handoffs and parking-lot items are searchable and auditable,
+but explicitly non-authoritative until durable conclusions are promoted through a reviewed change.
 
 ### Generated technical catalog
 
@@ -67,12 +95,14 @@ monitor and register the DocPlane deployment.
 
 ## Delivery sequence
 
-1. Establish this product authority and the generated-catalog boundary.
+1. Establish product authority, API-first operation and the three knowledge-plane boundaries.
 2. Port the certified-deployment core as the native fresh-install model.
-3. Port the operator dashboard against stable APIs.
-4. Add schema-catalog collection and agent tools.
-5. Publish versioned images and a clean genesis deployment.
-6. Build deployment-specific migration adapters outside the product core.
+3. Add workspace, initiative, lifecycle, ownership and verification contracts.
+4. Add usage analytics, event feeds and stable observer APIs.
+5. Add the human authoring and operator applications against those APIs.
+6. Add schema-catalog collection and agent tools.
+7. Publish versioned images, SDKs, CLI and a clean genesis deployment.
+8. Build deployment-specific migration adapters outside the product core.
 
 Each step lands as a separately reviewable PR. No PR should combine product porting with a
 production cutover.
