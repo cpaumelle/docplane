@@ -47,13 +47,14 @@ jobs:
       - name: Apply current migration chain
         working-directory: docs-api
         run: python migrate.py apply
-      - name: Export canonical final schema and seed state
+      - name: Export canonical final schema and deterministic seed state
         run: |
           mkdir -p schema-export
           pg_dump \
             --host=127.0.0.1 \
             --username=docs \
             --dbname=docs \
+            --schema-only \
             --no-owner \
             --no-privileges \
             --schema=docs \
@@ -69,14 +70,39 @@ jobs:
             -e '/^SET transaction_timeout/d' \
             -e 's/^CREATE SCHEMA docplane;$/CREATE SCHEMA IF NOT EXISTS docplane;/' \
             schema-export/000_docplane_genesis.sql
+          cat >> schema-export/000_docplane_genesis.sql <<'SQL'
+
+          -- Stable system workspaces. These identifiers are product constants, not install-time randomness.
+          INSERT INTO docplane.workspaces
+              (workspace_id, workspace_key, name, workspace_kind, visibility,
+               mutation_policy, default_verification_days, retention_policy,
+               system_workspace, created_at, updated_at)
+          VALUES
+              ('d0c00000-0000-5000-8000-000000000001', 'reference',
+               'Reference', 'REFERENCE', 'INTERNAL', 'PROPOSAL_REQUIRED', 180,
+               '{}'::jsonb, TRUE, now(), now()),
+              ('d0c00000-0000-5000-8000-000000000002', 'operations',
+               'Operations', 'OPERATIONS', 'INTERNAL', 'PROPOSAL_REQUIRED', 90,
+               '{}'::jsonb, TRUE, now(), now()),
+              ('d0c00000-0000-5000-8000-000000000003', 'work',
+               'Active Work', 'WORK', 'INTERNAL', 'DIRECT_LOW_RISK', NULL,
+               '{}'::jsonb, TRUE, now(), now()),
+              ('d0c00000-0000-5000-8000-000000000004', 'migration-import',
+               'Migration Import', 'MIGRATION', 'INTERNAL', 'PROPOSAL_REQUIRED', NULL,
+               '{}'::jsonb, TRUE, now(), now());
+          SQL
           if grep -q 'schema_migrations' schema-export/000_docplane_genesis.sql; then
             echo 'migration ledger leaked into genesis' >&2
             exit 1
           fi
+          if grep -q '^COPY ' schema-export/000_docplane_genesis.sql; then
+            echo 'bulk data dump leaked into genesis' >&2
+            exit 1
+          fi
           sha256sum schema-export/000_docplane_genesis.sql > schema-export/SHA256SUMS
-          grep -E '^CREATE SCHEMA|^CREATE TABLE|^CREATE FUNCTION|^CREATE TRIGGER|^ALTER TABLE ONLY|^CREATE INDEX|^COPY ' \
+          grep -E '^CREATE SCHEMA|^CREATE TABLE|^CREATE FUNCTION|^CREATE TRIGGER|^ALTER TABLE ONLY|^CREATE INDEX|^INSERT INTO docplane.workspaces' \
             schema-export/000_docplane_genesis.sql > schema-export/object-summary.txt || true
-      - name: Prove genesis recreates the final empty-product state
+      - name: Prove genesis recreates the final empty-product authority
         run: |
           createdb --host=127.0.0.1 --username=docs docs_genesis
           psql --host=127.0.0.1 --username=docs --dbname=docs_genesis --set=ON_ERROR_STOP=1 <<'SQL'
@@ -92,26 +118,36 @@ jobs:
           SQL
           psql --host=127.0.0.1 --username=docs --dbname=docs_genesis --set=ON_ERROR_STOP=1 \
             --file=schema-export/000_docplane_genesis.sql
-          cat > /tmp/docplane-authority.sql <<'SQL'
-          SELECT 'table|' || schemaname || '.' || tablename
-            FROM pg_tables
-           WHERE schemaname IN ('docplane', 'docs', 'work')
-             AND NOT (schemaname = 'docplane' AND tablename = 'schema_migrations')
+          AUTHORITY_QUERY="$(cat <<'SQL'
+          SELECT 'column|' || table_schema || '.' || table_name || '|' || column_name || '|' || data_type || '|' || is_nullable
+            FROM information_schema.columns
+           WHERE table_schema IN ('docplane', 'docs', 'work')
+             AND NOT (table_schema = 'docplane' AND table_name = 'schema_migrations')
           UNION ALL
-          SELECT 'function|' || n.nspname || '.' || p.proname
+          SELECT 'constraint|' || n.nspname || '.' || c.relname || '|' || con.conname || '|' || con.contype
+            FROM pg_constraint con
+            JOIN pg_class c ON c.oid = con.conrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname IN ('docplane', 'docs', 'work')
+             AND NOT (n.nspname = 'docplane' AND c.relname = 'schema_migrations')
+          UNION ALL
+          SELECT 'function|' || n.nspname || '.' || p.proname || '|' || pg_get_function_identity_arguments(p.oid)
             FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
            WHERE n.nspname IN ('docplane', 'docs', 'work')
           UNION ALL
-          SELECT 'seed|' || workspace_key || '|' || workspace_kind
-            FROM docplane.workspaces
+          SELECT 'trigger|' || event_object_schema || '.' || event_object_table || '|' || trigger_name
+            FROM information_schema.triggers
+           WHERE event_object_schema IN ('docplane', 'docs', 'work')
           UNION ALL
-          SELECT 'certification|' || generation::text || '|' || migration_complete::text
-            FROM docs.corpus_certification;
+          SELECT 'seed|' || workspace_key || '|' || workspace_kind || '|' || mutation_policy || '|' || coalesce(default_verification_days::text, '')
+            FROM docplane.workspaces;
           SQL
+          )"
           for db in docs docs_genesis; do
             psql --host=127.0.0.1 --username=docs --dbname="$db" \
-              --tuples-only --no-align --file=/tmp/docplane-authority.sql \
+              --tuples-only --no-align --command="$AUTHORITY_QUERY" \
               | sort > "schema-export/${db}-authority.txt"
+            test -s "schema-export/${db}-authority.txt"
           done
           diff -u schema-export/docs-authority.txt schema-export/docs_genesis-authority.txt
       - name: Upload genesis source
