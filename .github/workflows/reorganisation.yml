@@ -51,6 +51,7 @@ jobs:
       DOCPLANE_BOOTSTRAP_ADMIN_TOKEN: test-bootstrap-token
       DOCPLANE_API_PUBLIC_URL: http://docplane.test
       DOCPLANE_EVENT_CURSOR_SECRET: test-only-event-cursor-secret
+      PGPASSWORD: test-only-password
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -67,8 +68,6 @@ jobs:
         working-directory: docs-api
         run: python migrate.py apply
       - name: Verify reorganisation authorities
-        env:
-          PGPASSWORD: test-only-password
         run: |
           expected="$(find db/migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9]_*.sql' | wc -l | tr -d ' ')"
           actual="$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from docplane.schema_migrations")"
@@ -87,12 +86,17 @@ jobs:
         run: >-
           python -m pytest -q --tb=short
           tests/test_reorganisation_api_integration.py::test_collision_is_reported_and_blocks_validation
-      - name: Event and migration regressions
+      - name: Prepare isolated event regression database
+        run: |
+          createdb -h 127.0.0.1 -U docs docs_events
+          (cd docs-api && DB_NAME=docs_events python migrate.py apply)
+      - name: Event contract regression
         working-directory: docs-api
-        run: >-
-          python -m pytest -q --tb=short
-          tests/test_event_cursor.py
-          tests/test_event_api_integration.py
-          tests/test_wp8_migrations.py
+        env:
+          DB_NAME: docs_events
+        run: python -m pytest -q --tb=short tests/test_event_cursor.py tests/test_event_api_integration.py
+      - name: Migration contract regression
+        working-directory: docs-api
+        run: python -m pytest -q --tb=short tests/test_wp8_migrations.py
       - name: Build assembled API image
         run: docker build -t docplane-api:reorganisation-test docs-api
