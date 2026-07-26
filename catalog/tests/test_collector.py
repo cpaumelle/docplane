@@ -47,31 +47,30 @@ class CollectorTests(unittest.TestCase):
             else "{'name': 'example', 'tables': [{'name': 'widgets', 'comment': 'Things', "
             "'columns': [{'name': 'id', 'type': 'bigint'}]}]}"
         )
-        self.tbls.write_text(
-            textwrap.dedent(
-                f"""#!/usr/bin/env python3
-                import json
-                import os
-                import pathlib
-                import sys
+        script = textwrap.dedent(
+            f"""\
+            #!/usr/bin/env python3
+            import json
+            import os
+            import pathlib
+            import sys
 
-                if len(sys.argv) > 1 and sys.argv[1] == 'version':
-                    print('tbls version 9.9.9-test')
-                    raise SystemExit(0)
-                if len(sys.argv) > 1 and sys.argv[1] == 'out':
-                    output = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])
-                    output.write_text(json.dumps({schema_expression}), encoding='utf-8')
-                    raise SystemExit(0)
-                if len(sys.argv) > 1 and sys.argv[1] == 'doc':
-                    docs = pathlib.Path.cwd() / 'docs'
-                    docs.mkdir(parents=True, exist_ok=True)
-                    (docs / 'README.md').write_text('# Example schema\n', encoding='utf-8')
-                    raise SystemExit(0)
-                raise SystemExit(2)
-                """
-            ),
-            encoding="utf-8",
+            if len(sys.argv) > 1 and sys.argv[1] == 'version':
+                print('tbls version 9.9.9-test')
+                raise SystemExit(0)
+            if len(sys.argv) > 1 and sys.argv[1] == 'out':
+                output = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])
+                output.write_text(json.dumps({schema_expression}), encoding='utf-8')
+                raise SystemExit(0)
+            if len(sys.argv) > 1 and sys.argv[1] == 'doc':
+                docs = pathlib.Path.cwd() / 'docs'
+                docs.mkdir(parents=True, exist_ok=True)
+                (docs / 'README.md').write_text('# Example schema\\n', encoding='utf-8')
+                raise SystemExit(0)
+            raise SystemExit(2)
+            """
         )
+        self.tbls.write_text(script, encoding="utf-8")
         self.tbls.chmod(self.tbls.stat().st_mode | stat.S_IXUSR)
 
     def test_collects_immutable_snapshot_and_updates_latest(self) -> None:
