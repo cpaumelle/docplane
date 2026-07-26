@@ -1,0 +1,13 @@
+sources:
+  - name: docplane
+    service: docplane-api
+    owner: platform
+    dsnEnv: DOCPLANE_CATALOG_DSN_DOCPLANE
+    include:
+      - docs.*
+      - catalog.*
+    exclude:
+      - public.schema_migrations
+    labels:
+      environment: example
+      data_classification: metadata-only
