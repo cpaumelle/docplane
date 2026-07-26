@@ -42,29 +42,3 @@ class EventReceipt(BaseModel):
     duplicate: int
     event_ids: list[UUID]
     last_cursor: str | None
-
-
-class RestrictedPayloadIn(BaseModel):
-    event_id: UUID
-    payload_kind: Literal["SEARCH_QUERY", "AI_QUESTION", "FEEDBACK_TEXT"]
-    payload: dict[str, Any]
-    expires_at: datetime
-
-
-class EventView(BaseModel):
-    event_id: UUID
-    occurred_at: datetime
-    event_type: str
-    principal_id: UUID | None
-    actor_class: str
-    channel: str
-    producer_id: str
-    client_identity: str | None
-    workspace_key: str | None
-    resource_type: str | None
-    resource_id: str | None
-    page_resource_id: UUID | None
-    page_path: str | None
-    page_revision: str | None
-    release_id: str | None
-    metadata: dict[str, Any]
