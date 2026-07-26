@@ -1,0 +1,85 @@
+name: agent-api
+
+on:
+  pull_request:
+    paths:
+      - "db/migrations/**"
+      - "docs-api/app/agent_*.py"
+      - "docs-api/app/application.py"
+      - "docs-api/Dockerfile"
+      - "docs-api/requirements-test.txt"
+      - "docs-api/tests/test_agent_*.py"
+      - ".github/workflows/agent-api.yml"
+  push:
+    branches: [main]
+    paths:
+      - "db/migrations/**"
+      - "docs-api/app/agent_*.py"
+      - "docs-api/app/application.py"
+      - "docs-api/Dockerfile"
+      - "docs-api/requirements-test.txt"
+      - "docs-api/tests/test_agent_*.py"
+      - ".github/workflows/agent-api.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: docs
+          POSTGRES_USER: docs
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U docs -d docs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: docs
+      DB_USER: docs
+      DB_PASS: test-only-password
+      DOCS_API_KEY: legacy-test-only
+      DOCPLANE_BOOTSTRAP_ADMIN_TOKEN: test-bootstrap-token
+      DOCPLANE_API_PUBLIC_URL: http://docplane.test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docs-api/requirements-test.txt
+      - name: Install dependencies
+        working-directory: docs-api
+        run: python -m pip install -r requirements-test.txt
+      - name: Compile endpoint-first API
+        run: python -m compileall -q docs-api/app docs-api/migrate.py
+      - name: Apply complete migration chain
+        working-directory: docs-api
+        run: python migrate.py apply
+      - name: Verify agent product schema
+        env:
+          PGPASSWORD: test-only-password
+        run: |
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from docplane.schema_migrations")" = 11
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docplane.principals') is not null")" = t
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.change_proposals') is not null")" = t
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from information_schema.columns where table_schema='docs' and table_name='pages' and column_name='resource_id'")" = 1
+      - name: Agent API tests
+        working-directory: docs-api
+        run: >-
+          python -m pytest -q
+          tests/test_agent_auth.py
+          tests/test_agent_sections.py
+          tests/test_agent_api_integration.py
+          tests/test_wp8_migrations.py
+      - name: Build assembled API image
+        run: docker build -t docplane-api:agent-test docs-api
