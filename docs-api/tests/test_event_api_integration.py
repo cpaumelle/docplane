@@ -37,6 +37,7 @@ def test_domain_events_are_idempotent_cursor_driven_and_principal_scoped():
     principal_id, token = _issue_event_agent()
     auth = {"Authorization": f"Bearer {token}"}
     resource_id = str(uuid.uuid4())
+    workspace_key = f"event-{uuid.uuid4().hex[:8]}"
     batch_payload = {
         "producer_id": "integration-suite",
         "events": [
@@ -44,7 +45,7 @@ def test_domain_events_are_idempotent_cursor_driven_and_principal_scoped():
                 "event_type": "CHANGE_SUBMITTED",
                 "channel": "API",
                 "idempotency_key": "change-submitted-1",
-                "workspace_key": "operations",
+                "workspace_key": workspace_key,
                 "resource_type": "CHANGE",
                 "resource_id": resource_id,
                 "metadata": {"status": "SUBMITTED"},
@@ -53,7 +54,7 @@ def test_domain_events_are_idempotent_cursor_driven_and_principal_scoped():
                 "event_type": "INITIATIVE_UPDATED",
                 "channel": "API",
                 "idempotency_key": "initiative-updated-1",
-                "workspace_key": "work",
+                "workspace_key": workspace_key,
                 "resource_type": "INITIATIVE",
                 "resource_id": str(uuid.uuid4()),
                 "metadata": {"from_state": "ACTIVE", "to_state": "SOAKING"},
@@ -71,15 +72,24 @@ def test_domain_events_are_idempotent_cursor_driven_and_principal_scoped():
     assert repeated.json()["duplicate"] == 2
     assert repeated.json()["event_ids"] == first.json()["event_ids"]
 
-    stream = client.get("/api/v1/events?limit=100", headers=auth)
+    stream = client.get(
+        "/api/v1/events",
+        headers=auth,
+        params={"limit": 100, "workspace_key": workspace_key},
+    )
     assert stream.status_code == 200, stream.text
     assert stream.json()["usage_analytics"] == "deferred to dashboard slice"
     types = {event["event_type"] for event in stream.json()["events"]}
     assert {"CHANGE_SUBMITTED", "INITIATIVE_UPDATED"} <= types
     assert all(event["principal_id"] == principal_id for event in stream.json()["events"])
+    assert all(event["workspace_key"] == workspace_key for event in stream.json()["events"])
 
     cursor = stream.json()["next_cursor"]
-    empty_delta = client.get("/api/v1/events", headers=auth, params={"after": cursor})
+    empty_delta = client.get(
+        "/api/v1/events",
+        headers=auth,
+        params={"after": cursor, "workspace_key": workspace_key},
+    )
     assert empty_delta.status_code == 200
     assert empty_delta.json()["events"] == []
 
@@ -88,7 +98,7 @@ def test_domain_events_are_idempotent_cursor_driven_and_principal_scoped():
     wrong_scope_cursor = client.get(
         "/api/v1/events",
         headers={"Authorization": f"Bearer {other_token}"},
-        params={"after": cursor},
+        params={"after": cursor, "workspace_key": workspace_key},
     )
     assert wrong_scope_cursor.status_code == 400
     assert wrong_scope_cursor.json()["detail"]["code"] == "EVENT_CURSOR_INVALID"
