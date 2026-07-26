@@ -30,6 +30,7 @@ VALID_SCOPES = frozenset(
         "work:update",
         "catalog:read",
         "analytics:read",
+        "events:write",
         "events:subscribe",
         "admin:principals",
     }
