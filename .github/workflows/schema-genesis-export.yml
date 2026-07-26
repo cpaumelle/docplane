@@ -1,0 +1,80 @@
+name: schema-genesis-export
+
+on:
+  pull_request:
+    paths:
+      - "db/migrations/**"
+      - "docs-api/migrate.py"
+      - ".github/workflows/schema-genesis-export.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: docs
+          POSTGRES_USER: docs
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U docs -d docs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: docs
+      DB_USER: docs
+      DB_PASS: test-only-password
+      PGPASSWORD: test-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docs-api/requirements-test.txt
+      - name: Install migration dependencies
+        working-directory: docs-api
+        run: python -m pip install -r requirements-test.txt
+      - name: Apply current migration chain
+        working-directory: docs-api
+        run: python migrate.py apply
+      - name: Export canonical final schema
+        run: |
+          mkdir -p schema-export
+          pg_dump \
+            --host=127.0.0.1 \
+            --username=docs \
+            --dbname=docs \
+            --schema-only \
+            --no-owner \
+            --no-privileges \
+            --schema=docs \
+            --schema=docplane \
+            --schema=work \
+            > schema-export/000_docplane_genesis.sql
+          sed -i \
+            -e '/^\\restrict /d' \
+            -e '/^\\unrestrict /d' \
+            -e '/^-- Dumped from database version/d' \
+            -e '/^-- Dumped by pg_dump version/d' \
+            -e '/^SET transaction_timeout/d' \
+            schema-export/000_docplane_genesis.sql
+          sha256sum schema-export/000_docplane_genesis.sql > schema-export/SHA256SUMS
+          grep -E '^CREATE SCHEMA|^CREATE TABLE|^CREATE FUNCTION|^CREATE TRIGGER|^ALTER TABLE ONLY|^CREATE INDEX' \
+            schema-export/000_docplane_genesis.sql > schema-export/object-summary.txt || true
+      - name: Upload genesis source
+        uses: actions/upload-artifact@v4
+        with:
+          name: docplane-schema-genesis
+          path: schema-export/
+          if-no-files-found: error
+          retention-days: 7
