@@ -1,0 +1,87 @@
+name: wp8-core
+
+on:
+  pull_request:
+    paths:
+      - "db/migrations/**"
+      - "docs-api/migrate.py"
+      - "docs-api/app/deployment_attempts.py"
+      - "docs-api/tests/test_wp8_migrations.py"
+      - "docs-api/tests/test_deployment_attempts_units.py"
+      - "docs-api/requirements-test.txt"
+      - ".github/workflows/wp8-core.yml"
+  push:
+    branches: [main]
+    paths:
+      - "db/migrations/**"
+      - "docs-api/migrate.py"
+      - "docs-api/app/deployment_attempts.py"
+      - "docs-api/tests/test_wp8_migrations.py"
+      - "docs-api/tests/test_deployment_attempts_units.py"
+      - "docs-api/requirements-test.txt"
+      - ".github/workflows/wp8-core.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: docs
+          POSTGRES_USER: docs
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U docs -d docs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: docs
+      DB_USER: docs
+      DB_PASS: test-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docs-api/requirements-test.txt
+      - name: Install dependencies
+        working-directory: docs-api
+        run: python -m pip install -r requirements-test.txt
+      - name: Compile WP8 core
+        run: python -m compileall -q docs-api/app docs-api/migrate.py
+      - name: Unit tests
+        working-directory: docs-api
+        run: >-
+          python -m pytest -q
+          tests/test_wp8_migrations.py
+          tests/test_deployment_attempts_units.py
+      - name: Dry-run migration chain
+        working-directory: docs-api
+        run: python migrate.py dry-run
+      - name: Apply migration chain
+        working-directory: docs-api
+        run: python migrate.py apply
+      - name: Verify migration chain
+        working-directory: docs-api
+        run: python migrate.py verify
+      - name: Prove key WP8 objects
+        env:
+          PGPASSWORD: test-only-password
+        run: |
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.corpus_certification') is not null")" = t
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.redirects') is not null")" = t
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.deployment_attempts') is not null")" = t
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from docplane.schema_migrations")" = 10
+      - name: Reapply is a no-op
+        working-directory: docs-api
+        run: test -z "$(python migrate.py apply)"
