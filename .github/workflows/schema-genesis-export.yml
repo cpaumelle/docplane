@@ -47,19 +47,19 @@ jobs:
       - name: Apply current migration chain
         working-directory: docs-api
         run: python migrate.py apply
-      - name: Export canonical final schema
+      - name: Export canonical final schema and seed state
         run: |
           mkdir -p schema-export
           pg_dump \
             --host=127.0.0.1 \
             --username=docs \
             --dbname=docs \
-            --schema-only \
             --no-owner \
             --no-privileges \
             --schema=docs \
             --schema=docplane \
             --schema=work \
+            --exclude-table=docplane.schema_migrations \
             > schema-export/000_docplane_genesis.sql
           sed -i \
             -e '/^\\restrict /d' \
@@ -67,10 +67,51 @@ jobs:
             -e '/^-- Dumped from database version/d' \
             -e '/^-- Dumped by pg_dump version/d' \
             -e '/^SET transaction_timeout/d' \
+            -e 's/^CREATE SCHEMA docplane;$/CREATE SCHEMA IF NOT EXISTS docplane;/' \
             schema-export/000_docplane_genesis.sql
+          if grep -q 'schema_migrations' schema-export/000_docplane_genesis.sql; then
+            echo 'migration ledger leaked into genesis' >&2
+            exit 1
+          fi
           sha256sum schema-export/000_docplane_genesis.sql > schema-export/SHA256SUMS
-          grep -E '^CREATE SCHEMA|^CREATE TABLE|^CREATE FUNCTION|^CREATE TRIGGER|^ALTER TABLE ONLY|^CREATE INDEX' \
+          grep -E '^CREATE SCHEMA|^CREATE TABLE|^CREATE FUNCTION|^CREATE TRIGGER|^ALTER TABLE ONLY|^CREATE INDEX|^COPY ' \
             schema-export/000_docplane_genesis.sql > schema-export/object-summary.txt || true
+      - name: Prove genesis recreates the final empty-product state
+        run: |
+          createdb --host=127.0.0.1 --username=docs docs_genesis
+          psql --host=127.0.0.1 --username=docs --dbname=docs_genesis --set=ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA IF NOT EXISTS docplane;
+          CREATE TABLE docplane.schema_migrations (
+              ordinal integer PRIMARY KEY,
+              filename text NOT NULL UNIQUE,
+              checksum text NOT NULL,
+              applied_at timestamptz NOT NULL DEFAULT now(),
+              CONSTRAINT schema_migrations_ordinal_nonnegative CHECK (ordinal >= 0),
+              CONSTRAINT schema_migrations_checksum_sha256 CHECK (checksum ~ '^[0-9a-f]{64}$')
+          );
+          SQL
+          psql --host=127.0.0.1 --username=docs --dbname=docs_genesis --set=ON_ERROR_STOP=1 \
+            --file=schema-export/000_docplane_genesis.sql
+          for db in docs docs_genesis; do
+            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align <<'SQL' \
+              | sort > "schema-export/${db}-authority.txt"
+          SELECT 'table|' || schemaname || '.' || tablename
+            FROM pg_tables
+           WHERE schemaname IN ('docplane', 'docs', 'work')
+             AND NOT (schemaname = 'docplane' AND tablename = 'schema_migrations')
+          UNION ALL
+          SELECT 'function|' || n.nspname || '.' || p.proname
+            FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname IN ('docplane', 'docs', 'work')
+          UNION ALL
+          SELECT 'seed|' || workspace_key || '|' || workspace_kind
+            FROM docplane.workspaces
+          UNION ALL
+          SELECT 'certification|' || generation::text || '|' || migration_complete::text
+            FROM docs.corpus_certification;
+          SQL
+          done
+          diff -u schema-export/docs-authority.txt schema-export/docs_genesis-authority.txt
       - name: Upload genesis source
         uses: actions/upload-artifact@v4
         with:
