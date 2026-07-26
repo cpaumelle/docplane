@@ -6,7 +6,9 @@ is assembled without forcing unrelated refactors into one change.
 """
 from app.main import app
 from app.agent_api import router as agent_router
+from app.event_api import router as event_router
 
 app.include_router(agent_router)
+app.include_router(event_router)
 
 __all__ = ["app"]

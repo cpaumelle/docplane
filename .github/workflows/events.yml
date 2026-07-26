@@ -1,25 +1,25 @@
-name: agent-api
+name: events
 
 on:
   pull_request:
     paths:
       - "db/migrations/**"
-      - "docs-api/app/agent_*.py"
+      - "docs-api/app/event_*.py"
       - "docs-api/app/application.py"
-      - "docs-api/Dockerfile"
-      - "docs-api/requirements-test.txt"
-      - "docs-api/tests/test_agent_*.py"
-      - ".github/workflows/agent-api.yml"
+      - "docs-api/app/agent_auth.py"
+      - "docs-api/tests/test_event_*.py"
+      - "docs-api/tests/test_wp8_migrations.py"
+      - ".github/workflows/events.yml"
   push:
     branches: [main]
     paths:
       - "db/migrations/**"
-      - "docs-api/app/agent_*.py"
+      - "docs-api/app/event_*.py"
       - "docs-api/app/application.py"
-      - "docs-api/Dockerfile"
-      - "docs-api/requirements-test.txt"
-      - "docs-api/tests/test_agent_*.py"
-      - ".github/workflows/agent-api.yml"
+      - "docs-api/app/agent_auth.py"
+      - "docs-api/tests/test_event_*.py"
+      - "docs-api/tests/test_wp8_migrations.py"
+      - ".github/workflows/events.yml"
 
 permissions:
   contents: read
@@ -61,28 +61,27 @@ jobs:
       - name: Install dependencies
         working-directory: docs-api
         run: python -m pip install -r requirements-test.txt
-      - name: Compile endpoint-first API
+      - name: Compile event contract
         run: python -m compileall -q docs-api/app docs-api/migrate.py
       - name: Apply complete migration chain
         working-directory: docs-api
         run: python migrate.py apply
-      - name: Verify agent product schema
+      - name: Verify event authority
         env:
           PGPASSWORD: test-only-password
         run: |
           expected="$(find db/migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9]_*.sql' | wc -l | tr -d ' ')"
           actual="$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from docplane.schema_migrations")"
           test "$actual" = "$expected"
-          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docplane.principals') is not null")" = t
-          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.change_proposals') is not null")" = t
-          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from information_schema.columns where table_schema='docs' and table_name='pages' and column_name='resource_id'")" = 1
-      - name: Agent API tests
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docplane.events') is not null")" = t
+          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regnamespace('analytics') is null")" = t
+      - name: Event tests
         working-directory: docs-api
         run: >-
           python -m pytest -q
+          tests/test_event_cursor.py
+          tests/test_event_api_integration.py
           tests/test_agent_auth.py
-          tests/test_agent_sections.py
-          tests/test_agent_api_integration.py
           tests/test_wp8_migrations.py
       - name: Build assembled API image
-        run: docker build -t docplane-api:agent-test docs-api
+        run: docker build -t docplane-api:events-test docs-api
