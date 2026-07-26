@@ -77,13 +77,21 @@ jobs:
           test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.trust_mutation_receipts') is not null")" = t
           test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regprocedure('docs.expire_due_verifications(timestamp with time zone)') is not null")" = t
           test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regnamespace('analytics') is null")" = t
-      - name: Trust integration tests
+      - name: Trust lifecycle contract
         working-directory: docs-api
         run: >-
-          python -m pytest -q
-          tests/test_trust_api_integration.py
-          tests/test_event_cursor.py
-          tests/test_event_api_integration.py
-          tests/test_wp8_migrations.py
+          python -m pytest -q --tb=short
+          tests/test_trust_api_integration.py::test_classification_verification_invalidation_and_expiry_are_audited
+      - name: Trust refusal contract
+        working-directory: docs-api
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_trust_api_integration.py::test_verification_refuses_unclassified_or_stale_revision
+      - name: Event contract regression
+        working-directory: docs-api
+        run: python -m pytest -q --tb=short tests/test_event_cursor.py tests/test_event_api_integration.py
+      - name: Migration contract regression
+        working-directory: docs-api
+        run: python -m pytest -q --tb=short tests/test_wp8_migrations.py
       - name: Build assembled API image
         run: docker build -t docplane-api:trust-test docs-api
