@@ -149,8 +149,13 @@ jobs:
               | sort > "schema-export/${db}-authority.txt"
             test -s "schema-export/${db}-authority.txt"
           done
-          diff -u schema-export/docs-authority.txt schema-export/docs_genesis-authority.txt
+          if ! diff -u schema-export/docs-authority.txt schema-export/docs_genesis-authority.txt \
+              > schema-export/authority.diff; then
+            cat schema-export/authority.diff
+            exit 1
+          fi
       - name: Upload genesis source
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: docplane-schema-genesis
