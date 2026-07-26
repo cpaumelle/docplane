@@ -33,6 +33,7 @@ VALID_SCOPES = frozenset(
         "events:write",
         "events:subscribe",
         "admin:principals",
+        "admin:workspaces",
     }
 )
 
