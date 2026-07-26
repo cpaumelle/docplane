@@ -17,10 +17,12 @@ title: Authoring Fixture
 
 # Authoring Fixture {#authoring-fixture}
 
-A paragraph with a [link](https://example.test).\n
+A paragraph with a [link](https://example.test).
+
 ## Attributes {#attributes}
 
-A marked paragraph.\n{.important #marked-paragraph}
+A marked paragraph.
+{.important #marked-paragraph}
 
 !!! note "Admonition"
     This must render without changing the source.
@@ -31,7 +33,7 @@ A marked paragraph.\n{.important #marked-paragraph}
 ## Code {#code}
 
 ```python
-print(\"hello\")
+print("hello")
 ```
 
 <div data-test="raw-html">HTML stays visible to the renderer.</div>
@@ -85,7 +87,7 @@ def _page(content: str = DIALECT_FIXTURE) -> dict:
 def test_document_preview_is_lossless_rendered_and_read_only():
     token = _human_token()
     page = _page()
-    candidate = page["content"].replace("one | two", "one | updated")
+    candidate = page["content"].replace("| one | two |", "| one | updated |")
 
     response = client.post(
         "/api/v1/authoring/preview",
@@ -101,12 +103,13 @@ def test_document_preview_is_lossless_rendered_and_read_only():
     body = response.json()
     assert body["source_content"] == candidate
     assert body["candidate_content"] == candidate
+    assert body["workspace_key"] == "reference"
     assert body["source_fidelity"]["input_returned_byte_for_byte"] is True
     assert body["source_fidelity"]["database_mutated"] is False
     assert body["operation"]["operation_type"] == "REPLACE_DOCUMENT"
     assert body["operation"]["expected_revision"] == page["revision"]
-    assert "-one | two" in body["raw_diff"]
-    assert "+one | updated" in body["raw_diff"]
+    assert "-| one | two |" in body["raw_diff"]
+    assert "+| one | updated |" in body["raw_diff"]
     assert 'id="authoring-fixture"' in body["rendered_html"]
     assert 'class="admonition note"' in body["rendered_html"]
     assert 'data-test="raw-html"' in body["rendered_html"]
