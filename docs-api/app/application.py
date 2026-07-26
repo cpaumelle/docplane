@@ -1,0 +1,12 @@
+"""DocPlane ASGI application assembly.
+
+The historical control-plane implementation remains in ``app.main`` while product surfaces are being
+extracted into versioned routers. New containers and tests import this module so every supported endpoint
+is assembled without forcing unrelated refactors into one change.
+"""
+from app.main import app
+from app.agent_api import router as agent_router
+
+app.include_router(agent_router)
+
+__all__ = ["app"]

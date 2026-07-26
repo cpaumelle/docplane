@@ -16,4 +16,4 @@ ENV GIT_SHA=$GIT_SHA
 ENV BUILD_TIMESTAMP=$BUILD_TIMESTAMP
 ARG DEPLOY_ID=unknown
 ENV DEPLOY_ID=$DEPLOY_ID
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]
+CMD ["uvicorn", "app.application:app", "--host", "0.0.0.0", "--port", "8010"]
