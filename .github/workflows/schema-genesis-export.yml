@@ -119,29 +119,39 @@ jobs:
           psql --host=127.0.0.1 --username=docs --dbname=docs_genesis --set=ON_ERROR_STOP=1 \
             --file=schema-export/000_docplane_genesis.sql
           for db in docs docs_genesis; do
-            out="schema-export/${db}-authority.txt"
-            : > "$out"
-            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
-              --command="SELECT 'column|' || table_schema || '.' || table_name || '|' || column_name || '|' || data_type || '|' || is_nullable FROM information_schema.columns WHERE table_schema IN ('docplane', 'docs', 'work') AND NOT (table_schema = 'docplane' AND table_name = 'schema_migrations')" \
-              >> "$out"
-            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
-              --command="SELECT 'constraint|' || n.nspname || '.' || c.relname || '|' || con.conname || '|' || con.contype FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('docplane', 'docs', 'work') AND NOT (n.nspname = 'docplane' AND c.relname = 'schema_migrations')" \
-              >> "$out"
-            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
-              --command="SELECT 'function|' || n.nspname || '.' || p.proname || '|' || pg_get_function_identity_arguments(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname IN ('docplane', 'docs', 'work')" \
-              >> "$out"
-            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
-              --command="SELECT 'trigger|' || n.nspname || '.' || c.relname || '|' || t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('docplane', 'docs', 'work') AND NOT t.tgisinternal" \
-              >> "$out"
-            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
-              --command="SELECT 'seed|' || workspace_key || '|' || workspace_kind || '|' || mutation_policy || '|' || coalesce(default_verification_days::text, '') FROM docplane.workspaces" \
-              >> "$out"
-            sort -o "$out" "$out"
-            test -s "$out"
+            pg_dump \
+              --host=127.0.0.1 \
+              --username=docs \
+              --dbname="$db" \
+              --schema-only \
+              --no-owner \
+              --no-privileges \
+              --schema=docs \
+              --schema=docplane \
+              --schema=work \
+              --exclude-table=docplane.schema_migrations \
+              > "schema-export/${db}-schema.sql"
+            sed -i \
+              -e '/^\\restrict /d' \
+              -e '/^\\unrestrict /d' \
+              -e '/^-- Dumped from database version/d' \
+              -e '/^-- Dumped by pg_dump version/d' \
+              -e '/^SET transaction_timeout/d' \
+              "schema-export/${db}-schema.sql"
+            psql --host=127.0.0.1 --username=docs --dbname="$db" \
+              --tuples-only --no-align \
+              --command="SELECT workspace_key || '|' || workspace_kind || '|' || mutation_policy || '|' || coalesce(default_verification_days::text, '') FROM docplane.workspaces ORDER BY workspace_key" \
+              > "schema-export/${db}-seeds.txt"
+            test "$(wc -l < "schema-export/${db}-seeds.txt" | tr -d ' ')" = 4
           done
-          if ! diff -u schema-export/docs-authority.txt schema-export/docs_genesis-authority.txt \
-              > schema-export/authority.diff; then
-            cat schema-export/authority.diff
+          if ! diff -u schema-export/docs-schema.sql schema-export/docs_genesis-schema.sql \
+              > schema-export/schema.diff; then
+            cat schema-export/schema.diff
+            exit 1
+          fi
+          if ! diff -u schema-export/docs-seeds.txt schema-export/docs_genesis-seeds.txt \
+              > schema-export/seeds.diff; then
+            cat schema-export/seeds.diff
             exit 1
           fi
       - name: Upload genesis source
