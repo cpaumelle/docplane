@@ -7,10 +7,8 @@ is assembled without forcing unrelated refactors into one change.
 from app.main import app
 from app.agent_api import router as agent_router
 from app.event_api import router as event_router
-from app.usage_middleware import UsageEventMiddleware
 
 app.include_router(agent_router)
 app.include_router(event_router)
-app.add_middleware(UsageEventMiddleware)
 
 __all__ = ["app"]
