@@ -13,33 +13,55 @@ sys.path.insert(0, str(DOCS_API))
 import migrate  # noqa: E402
 
 
-def test_wp8_migration_chain_is_complete_and_ordered():
+def test_docplane_ships_one_authoritative_genesis():
     migrations = migrate.discover(ROOT / "db" / "migrations")
-    assert [migration.ordinal for migration in migrations] == list(range(16))
-    assert migrations[0].filename == "000_base_docs.sql"
-    assert migrations[-1].filename == "015_reorganisation_plans.sql"
-    assert all(len(migration.checksum) == 64 for migration in migrations)
+    assert [migration.ordinal for migration in migrations] == [0]
+    assert migrations[0].filename == "000_docplane_genesis.sql"
+    assert len(migrations[0].checksum) == 64
 
 
-def test_wp8_schema_contains_the_durable_product_authorities():
-    migrations = migrate.discover(ROOT / "db" / "migrations")
-    sql = "\n".join(migration.sql for migration in migrations)
-    assert "CREATE TABLE IF NOT EXISTS docs.corpus_certification" in sql
-    assert "CREATE TABLE IF NOT EXISTS docs.redirects" in sql
-    assert "CREATE TABLE IF NOT EXISTS docs.deployment_attempts" in sql
-    assert "CREATE TABLE IF NOT EXISTS docplane.principals" in sql
-    assert "CREATE TABLE IF NOT EXISTS docs.change_proposals" in sql
-    assert "CREATE TABLE IF NOT EXISTS docplane.events" in sql
-    assert "CREATE TABLE IF NOT EXISTS docplane.workspaces" in sql
-    assert "CREATE TABLE IF NOT EXISTS work.initiatives" in sql
-    assert "CREATE TABLE IF NOT EXISTS docs.page_verifications" in sql
-    assert "CREATE TABLE IF NOT EXISTS docs.trust_mutation_receipts" in sql
-    assert "CREATE TABLE IF NOT EXISTS work.mutation_receipts" in sql
-    assert "CREATE TABLE IF NOT EXISTS docs.reorganisation_plans" in sql
-    assert "CREATE TABLE IF NOT EXISTS docs.reorganisation_operations" in sql
-    assert "ADD COLUMN IF NOT EXISTS resource_id uuid" in sql
-    assert "CREATE SCHEMA IF NOT EXISTS analytics" not in sql
+def test_genesis_contains_the_complete_product_authorities():
+    migration = migrate.discover(ROOT / "db" / "migrations")[0]
+    sql = migration.sql
+
+    required_tables = (
+        "docs.corpus_certification",
+        "docs.redirects",
+        "docs.deployment_attempts",
+        "docplane.principals",
+        "docs.change_proposals",
+        "docplane.events",
+        "docplane.workspaces",
+        "work.initiatives",
+        "docs.page_verifications",
+        "docs.trust_mutation_receipts",
+        "work.mutation_receipts",
+        "docs.reorganisation_plans",
+        "docs.reorganisation_operations",
+    )
+    for table in required_tables:
+        assert f"CREATE TABLE {table}" in sql
+
+    assert "resource_id uuid" in sql
     assert "RECERTIFY_POLICY" in sql
+    assert "CREATE SCHEMA analytics" not in sql
+    assert "schema_migrations" not in sql
+    assert "ADD COLUMN IF NOT EXISTS" not in sql
+
+
+def test_genesis_seeds_stable_system_workspaces():
+    sql = migrate.discover(ROOT / "db" / "migrations")[0].sql
+    expected = {
+        "d0c00000-0000-5000-8000-000000000001": "reference",
+        "d0c00000-0000-5000-8000-000000000002": "operations",
+        "d0c00000-0000-5000-8000-000000000003": "work",
+        "d0c00000-0000-5000-8000-000000000004": "migration-import",
+    }
+    for workspace_id, workspace_key in expected.items():
+        assert workspace_id in sql
+        assert f"'{workspace_key}'" in sql
+    assert "Stable system workspaces" in sql
+    assert "COPY " not in sql
 
 
 def test_duplicate_ordinals_fail_closed(tmp_path):
@@ -59,15 +81,15 @@ def test_ordinal_gap_fails_closed(tmp_path):
 def test_applied_checksum_drift_fails_closed():
     migration = migrate.Migration(
         ordinal=0,
-        filename="000_base.sql",
-        path=pathlib.Path("000_base.sql"),
+        filename="000_docplane_genesis.sql",
+        path=pathlib.Path("000_docplane_genesis.sql"),
         checksum="a" * 64,
         sql="SELECT 1;",
     )
     history = {
         0: {
             "ordinal": 0,
-            "filename": "000_base.sql",
+            "filename": "000_docplane_genesis.sql",
             "checksum": "b" * 64,
             "applied_at": None,
         }
