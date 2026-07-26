@@ -81,7 +81,9 @@ jobs:
           test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.corpus_certification') is not null")" = t
           test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.redirects') is not null")" = t
           test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select to_regclass('docs.deployment_attempts') is not null")" = t
-          test "$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from docplane.schema_migrations")" = 10
+          expected="$(find db/migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9]_*.sql' | wc -l | tr -d ' ')"
+          actual="$(psql -h 127.0.0.1 -U docs -d docs -Atc "select count(*) from docplane.schema_migrations")"
+          test "$actual" = "$expected"
       - name: Reapply is a no-op
         working-directory: docs-api
         run: test -z "$(python migrate.py apply)"
