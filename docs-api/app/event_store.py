@@ -1,4 +1,4 @@
-"""Append-only event persistence shared by HTTP ingestion and internal product instrumentation."""
+"""Append-only domain event persistence shared by product endpoints and integrations."""
 from __future__ import annotations
 
 import json
@@ -87,28 +87,3 @@ def append_event(
     if existing is None:
         raise RuntimeError("idempotent event disappeared after conflict")
     return existing[0], int(existing[1]), False
-
-
-def append_restricted_payload(
-    conn,
-    *,
-    event_id: str,
-    payload_kind: str,
-    payload: dict[str, Any],
-    expires_at: datetime,
-) -> bool:
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO analytics.restricted_payloads (event_id, payload_kind, payload, expires_at)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (event_id) DO NOTHING
-        """,
-        (
-            event_id,
-            payload_kind,
-            psycopg2.extras.Json(payload, dumps=lambda value: json.dumps(value, sort_keys=True)),
-            expires_at,
-        ),
-    )
-    return cur.rowcount == 1
