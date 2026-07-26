@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -59,7 +60,7 @@ def decode_cursor(cursor: str | None, *, principal_id: str) -> int:
         if sequence < 0:
             raise ValueError("sequence")
         return sequence
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError, base64.binascii.Error) as exc:
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError, binascii.Error) as exc:
         raise HTTPException(
             status_code=400,
             detail={"code": "EVENT_CURSOR_INVALID", "message": "event cursor is invalid or belongs to another principal"},
