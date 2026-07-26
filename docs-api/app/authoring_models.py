@@ -43,6 +43,7 @@ class AuthoringPreviewResponse(BaseModel):
     page_resource_id: UUID | None = None
     path: str | None = None
     title: str | None = None
+    workspace_key: str | None = None
     scope: Literal["document", "section"]
     heading_id: str | None = None
     rendered_html: str
