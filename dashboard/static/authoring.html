@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DocPlane Authoring</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="/assets/authoring.css">
+</head>
+<body class="authoring-page">
+  <header class="topbar authoring-topbar">
+    <div>
+      <p class="eyebrow">DocPlane</p>
+      <h1>Authoring</h1>
+      <p class="subtitle">Correct and improve canonical Markdown through the same governed change APIs used by agents.</p>
+    </div>
+    <div class="connection">
+      <label>
+        <span>Human token</span>
+        <input id="author-token" type="password" autocomplete="off" placeholder="Short-lived named-principal token">
+      </label>
+      <button id="author-connect" type="button">Connect</button>
+      <a class="button-link" href="/">Control plane</a>
+      <span class="status" id="author-status">Disconnected</span>
+    </div>
+  </header>
+
+  <main class="authoring-shell">
+    <aside class="authoring-sidebar" aria-label="Canonical page selection">
+      <section class="panel compact">
+        <h2>Find canonical content</h2>
+        <label>
+          <span>Search</span>
+          <input id="page-query" type="search" placeholder="Title, path, phrase or concept">
+        </label>
+        <button id="search-pages" type="button">Search</button>
+        <div id="search-results" class="search-results muted">Connect, then search before editing.</div>
+      </section>
+
+      <section class="panel compact">
+        <h2>Selected page</h2>
+        <dl class="metadata" id="page-metadata">
+          <div><dt>Resource</dt><dd>None</dd></div>
+          <div><dt>Revision</dt><dd>None</dd></div>
+          <div><dt>Path</dt><dd>None</dd></div>
+        </dl>
+        <label>
+          <span>Edit scope</span>
+          <select id="edit-scope" disabled>
+            <option value="document">Whole document</option>
+            <option value="section">One explicit-ID section</option>
+          </select>
+        </label>
+        <label>
+          <span>Section</span>
+          <select id="section-id" disabled>
+            <option value="">Select a section</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="panel compact">
+        <h2>Proposal</h2>
+        <label><span>Title</span><input id="change-title" placeholder="Correct backup recovery procedure"></label>
+        <label><span>Purpose</span><textarea id="change-purpose" placeholder="Explain what is inaccurate and why this correction is needed."></textarea></label>
+        <div class="button-stack">
+          <button id="preview-change" type="button" disabled>Preview and validate source</button>
+          <button id="create-change" type="button" disabled>Create validated proposal</button>
+          <button id="submit-change" type="button" disabled>Submit for review</button>
+        </div>
+        <p class="muted small">There is no direct save. Publication remains behind review and WP8.</p>
+      </section>
+    </aside>
+
+    <section class="authoring-workspace">
+      <div class="editor-heading">
+        <div>
+          <h2 id="editor-title">Markdown source</h2>
+          <p id="editor-context" class="muted">Select a canonical page to begin.</p>
+        </div>
+        <span id="dirty-state" class="status">Clean</span>
+      </div>
+      <div id="markdown-editor" class="markdown-editor" aria-label="Markdown source editor"></div>
+
+      <div class="result-tabs" role="tablist" aria-label="Authoring evidence">
+        <button class="result-tab active" type="button" data-result="preview">Rendered preview</button>
+        <button class="result-tab" type="button" data-result="diff">Raw diff</button>
+        <button class="result-tab" type="button" data-result="semantic">Semantic diff</button>
+        <button class="result-tab" type="button" data-result="diagnostics">Diagnostics</button>
+        <button class="result-tab" type="button" data-result="receipt">Receipt</button>
+      </div>
+
+      <section class="result-panel active" id="result-preview">
+        <iframe id="preview-frame" title="Sandboxed rendered Markdown preview" sandbox></iframe>
+      </section>
+      <section class="result-panel" id="result-diff"><pre id="raw-diff">Preview an edit to see its diff.</pre></section>
+      <section class="result-panel" id="result-semantic"><div id="semantic-diff" class="evidence-list muted">No semantic diff yet.</div></section>
+      <section class="result-panel" id="result-diagnostics"><div id="diagnostics" class="evidence-list muted">No diagnostics yet.</div></section>
+      <section class="result-panel" id="result-receipt"><pre id="change-receipt">No proposal receipt yet.</pre></section>
+    </section>
+  </main>
+
+  <footer>
+    <span id="authoring-fingerprint">Source mode is authoritative</span>
+    <span>Named human principal · exact revision · idempotent proposal · no filesystem save</span>
+  </footer>
+
+  <script src="/assets/editor.bundle.js" defer></script>
+  <script src="/assets/authoring.js" defer></script>
+</body>
+</html>
