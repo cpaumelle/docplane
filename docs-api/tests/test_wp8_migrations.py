@@ -30,12 +30,12 @@ def test_wp8_schema_contains_the_durable_product_authorities():
     assert "CREATE TABLE IF NOT EXISTS docplane.principals" in sql
     assert "CREATE TABLE IF NOT EXISTS docs.change_proposals" in sql
     assert "CREATE TABLE IF NOT EXISTS docplane.events" in sql
-    assert "CREATE TABLE IF NOT EXISTS analytics.daily_page_usage" in sql
     assert "CREATE TABLE IF NOT EXISTS docplane.workspaces" in sql
     assert "CREATE TABLE IF NOT EXISTS work.initiatives" in sql
     assert "CREATE TABLE IF NOT EXISTS docs.page_verifications" in sql
     assert "CREATE TABLE IF NOT EXISTS work.mutation_receipts" in sql
     assert "ADD COLUMN IF NOT EXISTS resource_id uuid" in sql
+    assert "CREATE SCHEMA IF NOT EXISTS analytics" not in sql
     assert "RECERTIFY_POLICY" in sql
 
 
