@@ -118,36 +118,26 @@ jobs:
           SQL
           psql --host=127.0.0.1 --username=docs --dbname=docs_genesis --set=ON_ERROR_STOP=1 \
             --file=schema-export/000_docplane_genesis.sql
-          AUTHORITY_QUERY="$(cat <<'SQL'
-          SELECT 'column|' || table_schema || '.' || table_name || '|' || column_name || '|' || data_type || '|' || is_nullable
-            FROM information_schema.columns
-           WHERE table_schema IN ('docplane', 'docs', 'work')
-             AND NOT (table_schema = 'docplane' AND table_name = 'schema_migrations')
-          UNION ALL
-          SELECT 'constraint|' || n.nspname || '.' || c.relname || '|' || con.conname || '|' || con.contype
-            FROM pg_constraint con
-            JOIN pg_class c ON c.oid = con.conrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-           WHERE n.nspname IN ('docplane', 'docs', 'work')
-             AND NOT (n.nspname = 'docplane' AND c.relname = 'schema_migrations')
-          UNION ALL
-          SELECT 'function|' || n.nspname || '.' || p.proname || '|' || pg_get_function_identity_arguments(p.oid)
-            FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-           WHERE n.nspname IN ('docplane', 'docs', 'work')
-          UNION ALL
-          SELECT 'trigger|' || event_object_schema || '.' || event_object_table || '|' || trigger_name
-            FROM information_schema.triggers
-           WHERE event_object_schema IN ('docplane', 'docs', 'work')
-          UNION ALL
-          SELECT 'seed|' || workspace_key || '|' || workspace_kind || '|' || mutation_policy || '|' || coalesce(default_verification_days::text, '')
-            FROM docplane.workspaces;
-          SQL
-          )"
           for db in docs docs_genesis; do
-            psql --host=127.0.0.1 --username=docs --dbname="$db" \
-              --tuples-only --no-align --command="$AUTHORITY_QUERY" \
-              | sort > "schema-export/${db}-authority.txt"
-            test -s "schema-export/${db}-authority.txt"
+            out="schema-export/${db}-authority.txt"
+            : > "$out"
+            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
+              --command="SELECT 'column|' || table_schema || '.' || table_name || '|' || column_name || '|' || data_type || '|' || is_nullable FROM information_schema.columns WHERE table_schema IN ('docplane', 'docs', 'work') AND NOT (table_schema = 'docplane' AND table_name = 'schema_migrations')" \
+              >> "$out"
+            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
+              --command="SELECT 'constraint|' || n.nspname || '.' || c.relname || '|' || con.conname || '|' || con.contype FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('docplane', 'docs', 'work') AND NOT (n.nspname = 'docplane' AND c.relname = 'schema_migrations')" \
+              >> "$out"
+            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
+              --command="SELECT 'function|' || n.nspname || '.' || p.proname || '|' || pg_get_function_identity_arguments(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname IN ('docplane', 'docs', 'work')" \
+              >> "$out"
+            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
+              --command="SELECT 'trigger|' || n.nspname || '.' || c.relname || '|' || t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('docplane', 'docs', 'work') AND NOT t.tgisinternal" \
+              >> "$out"
+            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align \
+              --command="SELECT 'seed|' || workspace_key || '|' || workspace_kind || '|' || mutation_policy || '|' || coalesce(default_verification_days::text, '') FROM docplane.workspaces" \
+              >> "$out"
+            sort -o "$out" "$out"
+            test -s "$out"
           done
           if ! diff -u schema-export/docs-authority.txt schema-export/docs_genesis-authority.txt \
               > schema-export/authority.diff; then
