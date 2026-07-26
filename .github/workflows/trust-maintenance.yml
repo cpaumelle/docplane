@@ -9,6 +9,7 @@ on:
       - "docs-api/app/application.py"
       - "docs-api/tests/test_trust_*.py"
       - "docs-api/tests/test_wp8_migrations.py"
+      - "docs/architecture/PAGE_TRUST.md"
       - ".github/workflows/trust-maintenance.yml"
   push:
     branches: [main]
@@ -19,6 +20,7 @@ on:
       - "docs-api/app/application.py"
       - "docs-api/tests/test_trust_*.py"
       - "docs-api/tests/test_wp8_migrations.py"
+      - "docs/architecture/PAGE_TRUST.md"
       - ".github/workflows/trust-maintenance.yml"
 
 permissions:
