@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DocPlane Operator Dashboard</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="header">
+    <div>
+      <p class="eyebrow">DocPlane</p>
+      <h1>Documentation operations</h1>
+      <p class="subtitle">Corpus structure, lifecycle and review signals.</p>
+    </div>
+    <div class="status" id="status">Loading…</div>
+  </header>
+
+  <main>
+    <section aria-labelledby="summary-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="summary-title">Corpus summary</h2>
+          <p>Structural observations only; no signal is a defect without review.</p>
+        </div>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+      <div class="cards" id="cards"></div>
+    </section>
+
+    <section aria-labelledby="sections-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="sections-title">Sections</h2>
+          <p>Concentration is direct pages divided by the section subtree.</p>
+        </div>
+        <label class="search">
+          <span>Filter</span>
+          <input id="section-filter" type="search" placeholder="Section name">
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Section</th>
+              <th>Direct</th>
+              <th>Subtree</th>
+              <th>Concentration</th>
+              <th>Archived</th>
+              <th>Lifecycle</th>
+            </tr>
+          </thead>
+          <tbody id="sections"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="signals-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="signals-title">Review signals</h2>
+          <p>Queues for human inspection, generated from naming and structure.</p>
+        </div>
+      </div>
+      <div class="signals" id="signals"></div>
+    </section>
+  </main>
+
+  <footer>
+    <span id="fingerprint"></span>
+    <span>Generated from one repeatable-read PostgreSQL snapshot.</span>
+  </footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
