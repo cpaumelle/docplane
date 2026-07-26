@@ -1,0 +1,72 @@
+name: human-authoring-preview
+
+on:
+  pull_request:
+    paths:
+      - "docs-api/app/authoring_*.py"
+      - "docs-api/app/application.py"
+      - "docs-api/requirements.txt"
+      - "docs-api/tests/test_authoring_*.py"
+      - ".github/workflows/human-authoring-preview.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs-api/app/authoring_*.py"
+      - "docs-api/app/application.py"
+      - "docs-api/requirements.txt"
+      - "docs-api/tests/test_authoring_*.py"
+      - ".github/workflows/human-authoring-preview.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: docs
+          POSTGRES_USER: docs
+          POSTGRES_PASSWORD: test-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U docs -d docs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: docs
+      DB_USER: docs
+      DB_PASS: test-only-password
+      DOCS_API_KEY: legacy-test-only
+      DOCPLANE_BOOTSTRAP_ADMIN_TOKEN: test-bootstrap-token
+      DOCPLANE_API_PUBLIC_URL: http://docplane.test
+      DOCPLANE_EVENT_CURSOR_SECRET: test-only-event-cursor-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docs-api/requirements-test.txt
+      - name: Install dependencies
+        working-directory: docs-api
+        run: python -m pip install -r requirements-test.txt
+      - name: Compile authoring API
+        run: python -m compileall -q docs-api/app docs-api/migrate.py
+      - name: Apply DocPlane genesis
+        working-directory: docs-api
+        run: python migrate.py apply
+      - name: Authoring preview contracts
+        working-directory: docs-api
+        run: python -m pytest -q --tb=short tests/test_authoring_preview.py
+      - name: Migration contract regression
+        working-directory: docs-api
+        run: python -m pytest -q --tb=short tests/test_wp8_migrations.py
+      - name: Build assembled API image
+        run: docker build -t docplane-api:authoring-preview-test docs-api
