@@ -15,9 +15,9 @@ import migrate  # noqa: E402
 
 def test_wp8_migration_chain_is_complete_and_ordered():
     migrations = migrate.discover(ROOT / "db" / "migrations")
-    assert [migration.ordinal for migration in migrations] == list(range(14))
+    assert [migration.ordinal for migration in migrations] == list(range(15))
     assert migrations[0].filename == "000_base_docs.sql"
-    assert migrations[-1].filename == "013_work_mutation_receipts.sql"
+    assert migrations[-1].filename == "014_page_trust_and_maintenance.sql"
     assert all(len(migration.checksum) == 64 for migration in migrations)
 
 
@@ -33,6 +33,8 @@ def test_wp8_schema_contains_the_durable_product_authorities():
     assert "CREATE TABLE IF NOT EXISTS docplane.workspaces" in sql
     assert "CREATE TABLE IF NOT EXISTS work.initiatives" in sql
     assert "CREATE TABLE IF NOT EXISTS docs.page_verifications" in sql
+    assert "CREATE TABLE IF NOT EXISTS docs.page_metadata_history" in sql
+    assert "CREATE TABLE IF NOT EXISTS docs.trust_mutation_receipts" in sql
     assert "CREATE TABLE IF NOT EXISTS work.mutation_receipts" in sql
     assert "ADD COLUMN IF NOT EXISTS resource_id uuid" in sql
     assert "CREATE SCHEMA IF NOT EXISTS analytics" not in sql
