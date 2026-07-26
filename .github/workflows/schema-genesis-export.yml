@@ -92,9 +92,7 @@ jobs:
           SQL
           psql --host=127.0.0.1 --username=docs --dbname=docs_genesis --set=ON_ERROR_STOP=1 \
             --file=schema-export/000_docplane_genesis.sql
-          for db in docs docs_genesis; do
-            psql --host=127.0.0.1 --username=docs --dbname="$db" --tuples-only --no-align <<'SQL' \
-              | sort > "schema-export/${db}-authority.txt"
+          cat > /tmp/docplane-authority.sql <<'SQL'
           SELECT 'table|' || schemaname || '.' || tablename
             FROM pg_tables
            WHERE schemaname IN ('docplane', 'docs', 'work')
@@ -110,6 +108,10 @@ jobs:
           SELECT 'certification|' || generation::text || '|' || migration_complete::text
             FROM docs.corpus_certification;
           SQL
+          for db in docs docs_genesis; do
+            psql --host=127.0.0.1 --username=docs --dbname="$db" \
+              --tuples-only --no-align --file=/tmp/docplane-authority.sql \
+              | sort > "schema-export/${db}-authority.txt"
           done
           diff -u schema-export/docs-authority.txt schema-export/docs_genesis-authority.txt
       - name: Upload genesis source
