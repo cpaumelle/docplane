@@ -15,18 +15,21 @@ import migrate  # noqa: E402
 
 def test_wp8_migration_chain_is_complete_and_ordered():
     migrations = migrate.discover(ROOT / "db" / "migrations")
-    assert [migration.ordinal for migration in migrations] == list(range(10))
+    assert [migration.ordinal for migration in migrations] == list(range(11))
     assert migrations[0].filename == "000_base_docs.sql"
-    assert migrations[-1].filename == "009_recertify_policy_mode.sql"
+    assert migrations[-1].filename == "010_agent_identity_and_changes.sql"
     assert all(len(migration.checksum) == 64 for migration in migrations)
 
 
-def test_wp8_schema_contains_the_three_durable_authorities():
+def test_wp8_schema_contains_the_durable_product_authorities():
     migrations = migrate.discover(ROOT / "db" / "migrations")
     sql = "\n".join(migration.sql for migration in migrations)
     assert "CREATE TABLE IF NOT EXISTS docs.corpus_certification" in sql
     assert "CREATE TABLE IF NOT EXISTS docs.redirects" in sql
     assert "CREATE TABLE IF NOT EXISTS docs.deployment_attempts" in sql
+    assert "CREATE TABLE IF NOT EXISTS docplane.principals" in sql
+    assert "CREATE TABLE IF NOT EXISTS docs.change_proposals" in sql
+    assert "ADD COLUMN IF NOT EXISTS resource_id uuid" in sql
     assert "RECERTIFY_POLICY" in sql
 
 
