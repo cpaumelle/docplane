@@ -17,7 +17,7 @@ def test_wp8_migration_chain_is_complete_and_ordered():
     migrations = migrate.discover(ROOT / "db" / "migrations")
     assert [migration.ordinal for migration in migrations] == list(range(12))
     assert migrations[0].filename == "000_base_docs.sql"
-    assert migrations[-1].filename == "011_events_and_usage.sql"
+    assert migrations[-1].filename == "011_events.sql"
     assert all(len(migration.checksum) == 64 for migration in migrations)
 
 
@@ -30,7 +30,8 @@ def test_wp8_schema_contains_the_durable_product_authorities():
     assert "CREATE TABLE IF NOT EXISTS docplane.principals" in sql
     assert "CREATE TABLE IF NOT EXISTS docs.change_proposals" in sql
     assert "CREATE TABLE IF NOT EXISTS docplane.events" in sql
-    assert "CREATE TABLE IF NOT EXISTS analytics.daily_page_usage" in sql
+    assert "CREATE TABLE IF NOT EXISTS analytics.daily_page_usage" not in sql
+    assert "CREATE TABLE IF NOT EXISTS analytics.restricted_payloads" not in sql
     assert "ADD COLUMN IF NOT EXISTS resource_id uuid" in sql
     assert "RECERTIFY_POLICY" in sql
 
