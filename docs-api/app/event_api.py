@@ -1,8 +1,7 @@
 """Versioned append-only domain-event API.
 
 The core event contract supports audit, integration and cursor-based delta synchronization. Usage
-instrumentation, aggregation, retention and traffic analysis are intentionally deferred to the dashboard
-slice, which may consume this stream without becoming part of the authoritative knowledge state.
+instrumentation, aggregation, retention and traffic analysis are intentionally owned by the dashboard.
 """
 from __future__ import annotations
 
@@ -26,23 +25,10 @@ def _effective_producer(principal: Principal, producer_id: str) -> str:
 
 def _event_dict(row) -> dict[str, Any]:
     keys = (
-        "event_seq",
-        "event_id",
-        "occurred_at",
-        "event_type",
-        "principal_id",
-        "actor_class",
-        "channel",
-        "producer_id",
-        "client_identity",
-        "workspace_key",
-        "resource_type",
-        "resource_id",
-        "page_resource_id",
-        "page_path",
-        "page_revision",
-        "release_id",
-        "metadata",
+        "event_seq", "event_id", "occurred_at", "event_type", "principal_id",
+        "actor_class", "channel", "producer_id", "client_identity", "workspace_key",
+        "resource_type", "resource_id", "page_resource_id", "page_path",
+        "page_revision", "release_id", "metadata",
     )
     value = dict(zip(keys, row))
     for key in ("event_id", "principal_id", "page_resource_id"):
@@ -84,10 +70,8 @@ def ingest_events(
                 )
                 event_ids.append(event_id)
                 last_sequence = max(last_sequence, sequence)
-                if inserted:
-                    accepted += 1
-                else:
-                    duplicate += 1
+                accepted += int(inserted)
+                duplicate += int(not inserted)
             conn.commit()
         except Exception:
             conn.rollback()
@@ -97,8 +81,7 @@ def ingest_events(
         duplicate=duplicate,
         event_ids=event_ids,
         last_cursor=encode_cursor(last_sequence, principal_id=principal.principal_id)
-        if last_sequence
-        else None,
+        if last_sequence else None,
     )
 
 
@@ -145,5 +128,5 @@ def list_events(
         "count": len(events),
         "next_cursor": encode_cursor(next_sequence, principal_id=principal.principal_id),
         "contract_version": "events-v1",
-        "usage_analytics": "deferred to dashboard slice",
+        "usage_analytics": "dashboard-owned",
     }
