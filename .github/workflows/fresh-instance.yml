@@ -84,6 +84,7 @@ jobs:
           python -m pytest -q \
             docs-api/tests/test_fresh_contract.py \
             docs-api/tests/test_generated_release.py \
+            mcp/tests/test_allowed_hosts.py \
             dashboard/tests/test_authoring.py
       - name: Static legacy scan
         run: |
@@ -94,3 +95,9 @@ jobs:
           docker build -f docs-api/Dockerfile -t docplane-api:test .
           docker build -t docplane-dashboard:test dashboard
           docker build -t docplane-mcp:test mcp
+      # Real containers, real named volumes, empty start, non-default ports.
+      # Unit tests cannot reach the container/volume ownership boundary or the
+      # Host-header path, and both shipped broken precisely because CI never
+      # stood the actual stack up.
+      - name: Fresh-install integration test
+        run: bash scripts/integration-fresh-install.sh
