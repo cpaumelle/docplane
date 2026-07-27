@@ -11,7 +11,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from allowed_hosts import default_allowed_hosts, default_allowed_origins
+from allowed_hosts import default_allowed_hosts, default_allowed_origins, port_from_spec
 from common import DOCPLANE_API_URL, DOCPLANE_TOKEN
 from tools import docs as docs_tools
 
@@ -23,8 +23,10 @@ SERVER_NAME = os.environ.get("MCP_SERVER_NAME", "docplane")
 # The port a client actually addresses. Inside a container the listening port
 # (MCP_PORT) and the published port differ, and the Host header carries the
 # PUBLISHED one, so the container has to be told. Compose passes
-# MCP_PUBLIC_PORT=${DOCPLANE_MCP_PORT}.
-PUBLIC_PORT = int(os.environ.get("MCP_PUBLIC_PORT", str(PORT)))
+# MCP_PUBLIC_PORT=${DOCPLANE_MCP_PORT}, which may carry a bind address
+# ("127.0.0.1:18049") because that is how loopback-only publication is
+# expressed — hence port_from_spec rather than a bare int().
+PUBLIC_PORT = port_from_spec(os.environ.get("MCP_PUBLIC_PORT"), PORT)
 
 
 def _csv_env(name: str) -> list[str]:

@@ -14,6 +14,27 @@ from __future__ import annotations
 LOOPBACK_NAMES = ("localhost", "127.0.0.1")
 
 
+def port_from_spec(value: str | None, fallback: int) -> int:
+    """Extract a port from a Docker published-port spec.
+
+    DOCPLANE_MCP_PORT is interpolated straight into the compose ``ports:``
+    entry, so it is NOT always a bare port. Restricting publication to loopback
+    is expressed by putting the bind address in the same variable:
+
+        DOCPLANE_MCP_PORT=8049                 -> 8049
+        DOCPLANE_MCP_PORT=127.0.0.1:18049      -> 18049   (loopback-only)
+        DOCPLANE_MCP_PORT=0.0.0.0:18049        -> 18049
+
+    Naively int()-ing the raw value crashes the server at import on every
+    loopback-restricted deployment, so take the last colon-separated field and
+    fall back rather than raise on anything unparseable.
+    """
+    if not value:
+        return fallback
+    candidate = value.strip().rsplit(":", 1)[-1].strip()
+    return int(candidate) if candidate.isdigit() else fallback
+
+
 def _ports(public_port: int, listen_port: int) -> list[int]:
     # dict.fromkeys de-duplicates while preserving order; public first because
     # that is what host-side clients actually send.
