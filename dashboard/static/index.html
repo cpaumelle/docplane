@@ -27,6 +27,7 @@
     <nav class="sidebar" aria-label="Control plane domains">
       <button class="nav-item active" data-view="overview">Overview</button>
       <button class="nav-item" data-view="corpus">Corpus</button>
+      <button class="nav-item" data-view="authoring">Authoring</button>
       <button class="nav-item" data-view="reorganisation">Reorganisation</button>
       <button class="nav-item" data-view="changes">Changes</button>
       <button class="nav-item" data-view="certification">Certification</button>
@@ -69,6 +70,67 @@
           </table>
         </div>
         <div class="signals" id="signals"></div>
+      </section>
+
+      <section class="view" id="view-authoring" aria-labelledby="authoring-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="authoring-title">Human authoring</h2>
+            <p>Correct and improve canonical Markdown through the same audited proposal path used by agents.</p>
+          </div>
+          <span class="status" id="authoring-status">Select a page</span>
+        </div>
+
+        <div class="authoring-context-grid">
+          <article class="panel">
+            <h3>Find canonical content</h3>
+            <label><span>Search</span><input id="authoring-query" placeholder="Page title, path or content"></label>
+            <button id="authoring-search" type="button">Search</button>
+            <div id="authoring-results" class="list"><p class="muted">Search before editing to avoid duplicate knowledge.</p></div>
+          </article>
+          <article class="panel">
+            <h3>Exact edit context</h3>
+            <strong id="authoring-page-title">No page selected</strong>
+            <p id="authoring-page-meta" class="muted">Stable identity and exact revision will appear here.</p>
+            <div id="authoring-outline" class="list"><p class="muted">Outline unavailable.</p></div>
+          </article>
+        </div>
+
+        <div class="editor-grid">
+          <article class="panel editor-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>Lossless Markdown source</h3>
+                <p class="muted">CodeMirror enhances the source editor; the underlying textarea remains the proposal contract.</p>
+              </div>
+              <span class="chip">Revision-bound</span>
+            </div>
+            <div id="authoring-editor-mount" class="codemirror-host" hidden></div>
+            <textarea id="authoring-editor" class="source-editor" spellcheck="true" aria-label="Markdown source"></textarea>
+            <label><span>Purpose</span><textarea id="authoring-purpose" placeholder="Explain what is inaccurate or how this improves the page."></textarea></label>
+            <div class="actionbar">
+              <button id="authoring-propose" type="button" disabled>Create change proposal</button>
+              <button id="authoring-validate" type="button" disabled>Validate</button>
+              <button id="authoring-submit" type="button" disabled>Submit for review</button>
+            </div>
+            <p>Change <code id="authoring-change-id">not created</code></p>
+          </article>
+          <div class="authoring-receipts">
+            <article class="panel">
+              <h3>Source diff</h3>
+              <pre id="authoring-diff" class="diff-view">No changes yet.</pre>
+            </article>
+            <article class="panel">
+              <h3>Validation receipt</h3>
+              <pre id="authoring-validation">Not validated.</pre>
+            </article>
+          </div>
+        </div>
+
+        <div class="notice">
+          There is no direct save. Humans and agents are equal authors: both use stable identity, exact revision checks,
+          ordinary proposal validation and governed review. Generated releases, PostgreSQL and publication remain outside this workspace.
+        </div>
       </section>
 
       <section class="view" id="view-reorganisation" aria-labelledby="reorg-title">
@@ -145,5 +207,7 @@
     <span>Human control plane · API authority · no routine SSH or direct SQL</span>
   </footer>
   <script src="/assets/app.js" defer></script>
+  <script src="/assets/editor.bundle.js" defer></script>
+  <script src="/assets/authoring.js" defer></script>
 </body>
 </html>

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pathlib
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -98,3 +100,30 @@ def test_change_operations_forward_idempotency_without_merge_authority():
     )
     assert validate.status_code == 200
     assert authoring.client.calls[-1][1].endswith("/validate")
+
+
+def test_authoring_is_integrated_into_the_control_plane_shell():
+    from dashboard.combined_app import app as combined_app
+
+    dashboard_client = TestClient(combined_app)
+    response = dashboard_client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    assert 'data-view="authoring"' in html
+    assert 'id="view-authoring"' in html
+    assert "/assets/editor.bundle.js" in html
+    assert "/assets/authoring.js" in html
+    assert "There is no direct save." in html
+
+    redirect = dashboard_client.get("/authoring", follow_redirects=False)
+    assert redirect.status_code == 307
+    assert redirect.headers["location"] == "/?view=authoring"
+
+    static = pathlib.Path(__file__).resolve().parents[1] / "static"
+    script = (static / "authoring.js").read_text(encoding="utf-8")
+    adapter = (static.parent / "editor-src" / "editor.js").read_text(encoding="utf-8")
+    assert "localStorage" not in script
+    assert "sessionStorage" not in script
+    assert "DocPlaneEditor.mount" in script
+    assert "expected_revision" in script
+    assert "suppressChange" in adapter
