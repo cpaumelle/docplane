@@ -45,7 +45,7 @@ function card(label, value, stateName = "") {
   return `<article class="card ${esc(stateName)}"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>`;
 }
 
-function activateView(name) {
+function activateView(name, { updateUrl = true } = {}) {
   document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
   $(`view-${name}`)?.classList.add("active");
@@ -53,6 +53,12 @@ function activateView(name) {
   if (name === "overview") loadOverview();
   if (name === "corpus") loadCorpus();
   if (name === "reorganisation") loadReorganisation();
+  if (updateUrl) {
+    const nextUrl = name === "overview" ? "/" : `/?view=${encodeURIComponent(name)}`;
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.replaceState({}, "", nextUrl);
+    }
+  }
 }
 
 function renderModuleCards(overview) {
@@ -147,7 +153,7 @@ function renderPlanList(plans) {
       <strong>${esc(plan.title || plan.plan_id)}</strong>
       <span>${esc(plan.status || "DRAFT")}</span>
     </button>`).join("") : `<p class="muted">No open plans.</p>`;
-  document.querySelectorAll(".plan-row").forEach((button) => {
+  document.querySelectorAll(".plan-row[data-plan-id]").forEach((button) => {
     button.addEventListener("click", () => selectPlan(button.dataset.planId));
   });
 }
@@ -305,6 +311,10 @@ $("connect").addEventListener("click", async () => {
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => activateView(button.dataset.view));
 });
+const requestedView = new URLSearchParams(window.location.search).get("view");
+if (requestedView && document.getElementById(`view-${requestedView}`)) {
+  activateView(requestedView, { updateUrl: false });
+}
 $("refresh-overview").addEventListener("click", loadOverview);
 $("refresh-corpus").addEventListener("click", loadCorpus);
 $("refresh-reorganisation").addEventListener("click", loadReorganisation);
