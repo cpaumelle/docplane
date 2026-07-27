@@ -81,7 +81,10 @@ jobs:
           PYTHONPATH: docs-api:dashboard
         run: |
           python -m compileall -q docs-api dashboard mcp
-          python -m pytest -q docs-api/tests/test_fresh_contract.py dashboard/tests/test_authoring.py
+          python -m pytest -q \
+            docs-api/tests/test_fresh_contract.py \
+            docs-api/tests/test_generated_release.py \
+            dashboard/tests/test_authoring.py
       - name: Static legacy scan
         run: |
           ! grep -R -nE 'DOCS_API_KEY|X-API-Key|/api/agent-config|/api/docs/|workspace_memberships|change_proposals|reorganisation_reviews|Submit for review|SUBMITTED|APPROVED' \

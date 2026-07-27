@@ -152,17 +152,65 @@ def distinct_section_paths(pages: list[dict]) -> list[str]:
 
 
 def _write_nav(nav: list) -> None:
-    payload = {"INHERIT": str(MKDOCS_YML), "nav": nav}
+    # docs_dir MUST be absolute and generator-owned. MkDocs defaults it to
+    # "docs" relative to the config file it was invoked with, which would
+    # resolve to MKDOCS_CONFIG_DIR/docs — never where DocPlane actually renders
+    # the corpus (DOCS_CONTENT_DIR). Emitting it explicitly keeps the rendered
+    # content the single input to the build. See _sync_base_config_assets for
+    # the sibling relative-path problem this pairs with.
+    payload = {"INHERIT": str(MKDOCS_YML), "docs_dir": str(DOCS_CONTENT_DIR), "nav": nav}
     MKDOCS_NAV_YML.parent.mkdir(parents=True, exist_ok=True)
     temp = MKDOCS_NAV_YML.with_suffix(".tmp")
     temp.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     os.replace(temp, MKDOCS_NAV_YML)
 
 
+def _sync_base_config_assets() -> None:
+    """Mirror the base config's sibling assets next to the derived child config.
+
+    OPERATIONAL INTENT — this is a correctness fix, not a convenience copy.
+
+    MkDocs resolves *relative* config paths (``theme.custom_dir``, ``hooks``,
+    and any future relative reference) against the directory of the config file
+    it was invoked with — NOT the directory of the config that declared them.
+    We build from the derived child config ``MKDOCS_NAV_YML`` in
+    ``MKDOCS_CONFIG_DIR``, while the hand-maintained parent lives at
+    ``MKDOCS_YML`` and is pulled in via ``INHERIT``. Whenever those two
+    directories differ — which is the shipped compose layout,
+    MKDOCS_BASE_CONFIG=/app/mkdocs/mkdocs.yml vs MKDOCS_CONFIG_DIR=/data/mkdocs
+    — every relative path in the parent resolves into the child's directory and
+    the build fails, e.g.
+
+        Config value 'theme': The path set in custom_dir
+        ('/data/mkdocs/overrides') does not exist.
+
+    Mirroring the parent's siblings makes those relative paths resolve without
+    parsing the parent YAML, which cannot be ``yaml.safe_load``ed: it carries
+    an unsafe ``!!python/name:`` tag for the pymdownx mermaid custom fence.
+
+    No-op when both configs already share a directory.
+    """
+    base_dir = MKDOCS_YML.parent
+    if not base_dir.is_dir() or base_dir.resolve() == MKDOCS_CONFIG_DIR.resolve():
+        return
+    MKDOCS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    # Never copy the parent config itself, and never clobber the generated child.
+    skip = {MKDOCS_YML.name, MKDOCS_NAV_YML.name}
+    for source in base_dir.iterdir():
+        if source.name in skip:
+            continue
+        destination = MKDOCS_CONFIG_DIR / source.name
+        if source.is_dir():
+            shutil.copytree(source, destination, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source, destination)
+
+
 def _build_site() -> int:
     started = time.monotonic()
     if STAGING_SITE_DIR.exists():
         shutil.rmtree(STAGING_SITE_DIR)
+    _sync_base_config_assets()
     build = subprocess.run(
         ["mkdocs", "build", "--config-file", str(MKDOCS_NAV_YML), "--clean", "--site-dir", str(STAGING_SITE_DIR)],
         capture_output=True,
