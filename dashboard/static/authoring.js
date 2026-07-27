@@ -3,6 +3,10 @@
     page: null,
     original: "",
     change: null,
+    proposedContent: null,
+    editor: null,
+    diffTimer: null,
+    diffSequence: 0,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -14,6 +18,17 @@
 
   function token() {
     return byId("token")?.value.trim() || "";
+  }
+
+  function editorValue() {
+    return authoring.editor?.getValue() ?? byId("authoring-editor")?.value ?? "";
+  }
+
+  function setEditorValue(value) {
+    const next = value || "";
+    const textarea = byId("authoring-editor");
+    if (textarea) textarea.value = next;
+    authoring.editor?.setValue(next);
   }
 
   function requestHeaders(idempotencyKey = null) {
@@ -42,6 +57,15 @@
     if (!node) return;
     node.textContent = message;
     node.className = `status ${kind}`.trim();
+  }
+
+  function resetProposal(message = "not created") {
+    authoring.change = null;
+    authoring.proposedContent = null;
+    const changeId = byId("authoring-change-id");
+    if (changeId) changeId.textContent = message;
+    byId("authoring-validate").disabled = true;
+    byId("authoring-submit").disabled = true;
   }
 
   function renderSearchResults(results) {
@@ -85,18 +109,17 @@
       const page = await authoringRequest(`/api/control-plane/authoring/pages/${encodeURIComponent(resourceId)}`);
       authoring.page = page;
       authoring.original = page.content || "";
-      authoring.change = null;
+      resetProposal();
       byId("authoring-page-title").textContent = page.title;
-      byId("authoring-page-meta").textContent = `${page.path} · revision ${page.revision} · v${page.version}`;
-      byId("authoring-editor").value = authoring.original;
+      byId("authoring-page-meta").textContent = `${page.path} · revision ${page.revision} · v${page.version ?? "?"}`;
+      setEditorValue(authoring.original);
       byId("authoring-purpose").value = `Correct or improve ${page.title}`;
       byId("authoring-diff").textContent = "No changes yet.";
       byId("authoring-validation").textContent = "Not validated.";
       renderOutline(page.outline);
       byId("authoring-propose").disabled = false;
-      byId("authoring-validate").disabled = true;
-      byId("authoring-submit").disabled = true;
-      setAuthoringStatus("Edit context loaded", "ok");
+      setAuthoringStatus("Exact edit context loaded", "ok");
+      authoring.editor?.focus();
     } catch (error) {
       setAuthoringStatus(`Page load refused · ${error.message}`, "error");
     }
@@ -104,25 +127,38 @@
 
   async function refreshDiff() {
     if (!authoring.page) return;
+    const sequence = ++authoring.diffSequence;
     try {
       const body = await authoringRequest("/api/control-plane/authoring/diff", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           before: authoring.original,
-          after: byId("authoring-editor").value,
+          after: editorValue(),
           path: authoring.page.path,
         }),
       });
+      if (sequence !== authoring.diffSequence) return;
       byId("authoring-diff").textContent = body.changed ? body.diff : "No changes.";
     } catch (error) {
-      setAuthoringStatus(`Diff failed · ${error.message}`, "error");
+      if (sequence === authoring.diffSequence) {
+        setAuthoringStatus(`Diff failed · ${error.message}`, "error");
+      }
+    }
+  }
+
+  function scheduleDiff() {
+    window.clearTimeout(authoring.diffTimer);
+    authoring.diffTimer = window.setTimeout(refreshDiff, 180);
+    if (authoring.change && editorValue() !== authoring.proposedContent) {
+      resetProposal("stale — create a new proposal");
+      setAuthoringStatus("Editor changed after proposal creation", "error");
     }
   }
 
   async function proposeChange() {
     if (!authoring.page) return;
-    const content = byId("authoring-editor").value;
+    const content = editorValue();
     const purpose = byId("authoring-purpose").value.trim();
     if (content === authoring.original) {
       setAuthoringStatus("No content change to propose", "error");
@@ -155,6 +191,7 @@
         }),
       });
       authoring.change = operation;
+      authoring.proposedContent = content;
       byId("authoring-change-id").textContent = operation.change_id;
       byId("authoring-validate").disabled = false;
       byId("authoring-submit").disabled = true;
@@ -187,15 +224,33 @@
     }
   }
 
+  function mountEditor() {
+    const textarea = byId("authoring-editor");
+    const host = byId("authoring-editor-mount");
+    if (!textarea || !host || !window.DocPlaneEditor) return;
+    authoring.editor = window.DocPlaneEditor.mount(host, {
+      doc: textarea.value,
+      ariaLabel: textarea.getAttribute("aria-label") || "Markdown source",
+      onChange(value) {
+        if (textarea.value === value) return;
+        textarea.value = value;
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+    });
+    host.hidden = false;
+    textarea.hidden = true;
+  }
+
   function bind() {
     byId("authoring-search")?.addEventListener("click", searchPages);
     byId("authoring-query")?.addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchPages();
     });
-    byId("authoring-editor")?.addEventListener("input", refreshDiff);
+    byId("authoring-editor")?.addEventListener("input", scheduleDiff);
     byId("authoring-propose")?.addEventListener("click", proposeChange);
     byId("authoring-validate")?.addEventListener("click", () => changeAction("validate"));
     byId("authoring-submit")?.addEventListener("click", () => changeAction("submit"));
+    mountEditor();
   }
 
   window.addEventListener("DOMContentLoaded", bind);
