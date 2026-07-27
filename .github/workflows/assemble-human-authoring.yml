@@ -1,0 +1,134 @@
+name: assemble-human-authoring
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/assemble-human-authoring.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  assemble:
+    if: github.head_ref == 'agent/human-authoring-source-editor'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/human-authoring-source-editor
+          token: ${{ github.token }}
+      - name: Assemble human authoring workspace
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('dashboard/app.py')
+          text = app.read_text()
+          text = text.replace(
+              'from .control_plane import ControlPlaneClient, ControlPlaneError\n',
+              'from .control_plane import ControlPlaneClient, ControlPlaneError\nfrom .authoring import router as authoring_router\n',
+          )
+          marker = ')\n\n\ndef _raise_control_plane'
+          if marker not in text:
+              raise SystemExit('FastAPI assembly marker not found')
+          text = text.replace(marker, ')\n\napp.include_router(authoring_router)\n\n\ndef _raise_control_plane', 1)
+          text = text.replace(
+              '                "corpus",\n',
+              '                "corpus",\n                "authoring",\n',
+              1,
+          )
+          app.write_text(text)
+
+          html = Path('dashboard/static/index.html')
+          text = html.read_text()
+          text = text.replace(
+              '      <button class="nav-item" data-view="corpus">Corpus</button>\n',
+              '      <button class="nav-item" data-view="corpus">Corpus</button>\n      <button class="nav-item" data-view="authoring">Authoring</button>\n',
+              1,
+          )
+          authoring_view = '''
+      <section class="view" id="view-authoring" aria-labelledby="authoring-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="authoring-title">Authoring</h2>
+            <p>Correct and improve Markdown through the same audited proposal path used by agents.</p>
+          </div>
+          <span class="status" id="authoring-status">Select a page</span>
+        </div>
+
+        <div class="control-grid">
+          <article class="panel">
+            <h3>Find canonical content</h3>
+            <label><span>Search</span><input id="authoring-query" placeholder="Page title, path or content"></label>
+            <button id="authoring-search" type="button">Search</button>
+            <div id="authoring-results" class="list"><p class="muted">Search before editing to avoid duplicate knowledge.</p></div>
+          </article>
+          <article class="panel">
+            <h3>Page context</h3>
+            <strong id="authoring-page-title">No page selected</strong>
+            <p id="authoring-page-meta" class="muted">Stable identity and exact revision will appear here.</p>
+            <div id="authoring-outline" class="list"><p class="muted">Outline unavailable.</p></div>
+          </article>
+        </div>
+
+        <div class="editor-grid">
+          <article class="panel editor-panel">
+            <h3>Lossless Markdown source</h3>
+            <textarea id="authoring-editor" class="source-editor" spellcheck="true" aria-label="Markdown source"></textarea>
+            <label><span>Purpose</span><textarea id="authoring-purpose" placeholder="Explain what is inaccurate or how this improves the page."></textarea></label>
+            <div class="actionbar">
+              <button id="authoring-propose" type="button" disabled>Create change proposal</button>
+              <button id="authoring-validate" type="button" disabled>Validate</button>
+              <button id="authoring-submit" type="button" disabled>Submit for review</button>
+            </div>
+            <p>Change <code id="authoring-change-id">not created</code></p>
+          </article>
+          <article class="panel">
+            <h3>Source diff</h3>
+            <pre id="authoring-diff" class="diff-view">No changes yet.</pre>
+          </article>
+          <article class="panel">
+            <h3>Validation and preview receipt</h3>
+            <pre id="authoring-validation">Not validated.</pre>
+          </article>
+        </div>
+
+        <div class="notice">
+          Humans and agents are equal authors. Neither may edit generated MkDocs releases, bypass revision checks,
+          write PostgreSQL directly or publish without the governed WP8 path.
+        </div>
+      </section>
+'''
+          marker = '      <section class="view" id="view-reorganisation"'
+          if marker not in text:
+              raise SystemExit('reorganisation view marker not found')
+          text = text.replace(marker, authoring_view + '\n' + marker, 1)
+          text = text.replace(
+              '  <script src="/assets/app.js" defer></script>\n',
+              '  <script src="/assets/app.js" defer></script>\n  <script src="/assets/authoring.js" defer></script>\n',
+              1,
+          )
+          html.write_text(text)
+
+          css = Path('dashboard/static/app.css')
+          text = css.read_text()
+          text += '''
+
+.editor-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(20rem, 1fr); gap: 1rem; }
+.editor-panel { grid-row: span 2; }
+.source-editor { min-height: 34rem; width: 100%; resize: vertical; font: 0.9rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; }
+.diff-view { min-height: 16rem; max-height: 30rem; overflow: auto; white-space: pre; }
+.outline-row { display: flex; gap: 0.65rem; padding: 0.25rem 0; }
+.outline-row.level-2 { padding-left: 1rem; }
+.outline-row.level-3 { padding-left: 2rem; }
+@media (max-width: 1100px) { .editor-grid { grid-template-columns: 1fr; } .editor-panel { grid-row: auto; } }
+'''
+          css.write_text(text)
+          PY
+          git rm -f .github/workflows/assemble-human-authoring.yml
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(authoring): assemble governed source editor"
+          git push origin HEAD:agent/human-authoring-source-editor
