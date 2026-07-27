@@ -9,8 +9,10 @@
 #   2. docs-site volume ownership on a fresh install
 #   3. MCP host-header validation on a NON-DEFAULT published port
 #
-# It deliberately runs on non-default ports so defect 3 is covered by
-# construction: if MCP only worked on 8049, this test fails.
+# It deliberately runs on non-default ports, and publishes them in the
+# loopback-restricted "127.0.0.1:PORT" form that real deployments use, so
+# defect 3 is covered by construction: if MCP only worked on the bare 8049
+# default, or could not parse a bind-address-qualified port spec, this fails.
 #
 # Everything is namespaced under a disposable compose project and disposable
 # volumes, and torn down with `down -v` at the end. It never touches another
@@ -49,10 +51,10 @@ DOCPLANE_BOOTSTRAP_TOKEN=$(rand)
 DOCPLANE_EVENT_CURSOR_SECRET=$(rand)
 MCP_API_KEY=$(rand)
 DOCPLANE_TOKEN=
-DOCPLANE_API_PORT=${API_PORT}
-DOCPLANE_DASHBOARD_PORT=${DASH_PORT}
-DOCPLANE_SITE_PORT=${SITE_PORT}
-DOCPLANE_MCP_PORT=${MCP_PORT}
+DOCPLANE_API_PORT=127.0.0.1:${API_PORT}
+DOCPLANE_DASHBOARD_PORT=127.0.0.1:${DASH_PORT}
+DOCPLANE_SITE_PORT=127.0.0.1:${SITE_PORT}
+DOCPLANE_MCP_PORT=127.0.0.1:${MCP_PORT}
 GIT_SHA=integration-test
 BUILD_TIMESTAMP=integration-test
 EOF
