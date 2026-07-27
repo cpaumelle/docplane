@@ -3,6 +3,8 @@
 The historical control-plane implementation remains in ``app.main`` while product surfaces are being
 extracted into versioned routers. New containers and tests import this module so every supported endpoint
 is assembled without forcing unrelated refactors into one change.
+
+This module is the single supported assembly point for human, agent, work, trust and reorganisation APIs.
 """
 from app.main import app
 from app.agent_api import router as agent_router
