@@ -1,8 +1,4 @@
-"""Human-authoring facade over the same DocPlane APIs used by agents.
-
-This router owns no document state. It forwards named-human requests to bounded read and
-change-proposal endpoints and deliberately exposes no direct merge, filesystem or SQL path.
-"""
+"""Human authoring facade over the contributor API."""
 from __future__ import annotations
 
 import difflib
@@ -19,31 +15,24 @@ client = ControlPlaneClient()
 
 def _auth(value: str | None) -> str:
     if not value:
-        raise HTTPException(
-            status_code=401,
-            detail={"code": "DASHBOARD_AUTH_REQUIRED", "message": "A named DocPlane human principal is required."},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=401, detail={"code": "DASHBOARD_AUTH_REQUIRED"})
     return value
 
 
 def _raise(exc: ControlPlaneError) -> None:
-    raise HTTPException(
-        status_code=exc.status_code,
-        detail={"code": exc.code, "upstream": exc.detail},
-    ) from exc
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "upstream": exc.detail}) from exc
 
 
 @router.get("/capabilities")
 def capabilities() -> dict[str, Any]:
     return {
-        "contract_version": "human-authoring-v1",
+        "contract_version": "human-authoring-v2",
         "source_authority": "markdown",
-        "generated_release_editable": False,
-        "direct_database_access": False,
-        "direct_merge": False,
-        "workflow": ["SEARCH", "READ_EDIT_CONTEXT", "EDIT", "DIFF", "PROPOSE", "VALIDATE", "SUBMIT"],
-        "future": {"codemirror": True, "visual_editor": "round-trip proof required", "certified_preview": True},
+        "workflow": ["SEARCH", "READ", "EDIT", "DIFF", "CHANGE", "VALIDATE", "PUBLISH"],
+        "review_required": False,
+        "exact_revision_required": True,
+        "version_history": True,
+        "rollback": True,
     }
 
 
@@ -65,16 +54,21 @@ def search(
 
 
 @router.get("/pages/{resource_id}")
-def page_edit_context(
-    resource_id: UUID,
-    authorization: str | None = Header(default=None),
-) -> Any:
+def page(resource_id: UUID, authorization: str | None = Header(default=None)) -> Any:
     try:
         return client.get(
             f"/api/v1/pages/{resource_id}",
             authorization=_auth(authorization),
             params={"view": "edit_context"},
         )
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@router.get("/pages/{resource_id}/history")
+def history(resource_id: UUID, authorization: str | None = Header(default=None)) -> Any:
+    try:
+        return client.get(f"/api/v1/pages/{resource_id}/history", authorization=_auth(authorization))
     except ControlPlaneError as exc:
         _raise(exc)
 
@@ -93,12 +87,7 @@ def diff(body: dict[str, Any]) -> dict[str, Any]:
             lineterm="",
         )
     )
-    return {
-        "contract_version": "human-authoring-diff-v1",
-        "changed": before != after,
-        "line_count": len(lines),
-        "diff": "\n".join(lines),
-    }
+    return {"changed": before != after, "line_count": len(lines), "diff": "\n".join(lines)}
 
 
 @router.post("/changes", status_code=201)
@@ -136,39 +125,51 @@ def add_operation(
         _raise(exc)
 
 
-def _change_action(
+@router.post("/changes/{change_id}/validate")
+def validate(
     change_id: UUID,
-    action: str,
-    body: dict[str, Any],
-    authorization: str | None,
-    idempotency_key: str | None,
+    authorization: str | None = Header(default=None),
 ) -> Any:
     try:
         return client.post(
-            f"/api/v1/changes/{change_id}/{action}",
+            f"/api/v1/changes/{change_id}/validate",
+            authorization=_auth(authorization),
+            json_body={},
+        )
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@router.post("/changes/{change_id}/publish")
+def publish(
+    change_id: UUID,
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    try:
+        return client.post(
+            f"/api/v1/changes/{change_id}/publish",
+            authorization=_auth(authorization),
+            idempotency_key=idempotency_key,
+            json_body={},
+        )
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@router.post("/pages/{resource_id}/rollback")
+def rollback(
+    resource_id: UUID,
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    try:
+        return client.post(
+            f"/api/v1/pages/{resource_id}/rollback",
             authorization=_auth(authorization),
             idempotency_key=idempotency_key,
             json_body=body,
         )
     except ControlPlaneError as exc:
         _raise(exc)
-
-
-@router.post("/changes/{change_id}/validate")
-def validate_change(
-    change_id: UUID,
-    body: dict[str, Any] | None = None,
-    authorization: str | None = Header(default=None),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    return _change_action(change_id, "validate", body or {}, authorization, idempotency_key)
-
-
-@router.post("/changes/{change_id}/submit")
-def submit_change(
-    change_id: UUID,
-    body: dict[str, Any] | None = None,
-    authorization: str | None = Header(default=None),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    return _change_action(change_id, "submit", body or {}, authorization, idempotency_key)

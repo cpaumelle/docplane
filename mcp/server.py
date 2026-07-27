@@ -1,14 +1,4 @@
-#!/usr/bin/env python3
-"""docs-mcp — MCP server fronting the self-hosted docs stack.
-
-Exposes the documentation site to MCP clients (Claude Code, Claude Desktop, …):
-  search_docs, read_doc, list_docs, write_doc, archive_doc, resolve_concept
-
-Transport: streamable HTTP at POST /mcp.
-Auth: Bearer token via the MCP_API_KEY env var.
-Also serves GET /healthz (unauthenticated) and POST /reindex (the webhook
-docs-api fires after each deploy so the search index follows content changes).
-"""
+"""MCP server exposing the DocPlane contributor API."""
 from __future__ import annotations
 
 import hmac
@@ -21,97 +11,71 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from tools import docs as docs_mod
+from common import DOCPLANE_API_URL, DOCPLANE_TOKEN
+from tools import docs as docs_tools
 
-# --- Config ---
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MCP_PORT", "8049"))
-BEARER_TOKEN = os.environ.get("MCP_API_KEY", "")
-SERVER_NAME = os.environ.get("MCP_SERVER_NAME", "docs")
-
-_allowed_hosts = [
-    h.strip() for h in
-    os.environ.get("MCP_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-    if h.strip()
-]
-_allowed_origins = [
-    h.strip() for h in
-    os.environ.get("MCP_ALLOWED_ORIGINS", "http://127.0.0.1:8049").split(",")
-    if h.strip()
-]
+MCP_API_KEY = os.environ.get("MCP_API_KEY", "")
+SERVER_NAME = os.environ.get("MCP_SERVER_NAME", "docplane")
 
 mcp = FastMCP(
     SERVER_NAME,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=_allowed_hosts,
-        allowed_origins=_allowed_origins,
+        allowed_hosts=[item.strip() for item in os.environ.get("MCP_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if item.strip()],
+        allowed_origins=[item.strip() for item in os.environ.get("MCP_ALLOWED_ORIGINS", "http://127.0.0.1:8049").split(",") if item.strip()],
     ),
 )
+docs_tools.register(mcp)
 
-docs_mod.register(mcp)
-
-
-# --- Auth middleware (pure ASGI — BaseHTTPMiddleware breaks SSE streaming) ---
 
 class BearerAuth:
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
+        if scope["type"] != "http" or scope.get("path") == "/healthz":
             await self.app(scope, receive, send)
             return
-        if scope.get("path", "") == "/healthz":
-            await self.app(scope, receive, send)
-            return
-        if not BEARER_TOKEN:
-            await self._reject(send, 500, "server misconfigured: no MCP_API_KEY")
+        if not MCP_API_KEY:
+            await self._reject(send, 500, "MCP_API_KEY is not configured")
             return
         headers = dict(scope.get("headers") or [])
-        auth = headers.get(b"authorization", b"").decode("latin-1", errors="replace")
-        # Constant-time compare — a plain != leaks the token via timing.
-        if not hmac.compare_digest(auth, f"Bearer {BEARER_TOKEN}"):
+        authorization = headers.get(b"authorization", b"").decode("latin-1", errors="replace")
+        if not hmac.compare_digest(authorization, f"Bearer {MCP_API_KEY}"):
             await self._reject(send, 401, "unauthorized")
             return
         await self.app(scope, receive, send)
 
     @staticmethod
-    async def _reject(send, status: int, body: str) -> None:
-        b = body.encode()
-        headers = [(b"content-type", b"text/plain; charset=utf-8"),
-                   (b"content-length", str(len(b)).encode())]
+    async def _reject(send, status: int, message: str) -> None:
+        body = message.encode()
+        headers = [(b"content-type", b"text/plain; charset=utf-8"), (b"content-length", str(len(body)).encode())]
         if status == 401:
-            headers.append((b"www-authenticate", b'Bearer realm="docs-mcp"'))
+            headers.append((b"www-authenticate", b'Bearer realm="docplane-mcp"'))
         await send({"type": "http.response.start", "status": status, "headers": headers})
-        await send({"type": "http.response.body", "body": b})
+        await send({"type": "http.response.body", "body": body})
 
-
-# --- Health endpoint ---
 
 async def healthz(_request):
-    from common import DOCS_API_URL
-    return JSONResponse({
-        "status": "ok",
-        "server": SERVER_NAME,
-        "transport": "streamable-http",
-        "backends": {"docs_api": DOCS_API_URL},
-    })
+    return JSONResponse(
+        {
+            "status": "ok" if DOCPLANE_TOKEN else "degraded",
+            "server": SERVER_NAME,
+            "backend": DOCPLANE_API_URL,
+            "contributor_token_configured": bool(DOCPLANE_TOKEN),
+        }
+    )
 
 
 def main() -> None:
-    if not BEARER_TOKEN:
-        print("[docs-mcp] WARNING: MCP_API_KEY not set — all requests will fail",
-              file=sys.stderr)
-    # Build search index (tolerates a not-yet-built site), start refresher thread
-    docs_mod.init()
-
+    if not MCP_API_KEY:
+        print("MCP_API_KEY is not configured; MCP requests will fail", file=sys.stderr)
+    if not DOCPLANE_TOKEN:
+        print("DOCPLANE_TOKEN is not configured; DocPlane tools will fail", file=sys.stderr)
     app = mcp.streamable_http_app()
     app.router.routes.append(Route("/healthz", healthz))
-
-    # Webhook endpoint — docs-api POSTs here after each deploy
-    docs_mod.register_routes(app)
-
     app.add_middleware(BearerAuth)
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 
