@@ -1,6 +1,7 @@
+"""DocPlane human control surface; all authority remains in the API."""
 from __future__ import annotations
 
-import pathlib
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -10,228 +11,136 @@ from fastapi.staticfiles import StaticFiles
 
 from .control_plane import ControlPlaneClient, ControlPlaneError
 
-
-STATIC_DIR = pathlib.Path(__file__).resolve().parent / "static"
+app = FastAPI(title="DocPlane Dashboard", version="1.0.0")
 client = ControlPlaneClient()
-
-app = FastAPI(
-    title="DocPlane Control Plane",
-    version="0.2.0",
-    description=(
-        "First-class human control surface for corpus management, reorganisation, "
-        "changes, certification, active work, trust, usage, schema catalog and operations."
-    ),
-)
-
-
-def _raise_control_plane(exc: ControlPlaneError) -> None:
-    raise HTTPException(
-        status_code=exc.status_code,
-        detail={"code": exc.code, "upstream": exc.detail},
-    ) from exc
+_STATIC = Path(__file__).resolve().parent / "static"
+app.mount("/assets", StaticFiles(directory=_STATIC), name="assets")
 
 
 def _auth(value: str | None) -> str:
     if not value:
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "code": "DASHBOARD_AUTH_REQUIRED",
-                "message": "A named DocPlane human principal is required.",
-            },
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=401, detail={"code": "DASHBOARD_AUTH_REQUIRED"})
     return value
 
 
-def _module(
-    name: str,
-    path: str,
-    *,
-    authorization: str | None,
-    params: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    try:
-        return {
-            "name": name,
-            "available": True,
-            "data": client.get(path, authorization=authorization, params=params),
-        }
-    except ControlPlaneError as exc:
-        return {
-            "name": name,
-            "available": False,
-            "status_code": exc.status_code,
-            "error": exc.code,
-        }
+def _raise(exc: ControlPlaneError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "upstream": exc.detail}) from exc
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(_STATIC / "index.html")
 
 
 @app.get("/healthz")
-def health() -> dict[str, Any]:
-    try:
-        discovery = client.discovery()
-    except ControlPlaneError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "unavailable", "code": exc.code},
-        ) from exc
-    return {
-        "status": "ok",
-        "control_plane": discovery.get("product", "DocPlane"),
-        "api_contract": discovery.get("api_contract"),
-        "dashboard_authority": "human-control-surface",
-        "database_access": False,
-    }
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "docplane-dashboard"}
 
 
 @app.get("/api/control-plane/discovery")
-def discovery() -> dict[str, Any]:
+def discovery() -> Any:
     try:
-        value = client.discovery()
+        return client.discovery()
     except ControlPlaneError as exc:
-        _raise_control_plane(exc)
-    return {
-        **value,
-        "dashboard": {
-            "role": "first-class human control surface",
-            "authority": "versioned DocPlane APIs",
-            "direct_database_access": False,
-            "normal_shell_access": False,
-            "domains": [
-                "corpus",
-                "reorganisation",
-                "changes",
-                "certification",
-                "work",
-                "trust",
-                "usage",
-                "schema_catalog",
-                "operations",
-            ],
-        },
-    }
+        _raise(exc)
+
+
+@app.get("/api/control-plane/capabilities")
+def capabilities(authorization: str | None = Header(default=None)) -> Any:
+    try:
+        return client.get("/api/v1/capabilities", authorization=_auth(authorization))
+    except ControlPlaneError as exc:
+        _raise(exc)
 
 
 @app.get("/api/control-plane/overview")
 def overview(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     auth = _auth(authorization)
-    modules = [
-        _module("corpus", "/api/v1/dashboard/structure", authorization=auth),
-        _module(
-            "reorganisation",
-            "/api/v1/reorganisation/plans",
-            authorization=auth,
-            params={"status": "open", "limit": 20},
-        ),
-        _module(
-            "changes",
-            "/api/v1/changes",
-            authorization=auth,
-            params={"status": "SUBMITTED", "limit": 20},
-        ),
-        _module("certification", "/api/v1/certification/status", authorization=auth),
-        _module("work", "/api/v1/work/queues", authorization=auth),
-        _module(
-            "trust",
-            "/api/v1/maintenance/pages",
-            authorization=auth,
-            params={"queue": "all", "limit": 20},
-        ),
-        _module("usage", "/api/v1/dashboard/usage/overview", authorization=auth),
-        _module("schema_catalog", "/api/v1/catalog/sources", authorization=auth),
-        _module("operations", "/api/v1/operations/status", authorization=auth),
-    ]
-    return {
-        "contract_version": "dashboard-control-plane-v1",
-        "modules": modules,
-        "available": [item["name"] for item in modules if item["available"]],
-        "pending": [item["name"] for item in modules if not item["available"]],
+    endpoints = {
+        "structure": "/api/v1/dashboard/structure",
+        "changes": "/api/v1/changes?limit=20",
+        "certification": "/api/v1/certification/status",
+        "work": "/api/v1/work/queues",
+        "maintenance": "/api/v1/maintenance/pages?queue=all&limit=20",
+        "deployments": "/api/v1/deployments/attempts?limit=10",
     }
+    result: dict[str, Any] = {"modules": {}}
+    for name, path in endpoints.items():
+        try:
+            result["modules"][name] = {"available": True, "data": client.get(path, authorization=auth)}
+        except ControlPlaneError as exc:
+            result["modules"][name] = {"available": False, "error": exc.code}
+    return result
 
 
-@app.get("/api/structure", deprecated=True)
-def legacy_structure_proxy(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    """Compatibility proxy; the dashboard no longer reads PostgreSQL directly."""
+@app.get("/api/control-plane/structure")
+def structure(authorization: str | None = Header(default=None)) -> Any:
     try:
-        return client.get(
-            "/api/v1/dashboard/structure",
+        return client.get("/api/v1/dashboard/structure", authorization=_auth(authorization))
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/changes")
+def changes(
+    status: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    authorization: str | None = Header(default=None),
+) -> Any:
+    params = {"limit": limit}
+    if status:
+        params["status"] = status
+    try:
+        return client.get("/api/v1/changes", authorization=_auth(authorization), params=params)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/certification")
+def certification(authorization: str | None = Header(default=None)) -> Any:
+    try:
+        return client.get("/api/v1/certification/status", authorization=_auth(authorization))
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/publication/retry")
+def retry_publication(
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    try:
+        return client.post(
+            "/api/v1/publication/retry",
             authorization=_auth(authorization),
+            idempotency_key=idempotency_key,
+            json_body={},
         )
     except ControlPlaneError as exc:
-        _raise_control_plane(exc)
-
-
-@app.get("/api/control-plane/reorganisation")
-def reorganisation_workspace(
-    authorization: str | None = Header(default=None),
-) -> dict[str, Any]:
-    auth = _auth(authorization)
-    modules = {
-        "tree": _module(
-            "tree",
-            "/api/v1/reorganisation/tree",
-            authorization=auth,
-        ),
-        "plans": _module(
-            "plans",
-            "/api/v1/reorganisation/plans",
-            authorization=auth,
-            params={"status": "open", "limit": 100},
-        ),
-        "certification": _module(
-            "certification",
-            "/api/v1/certification/status",
-            authorization=auth,
-        ),
-        "deployment_attempts": _module(
-            "deployment_attempts",
-            "/api/v1/deployments/attempts",
-            authorization=auth,
-            params={"limit": 20},
-        ),
-    }
-    return {
-        "contract_version": "reorganisation-control-v1",
-        "workflow": [
-            "PLAN",
-            "ANALYZE_IMPACT",
-            "VALIDATE",
-            "SUBMIT",
-            "APPROVE",
-            "EXECUTE",
-            "CERTIFY",
-            "STABILIZE",
-            "CLOSE_OR_COMPENSATE",
-        ],
-        "modules": modules,
-        "execution_authority": "WP8 guarded APIs only",
-        "direct_filesystem_mutation": False,
-    }
+        _raise(exc)
 
 
 @app.get("/api/control-plane/reorganisation/tree")
 def reorganisation_tree(authorization: str | None = Header(default=None)) -> Any:
     try:
-        return client.get(
-            "/api/v1/reorganisation/tree",
-            authorization=_auth(authorization),
-        )
+        return client.get("/api/v1/reorganisation/tree", authorization=_auth(authorization))
     except ControlPlaneError as exc:
-        _raise_control_plane(exc)
+        _raise(exc)
 
 
-@app.get("/api/control-plane/reorganisation/plans/{plan_id}")
-def reorganisation_plan(
-    plan_id: UUID,
+@app.get("/api/control-plane/reorganisation/plans")
+def reorganisation_plans(
+    status: str = "open",
     authorization: str | None = Header(default=None),
 ) -> Any:
     try:
         return client.get(
-            f"/api/v1/reorganisation/plans/{plan_id}",
+            "/api/v1/reorganisation/plans",
             authorization=_auth(authorization),
+            params={"status": status},
         )
     except ControlPlaneError as exc:
-        _raise_control_plane(exc)
+        _raise(exc)
 
 
 @app.post("/api/control-plane/reorganisation/plans", status_code=201)
@@ -248,7 +157,7 @@ def create_reorganisation_plan(
             json_body=body,
         )
     except ControlPlaneError as exc:
-        _raise_control_plane(exc)
+        _raise(exc)
 
 
 @app.post("/api/control-plane/reorganisation/plans/{plan_id}/operations", status_code=201)
@@ -266,90 +175,24 @@ def add_reorganisation_operation(
             json_body=body,
         )
     except ControlPlaneError as exc:
-        _raise_control_plane(exc)
+        _raise(exc)
 
 
-def _forward_plan_action(
+@app.post("/api/control-plane/reorganisation/plans/{plan_id}/{action}")
+def reorganisation_action(
     plan_id: UUID,
     action: str,
-    body: dict[str, Any],
-    authorization: str | None,
-    idempotency_key: str | None,
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> Any:
+    if action not in {"analyze", "validate", "publish"}:
+        raise HTTPException(status_code=404, detail={"code": "ACTION_NOT_FOUND"})
     try:
         return client.post(
             f"/api/v1/reorganisation/plans/{plan_id}/{action}",
             authorization=_auth(authorization),
             idempotency_key=idempotency_key,
-            json_body=body,
+            json_body={},
         )
     except ControlPlaneError as exc:
-        _raise_control_plane(exc)
-
-
-@app.post("/api/control-plane/reorganisation/plans/{plan_id}/analyze")
-def analyze_reorganisation_plan(
-    plan_id: UUID,
-    body: dict[str, Any] | None = None,
-    authorization: str | None = Header(default=None),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    return _forward_plan_action(
-        plan_id, "analyze", body or {}, authorization, idempotency_key
-    )
-
-
-@app.post("/api/control-plane/reorganisation/plans/{plan_id}/validate")
-def validate_reorganisation_plan(
-    plan_id: UUID,
-    body: dict[str, Any] | None = None,
-    authorization: str | None = Header(default=None),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    return _forward_plan_action(
-        plan_id, "validate", body or {}, authorization, idempotency_key
-    )
-
-
-@app.post("/api/control-plane/reorganisation/plans/{plan_id}/submit")
-def submit_reorganisation_plan(
-    plan_id: UUID,
-    body: dict[str, Any] | None = None,
-    authorization: str | None = Header(default=None),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    return _forward_plan_action(
-        plan_id, "submit", body or {}, authorization, idempotency_key
-    )
-
-
-@app.post("/api/control-plane/reorganisation/plans/{plan_id}/execute")
-def execute_reorganisation_plan(
-    plan_id: UUID,
-    body: dict[str, Any],
-    authorization: str | None = Header(default=None),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    return _forward_plan_action(
-        plan_id, "execute", body, authorization, idempotency_key
-    )
-
-
-@app.post("/api/control-plane/reorganisation/plans/{plan_id}/compensate")
-def compensate_reorganisation_plan(
-    plan_id: UUID,
-    body: dict[str, Any],
-    authorization: str | None = Header(default=None),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-) -> Any:
-    return _forward_plan_action(
-        plan_id, "compensate", body, authorization, idempotency_key
-    )
-
-
-@app.get("/")
-def index():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
+        _raise(exc)

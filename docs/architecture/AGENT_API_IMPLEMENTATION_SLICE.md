@@ -1,26 +1,7 @@
-# Agent API implementation slice
+# Versioned contributor API
 
-**Status:** implementing
+**Status:** implemented
 
-This slice turns the endpoint-first agent contract into executable product behavior without
-prematurely bypassing WP8 publication control.
+The assembled API provides capability discovery, named contributor authentication, stable page identities, bounded reads, canonical search, revision-bound changes, deterministic validation, direct publication, version history, rollback, event cursors, active work, page trust and structural reorganisation.
 
-## Included
-
-- unauthenticated capability discovery with no credentials;
-- named principal and scoped token authentication;
-- stable page resource identifiers that survive path moves;
-- bounded page reads by stable ID;
-- canonical destination resolution;
-- idempotent change-proposal creation;
-- precise, revision-bound change operations;
-- deterministic proposal validation and preview receipts;
-- observable proposal and operation state.
-
-## Deliberate hold
-
-This slice does not merge proposals into authored state. Merge and publication require the WP8
-mutation guard, candidate-state validation, immutable release orchestration and certification
-wiring. Until those components land, proposals may be created and validated but not applied.
-
-This prevents a new agent API from becoming a second, uncertified mutation path.
+There is one publication path for dashboard, HTTP and MCP clients. It does not use shared API keys, workspace roles, proposal submission, approval or separate merger authority.

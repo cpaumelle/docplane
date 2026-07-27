@@ -1,3 +1,8 @@
+"""Structural corpus review helpers.
+
+This module reports counts and naming patterns without inferring document
+quality or authorising mutation from structural signals alone.
+"""
 from __future__ import annotations
 
 import collections
@@ -184,6 +189,6 @@ def build(pages: list[dict[str, Any]]) -> dict[str, Any]:
         ],
         "interpretation": (
             "Structural review signals only. Counts and naming patterns do not establish "
-            "documentation quality or justify mutation without human review."
+            "documentation quality or authorise mutation without contributor judgement."
         ),
     }

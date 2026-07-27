@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -9,11 +9,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class ReorganisationPlanCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     purpose: str = Field(min_length=1, max_length=4000)
-    workspace_key: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,62}$")
+    workspace_key: str = Field(default="reference", pattern=r"^[a-z0-9][a-z0-9_-]{0,62}$")
     base_state_identity: str | None = Field(default=None, max_length=256)
 
 
-_OPERATION_TYPES = {
+_TYPES = {
     "MOVE_PAGE",
     "REPARENT_NAV",
     "REORDER_SECTIONS",
@@ -33,51 +33,15 @@ class ReorganisationOperationCreate(BaseModel):
 
     @field_validator("operation_type")
     @classmethod
-    def operation_type_known(cls, value: str) -> str:
+    def known(cls, value: str) -> str:
         normalized = value.strip().upper()
-        if normalized not in _OPERATION_TYPES:
-            raise ValueError("unsupported operation_type")
+        if normalized not in _TYPES:
+            raise ValueError("unsupported reorganisation operation")
         return normalized
 
     @model_validator(mode="after")
-    def binding_is_complete(self):
-        unbound = {"REORDER_SECTIONS", "ADD_REDIRECT", "REMOVE_REDIRECT"}
-        if self.operation_type not in unbound:
-            if self.page_resource_id is None:
-                raise ValueError("page_resource_id is required")
-            if not self.expected_revision:
-                raise ValueError("expected_revision is required")
+    def exact_binding(self):
+        if self.operation_type not in {"REORDER_SECTIONS", "ADD_REDIRECT", "REMOVE_REDIRECT"}:
+            if self.page_resource_id is None or not self.expected_revision:
+                raise ValueError("page_resource_id and expected_revision are required")
         return self
-
-
-class ReorganisationReviewCreate(BaseModel):
-    decision: Literal["APPROVE", "REQUEST_CHANGES", "COMMENT"]
-    reviewed_plan_version: int = Field(ge=1)
-    note: str | None = Field(default=None, max_length=4000)
-
-
-class ReorganisationSubmitRequest(BaseModel):
-    note: str | None = Field(default=None, max_length=4000)
-
-
-class ReorganisationPlanView(BaseModel):
-    plan_id: UUID
-    workspace_key: str
-    title: str
-    purpose: str
-    author_principal_id: UUID
-    status: str
-    version: int
-    base_state_identity: str | None
-    analysis_receipt: dict[str, Any] | None
-    validation_receipt: dict[str, Any] | None
-    linked_change_id: UUID | None
-    execution_receipt: dict[str, Any] | None
-    certification_receipt: dict[str, Any] | None
-    stabilization_receipt: dict[str, Any] | None
-    compensating_plan_id: UUID | None
-    created_at: Any
-    updated_at: Any
-    operations: list[dict[str, Any]] = Field(default_factory=list)
-    reviews: list[dict[str, Any]] = Field(default_factory=list)
-    permitted_actions: list[str] = Field(default_factory=list)

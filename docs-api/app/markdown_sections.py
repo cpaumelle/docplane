@@ -1,8 +1,9 @@
-"""Bounded Markdown retrieval helpers for agent-facing reads and edits.
+"""Bounded Markdown retrieval helpers for contributor reads and edits.
 
-This parser is deliberately conservative. Explicit heading IDs are preserved; headings without explicit
-IDs receive deterministic GitHub-style slugs for retrieval only. Mutation operations should prefer
-explicit IDs, because display text is not a durable edit address.
+The parser is deliberately conservative. Explicit heading IDs are preserved;
+headings without explicit IDs receive deterministic GitHub-style slugs for
+retrieval only. Mutation operations require explicit IDs because display text
+is not a durable edit address.
 """
 from __future__ import annotations
 
