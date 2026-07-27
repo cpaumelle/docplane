@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py common.py ./
+COPY server.py common.py allowed_hosts.py ./
 COPY tools/ ./tools/
 
 RUN useradd -r -u 10001 -d /app docsmcp

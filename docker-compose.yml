@@ -14,6 +14,49 @@ services:
       timeout: 3s
       retries: 20
 
+  # One-shot volume initialiser. MUST complete before docs-api and docs-web.
+  #
+  # WHY THIS EXISTS: docs-site is shared by docs-api (writer, runs as
+  # DOCPLANE_SITE_UID) and docs-web (nginx, reads it). Docker populates an
+  # EMPTY named volume from the image of whichever container mounts it first,
+  # and carries that image's ownership across with it. The nginx image ships
+  # content at /usr/share/nginx/html owned by root, so on a fresh install nginx
+  # wins, the volume becomes root-owned, and docs-api can never promote a
+  # release into it — publication fails at the rsync step with EACCES.
+  #
+  # Two mechanisms, because one is not enough. Population happens at container
+  # CREATE time, and Compose creates every service before starting any, so nginx
+  # may well populate the volume before this service has run at all:
+  #
+  #   chown -R  repairs that. It is the primary fix, and it also heals an
+  #             installation already broken by the race. Ordering guarantees
+  #             it runs after creation and before docs-api needs to write.
+  #   sentinel  stops any LATER repopulation. Docker only populates an EMPTY
+  #             volume, and re-populating resets ownership back to root, so a
+  #             volume that is never empty can never be silently re-rooted
+  #             (e.g. docs-web recreated against a drained volume). The
+  #             generator excludes it from rsync --delete so it survives every
+  #             publish.
+  #
+  # Verified against real containers by scripts/integration-fresh-install.sh.
+  site-init:
+    image: alpine:3
+    user: "0:0"                 # deliberately root; exists only to hand the volume to a non-root writer
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /data/site
+        # -R also repairs an installation already broken by the race above.
+        chown -R ${DOCPLANE_SITE_UID:-10001}:${DOCPLANE_SITE_GID:-10001} /data/site
+        chmod 755 /data/site
+        touch /data/site/.docplane-site-init
+        chown ${DOCPLANE_SITE_UID:-10001}:${DOCPLANE_SITE_GID:-10001} /data/site/.docplane-site-init
+    volumes:
+      - docs-site:/data/site
+
   docs-api:
     build:
       context: .
@@ -25,6 +68,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      site-init:
+        condition: service_completed_successfully
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -67,6 +112,10 @@ services:
     depends_on:
       docs-api:
         condition: service_healthy
+      # Explicit, not merely transitive through docs-api: nginx is the service
+      # that would otherwise populate docs-site with its own root-owned content.
+      site-init:
+        condition: service_completed_successfully
     volumes:
       - docs-site:/usr/share/nginx/html:ro
     ports:
@@ -82,8 +131,14 @@ services:
       DOCPLANE_API_URL: http://docs-api:8010
       DOCPLANE_TOKEN: ${DOCPLANE_TOKEN:-}
       MCP_API_KEY: ${MCP_API_KEY:?set MCP_API_KEY}
-      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
-      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-http://127.0.0.1:8049}
+      # Leave these EMPTY to accept the port-aware default computed in
+      # server.py. Setting them overrides the default entirely.
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+      # The published port, which is what a client puts in the Host header.
+      # The container cannot infer it from its own listening port, so it must
+      # be told; otherwise any non-default DOCPLANE_MCP_PORT yields 421.
+      MCP_PUBLIC_PORT: ${DOCPLANE_MCP_PORT:-8049}
     ports:
       - "${DOCPLANE_MCP_PORT:-8049}:8049"
 

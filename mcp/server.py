@@ -11,6 +11,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from allowed_hosts import default_allowed_hosts, default_allowed_origins
 from common import DOCPLANE_API_URL, DOCPLANE_TOKEN
 from tools import docs as docs_tools
 
@@ -19,12 +20,27 @@ PORT = int(os.environ.get("MCP_PORT", "8049"))
 MCP_API_KEY = os.environ.get("MCP_API_KEY", "")
 SERVER_NAME = os.environ.get("MCP_SERVER_NAME", "docplane")
 
+# The port a client actually addresses. Inside a container the listening port
+# (MCP_PORT) and the published port differ, and the Host header carries the
+# PUBLISHED one, so the container has to be told. Compose passes
+# MCP_PUBLIC_PORT=${DOCPLANE_MCP_PORT}.
+PUBLIC_PORT = int(os.environ.get("MCP_PUBLIC_PORT", str(PORT)))
+
+
+def _csv_env(name: str) -> list[str]:
+    return [item.strip() for item in os.environ.get(name, "").split(",") if item.strip()]
+
+
+# An operator-supplied allowlist always wins; the default only fills a gap.
+ALLOWED_HOSTS = _csv_env("MCP_ALLOWED_HOSTS") or default_allowed_hosts(PORT, PUBLIC_PORT)
+ALLOWED_ORIGINS = _csv_env("MCP_ALLOWED_ORIGINS") or default_allowed_origins(PORT, PUBLIC_PORT)
+
 mcp = FastMCP(
     SERVER_NAME,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=[item.strip() for item in os.environ.get("MCP_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if item.strip()],
-        allowed_origins=[item.strip() for item in os.environ.get("MCP_ALLOWED_ORIGINS", "http://127.0.0.1:8049").split(",") if item.strip()],
+        allowed_hosts=ALLOWED_HOSTS,
+        allowed_origins=ALLOWED_ORIGINS,
     ),
 )
 docs_tools.register(mcp)

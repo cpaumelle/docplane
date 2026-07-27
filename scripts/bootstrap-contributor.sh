@@ -11,5 +11,5 @@ curl -fsS \
   -H "X-DocPlane-Bootstrap-Token: ${DOCPLANE_BOOTSTRAP_TOKEN}" \
   -H "Content-Type: application/json" \
   "${API_URL}/api/v1/bootstrap/principals" \
-  -d "$(python -c 'import json,sys; print(json.dumps({"display_name":sys.argv[1],"principal_kind":sys.argv[2]}))' "$DISPLAY_NAME" "$KIND")"
+  -d "$(python3 -c 'import json,sys; print(json.dumps({"display_name":sys.argv[1],"principal_kind":sys.argv[2]}))' "$DISPLAY_NAME" "$KIND")"
 echo
