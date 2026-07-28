@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 
 from app.agent_api import router as agent_router
+from app.agent_shortcuts_api import router as agent_shortcuts_router
 from app.event_api import router as event_router
 from app.reorganisation_api import router as reorganisation_router
 from app.system_api import router as system_router
@@ -19,6 +20,7 @@ app = FastAPI(
 
 app.include_router(system_router)
 app.include_router(agent_router)
+app.include_router(agent_shortcuts_router)
 app.include_router(event_router)
 app.include_router(work_router)
 app.include_router(trust_router)
