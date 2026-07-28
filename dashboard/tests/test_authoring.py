@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import dashboard.authoring as authoring
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class FakeControlPlane:
@@ -14,6 +18,8 @@ class FakeControlPlane:
         self.calls.append(("GET", path, authorization, params, None, None))
         if path == "/api/v1/search":
             return {"count": 1, "results": [{"resource_id": "11111111-1111-1111-1111-111111111111"}]}
+        if path == "/api/v1/pages":
+            return {"pages": [{"resource_id": "11111111-1111-1111-1111-111111111111", "path": "reference/example.md", "title": "Example"}]}
         if path.endswith("/history"):
             return {"versions": []}
         return {
@@ -30,7 +36,10 @@ class FakeControlPlane:
 
     def post(self, path, *, authorization=None, idempotency_key=None, json_body=None):
         self.calls.append(("POST", path, authorization, None, idempotency_key, json_body))
-        return {"change_id": "22222222-2222-2222-2222-222222222222", "status": "PUBLISHED" if path.endswith("/publish") else "DRAFT"}
+        return {
+            "change_id": "22222222-2222-2222-2222-222222222222",
+            "status": "PUBLISHED" if path.endswith(("/publish", "/replace")) else "DRAFT",
+        }
 
 
 app = FastAPI()
@@ -68,6 +77,41 @@ def test_publish_is_forwarded_with_idempotency():
     call = authoring.client.calls[-1]
     assert call[1].endswith("/publish")
     assert call[4] == "publish-1"
+
+
+def test_inline_replace_uses_canonical_one_call_endpoint():
+    resource_id = "11111111-1111-1111-1111-111111111111"
+    body = {"expected_revision": "rev-1", "content": "# Updated\n", "purpose": "Correct the page"}
+    response = client.post(
+        f"/api/control-plane/authoring/pages/{resource_id}/replace",
+        headers={"Authorization": "Bearer human-token", "Idempotency-Key": "inline-1"},
+        json=body,
+    )
+    assert response.status_code == 200
+    call = authoring.client.calls[-1]
+    assert call == (
+        "POST",
+        f"/api/v1/pages/{resource_id}/replace",
+        "Bearer human-token",
+        None,
+        "inline-1",
+        body,
+    )
+
+
+def test_reader_pencil_enters_same_page_visual_mode():
+    template = (ROOT / "mkdocs/overrides/main.html").read_text(encoding="utf-8")
+    assert "DocPlaneInlineEditor.start" in template
+    assert "articleSelector: '.md-content__inner'" in template
+    assert "window.open('/dashboard/" not in template
+    assert 'src="/assets/inline-editor.js"' in template
+    assert 'href="/assets/inline-editor.css"' in template
+
+
+def test_unified_front_routes_visual_editor_assets_exactly():
+    config = (ROOT / "mkdocs/docplane-front.conf").read_text(encoding="utf-8")
+    assert "location = /assets/inline-editor.js" in config
+    assert "location = /assets/inline-editor.css" in config
 
 
 def test_dashboard_has_no_submit_or_review_controls():
