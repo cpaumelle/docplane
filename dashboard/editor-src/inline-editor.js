@@ -10,7 +10,15 @@ function randomKey(prefix) {
 }
 
 function normalizeMarkdown(value) {
-  return String(value || "").replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "").trimEnd();
+  // Line-ending normalization is safe. Trailing spaces are significant Markdown
+  // (hard line breaks), so never trim or collapse them for equality decisions.
+  return String(value || "").replace(/\r\n/g, "\n");
+}
+
+function escapeHtml(value) {
+  const node = document.createElement("span");
+  node.textContent = String(value ?? "");
+  return node.innerHTML;
 }
 
 function errorMessage(payload, status) {
@@ -43,7 +51,7 @@ function dialogShell(className, title) {
   dialog.className = `dp-inline-dialog ${className}`;
   dialog.innerHTML = `
     <form method="dialog" class="dp-inline-dialog__panel">
-      <header><h2>${title}</h2></header>
+      <header><h2>${escapeHtml(title)}</h2></header>
       <div class="dp-inline-dialog__body"></div>
       <footer class="dp-inline-dialog__actions"></footer>
     </form>`;
@@ -127,8 +135,8 @@ function createToolbar(page) {
   toolbar.innerHTML = `
     <div class="dp-inline-toolbar__identity">
       <strong>Editing</strong>
-      <span>${page.title}</span>
-      <small>v${page.version}</small>
+      <span>${escapeHtml(page.title)}</span>
+      <small>v${Number(page.version) || "?"}</small>
     </div>
     <div class="dp-inline-toolbar__status" role="status">Visual editing mode</div>
     <div class="dp-inline-toolbar__actions">
@@ -152,7 +160,7 @@ async function publishDialog(page, before, after) {
     const body = dialog.querySelector(".dp-inline-dialog__body");
     const actions = dialog.querySelector(".dp-inline-dialog__actions");
     body.innerHTML = `
-      <p><strong>${diff.line_count}</strong> changed diff lines. Publication creates a normal audited DocPlane change and certified release.</p>
+      <p><strong>${Number(diff.line_count) || 0}</strong> changed diff lines. Publication creates a normal audited DocPlane change and certified release.</p>
       <label class="dp-inline-field">Purpose
         <textarea rows="3" placeholder="Why this change is useful or correct"></textarea>
       </label>
@@ -196,12 +204,12 @@ async function start(options = {}) {
     await requestToken();
     const page = await resolvePage(options.candidates || []);
     const originalMarkdown = page.content || "";
-    const originalHtml = article.innerHTML;
     const originalScroll = window.scrollY;
+    const originalNodes = document.createDocumentFragment();
+    while (article.firstChild) originalNodes.appendChild(article.firstChild);
 
     article.dataset.docplaneEditing = "true";
     article.classList.add("dp-inline-editing");
-    article.innerHTML = "";
     const toolbar = createToolbar(page);
     const notice = document.createElement("div");
     notice.className = "dp-inline-notice";
@@ -250,9 +258,9 @@ async function start(options = {}) {
 
     function restore() {
       editor.destroy();
+      article.replaceChildren(originalNodes);
       article.classList.remove("dp-inline-editing");
       delete article.dataset.docplaneEditing;
-      article.innerHTML = originalHtml;
       window.scrollTo({ top: originalScroll });
       if (pencil) pencil.disabled = false;
     }
