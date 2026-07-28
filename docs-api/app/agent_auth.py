@@ -13,9 +13,17 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.db import get_conn
+
+
+_bearer = HTTPBearer(
+    auto_error=False,
+    scheme_name="DocPlaneBearer",
+    description="Individual DocPlane contributor token: Authorization: Bearer <token>",
+)
 
 
 @dataclass(frozen=True)
@@ -103,7 +111,12 @@ def authenticate(authorization: str | None) -> Principal:
     )
 
 
-def require_contributor(authorization: str | None = Header(default=None)) -> Principal:
+def require_contributor(
+    authorization: str | None = Header(default=None),
+    _credentials: HTTPAuthorizationCredentials | None = Security(_bearer),
+) -> Principal:
+    # Parse the raw header ourselves to preserve DocPlane's precise error codes;
+    # the Security dependency exists to publish the bearer contract in OpenAPI.
     return authenticate(authorization)
 
 
