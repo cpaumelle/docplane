@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from pydantic import ValidationError
 
-from app import publication
+from app import publication, system_api
 from app.agent_api import router as agent_router
 from app.agent_models import ChangeOperationCreate
 from app.generator import NavConflict, build_nav
@@ -25,6 +25,17 @@ def test_public_api_has_direct_publish_and_no_review_gate():
     assert not any(path.endswith("/review") for path in paths)
     assert "/api/v1/bootstrap/principals" in paths
     assert not any("/admin/" in path for path in paths)
+
+
+def test_openapi_declares_individual_bearer_authentication():
+    app = FastAPI()
+    app.include_router(agent_router)
+    schema = app.openapi()
+    bearer = schema["components"]["securitySchemes"]["DocPlaneBearer"]
+    assert bearer["type"] == "http"
+    assert bearer["scheme"] == "bearer"
+    protected = schema["paths"]["/api/v1/pages"]["get"]
+    assert {"DocPlaneBearer": []} in protected["security"]
 
 
 def test_bound_page_operations_require_exact_revision():
@@ -124,6 +135,41 @@ def test_unsupported_operation_is_a_change_level_failure(monkeypatch):
     assert evaluation["passed"] is False
     assert evaluation["operations_accepted"] == 0
     assert evaluation["errors"][0]["code"] == "OPERATION_UNSUPPORTED"
+
+
+def test_health_labels_total_active_and_archived_counts(monkeypatch):
+    class Cursor:
+        def __init__(self):
+            self.rows = iter([(3,), (937, 508, 429)])
+
+        def execute(self, _query):
+            return None
+
+        def fetchone(self):
+            return next(self.rows)
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def cursor(self):
+            return Cursor()
+
+    # One cursor is used for both queries in production.
+    cursor = Cursor()
+
+    class SharedCursorConnection(Connection):
+        def cursor(self):
+            return cursor
+
+    monkeypatch.setattr(system_api, "get_conn", lambda: SharedCursorConnection())
+    monkeypatch.setattr(system_api, "certification_status", lambda: {"state": "CURRENT"})
+    result = system_api.health()
+    assert result["pages"] == 937
+    assert result["page_counts"] == {"total": 937, "active": 508, "archived": 429}
 
 
 def test_nav_validation_rejects_leaf_section_collision():
