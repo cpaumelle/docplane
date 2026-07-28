@@ -1,9 +1,12 @@
 import { build } from "esbuild";
 
 await build({
-  entryPoints: ["editor-src/editor.js"],
+  entryPoints: {
+    "editor.bundle": "editor-src/editor.js",
+    "inline-editor": "editor-src/inline-editor.js"
+  },
   bundle: true,
-  outfile: "static/editor.bundle.js",
+  outdir: "static",
   format: "iife",
   platform: "browser",
   target: ["es2020"],
