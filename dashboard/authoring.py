@@ -53,6 +53,28 @@ def search(
         _raise(exc)
 
 
+@router.get("/lookup")
+def lookup(
+    path: str = Query(min_length=1, max_length=500),
+    authorization: str | None = Header(default=None),
+) -> Any:
+    """Resolve a docs page path (e.g. sites/paris.md) to its resource_id, so the
+    docs-site Edit this page pencil can deep-link straight into this page."""
+    try:
+        data = client.get(
+            "/api/v1/pages",
+            authorization=_auth(authorization),
+            params={"path": path},
+        )
+    except ControlPlaneError as exc:
+        _raise(exc)
+    pages = data.get("pages", [])
+    if not pages:
+        raise HTTPException(status_code=404, detail={"code": "PAGE_NOT_FOUND", "path": path})
+    page = pages[0]
+    return {"resource_id": page["resource_id"], "path": page["path"], "title": page["title"]}
+
+
 @router.get("/pages/{resource_id}")
 def page(resource_id: UUID, authorization: str | None = Header(default=None)) -> Any:
     try:

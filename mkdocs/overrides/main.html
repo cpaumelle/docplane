@@ -62,6 +62,20 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   contentHeader.appendChild(btn);
+
+  // "Edit this page" pencil — deep-links into the authoring dashboard for THIS
+  // page (/dashboard/ resolves the path to the page and opens it in the editor).
+  const editBtn = document.createElement('button');
+  editBtn.className = 'md-edit-source';
+  editBtn.title = 'Edit this page';
+  editBtn.setAttribute('aria-label', 'Edit this page in the authoring dashboard');
+  editBtn.style.cssText = 'background:none;border:none;cursor:pointer;margin-left:.4rem;vertical-align:middle;width:1.2em;height:1.2em;color:inherit;opacity:.6;';
+  editBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+  editBtn.addEventListener('click', function() {
+    window.open('/dashboard/?view=authoring&edit=' + encodeURIComponent(path), '_blank', 'noopener');
+  });
+
+  contentHeader.appendChild(editBtn);
 });
 </script>
 {% endblock %}
