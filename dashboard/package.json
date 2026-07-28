@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "build": "node esbuild.config.js",
-    "check": "node --check esbuild.config.js && node --check editor-src/editor.js && node --check static/authoring.js"
+    "check": "node --check esbuild.config.js && node --check editor-src/editor.js && node --check editor-src/inline-editor.js && node --check static/authoring.js"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.1",
+    "@toast-ui/editor": "3.2.2",
     "codemirror": "6.0.2"
   },
   "devDependencies": {
