@@ -68,4 +68,16 @@ the branch tip, not inside a file — rebase and push again.
 
 | Entry | Legacy page(s) | Status |
 |---|---|---|
+| `2026-07-27-occupancy-cutover-doc-corrections.md` | `services/occupancy-pipeline-hub2/{client-validation,report-api}.md` | PENDING |
+| `2026-07-27-dinard-tv-geo-doc-corrections.md` | 6 pages — managed-consumers, address-plan, dinard-fr-site, geo-execution, fire-tv-setup, engineering-backlog | PENDING |
 | `2026-07-28-cbre-occupancy-hub2-switchoff.md` | `operations/occupancy-hub2-switchoff.md` + 4 others | PENDING |
+
+## Snapshots vs fetch-on-demand
+
+Entries generally do **not** carry full-page copies: while legacy docs-api is alive the content is
+retrievable on demand, and a stored copy only goes stale. Each entry instead records the page
+version it depends on, so an import can be verified against it.
+
+**This breaks the moment legacy docs-api is decommissioned.** Before that happens, every entry
+still marked PENDING must have its referenced pages exported — otherwise the change is lost with
+the source. Treat that as a gate on switching legacy off, not an afterthought.
