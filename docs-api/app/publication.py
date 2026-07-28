@@ -181,6 +181,24 @@ def _workspace_id(conn, workspace_key: str) -> str:
     return row[0]
 
 
+def _record_operation_result(
+    result: dict[str, Any],
+    results: list[dict[str, Any]],
+    errors: list[dict[str, Any]],
+    warnings: list[dict[str, Any]],
+) -> None:
+    """Roll one operation receipt into the change-level validation result.
+
+    Every exit path must pass through this function. Otherwise a rejected
+    operation can disappear from the change-level error set and be published as
+    a successful no-op.
+    """
+    result["accepted"] = not result["errors"]
+    results.append(result)
+    errors.extend(result["errors"])
+    warnings.extend(result["warnings"])
+
+
 def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any]], *, lock: bool = False) -> dict[str, Any]:
     original_pages = _load_pages(conn, for_update=lock)
     pages = copy.deepcopy(original_pages)
@@ -217,7 +235,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
         op_type = operation["operation_type"]
         if op_type not in _OPERATION_TYPES:
             op_errors.append({"code": "OPERATION_UNSUPPORTED", "operation_type": op_type})
-            results.append(result)
+            _record_operation_result(result, results, errors, warnings)
             continue
         page = by_id.get(operation.get("page_resource_id")) if operation.get("page_resource_id") else None
         if op_type not in {"CREATE_PAGE", "ADD_REDIRECT", "REMOVE_REDIRECT", "REORDER_SECTIONS"}:
@@ -229,10 +247,14 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                         "code": "PAGE_REVISION_STALE",
                         "expected": operation.get("expected_revision"),
                         "current": page["revision"],
+                        "current_version": page["version"],
+                        "current_content_sha256": hashlib.sha256(page["content"].encode("utf-8")).hexdigest(),
+                        "message": "The page changed after this operation was prepared.",
+                        "remedy": "Fetch the current page, rebase the intended edit, and resubmit with the current revision.",
                     }
                 )
         if op_errors:
-            results.append(result)
+            _record_operation_result(result, results, errors, warnings)
             continue
         try:
             payload = operation["payload"]
@@ -362,9 +384,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
             if detail:
                 entry["detail"] = detail
             op_errors.append(entry)
-        results.append(result)
-        errors.extend(op_errors)
-        warnings.extend(result["warnings"])
+        _record_operation_result(result, results, errors, warnings)
 
     if not operations:
         errors.append({"code": "CHANGE_HAS_NO_OPERATIONS"})
@@ -405,6 +425,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
         "warnings": warnings,
         "operations": results,
         "operations_checked": len(operations),
+        "operations_accepted": sum(1 for result in results if result["accepted"]),
         "base_state_identity": base_identity,
         "candidate_identity": candidate_identity,
         "pages": pages,
@@ -427,7 +448,7 @@ def validate_change(change_id: UUID | str, principal: Principal) -> dict[str, An
             raise HTTPException(status_code=409, detail={"code": "CHANGE_NOT_MUTABLE", "status": change["status"]})
         operations = _load_operations(conn, str(change_id))
         evaluation = evaluate_change(conn, change, operations)
-        summary = {key: evaluation[key] for key in ("passed", "errors", "warnings", "operations_checked", "base_state_identity", "candidate_identity", "validated_at", "contract_version")}
+        summary = {key: evaluation[key] for key in ("passed", "errors", "warnings", "operations_checked", "operations_accepted", "base_state_identity", "candidate_identity", "validated_at", "contract_version")}
         preview = {
             "candidate_identity": evaluation["candidate_identity"],
             "operations": evaluation["operations"],
@@ -506,7 +527,7 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
         operations = _load_operations(conn, change_id)
         evaluation = evaluate_change(conn, change, operations, lock=True)
         if not evaluation["passed"]:
-            summary = {key: evaluation[key] for key in ("passed", "errors", "warnings", "operations_checked", "base_state_identity", "candidate_identity", "validated_at", "contract_version")}
+            summary = {key: evaluation[key] for key in ("passed", "errors", "warnings", "operations_checked", "operations_accepted", "base_state_identity", "candidate_identity", "validated_at", "contract_version")}
             cur.execute(
                 "UPDATE docs.changes SET status = 'DRAFT', validation_summary = %s, updated_at = now() WHERE change_id = %s",
                 (_json(summary), change_id),
@@ -601,12 +622,14 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
                     (name, order, principal.display_name),
                 )
 
+        operations_applied = sum(1 for result in evaluation["operations"] if result["accepted"])
         receipt = {
             "contract_version": "direct-publication-v1",
             "published_at": datetime.now(timezone.utc).isoformat(),
             "published_by": principal.principal_id,
             "candidate_identity": evaluation["candidate_identity"],
-            "operations_applied": len(operations),
+            "operations_submitted": len(operations),
+            "operations_applied": operations_applied,
             "review_required": False,
             "database_transaction": "COMMITTED",
         }
@@ -619,7 +642,7 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
              WHERE change_id = %s
             """,
             (
-                _json({key: evaluation[key] for key in ("passed", "errors", "warnings", "operations_checked", "base_state_identity", "candidate_identity", "validated_at", "contract_version")}),
+                _json({key: evaluation[key] for key in ("passed", "errors", "warnings", "operations_checked", "operations_accepted", "base_state_identity", "candidate_identity", "validated_at", "contract_version")}),
                 _json({"candidate_identity": evaluation["candidate_identity"], "operations": evaluation["operations"]}),
                 _json(receipt),
                 change_id,
@@ -635,7 +658,7 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
             workspace_key=change["workspace_key"],
             resource_type="CHANGE",
             resource_id=change_id,
-            metadata={"operations": len(operations), "candidate_identity": evaluation["candidate_identity"]},
+            metadata={"operations": operations_applied, "candidate_identity": evaluation["candidate_identity"]},
         )
         conn.commit()
 
