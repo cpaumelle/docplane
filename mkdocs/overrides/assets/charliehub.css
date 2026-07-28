@@ -42,6 +42,12 @@
   outline-offset: 2px;
 }
 
-/* Header logo (CharlieHub glyph) sizing */
+/* Header logo (CharlieHub mark). The glyph is filled brand-teal and the header
+   background is also brand-teal (Mor Gwer), so render the mark white to read on
+   the header (matches --on-action: white). Single-colour glyph -> filter is exact. */
 .md-header__button.md-logo img,
-.md-header__button.md-logo svg { height: 1.4rem; width: auto; }
+.md-header__button.md-logo svg {
+  height: 1.4rem;
+  width: auto;
+  filter: brightness(0) invert(1);
+}
