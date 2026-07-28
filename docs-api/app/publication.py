@@ -474,6 +474,13 @@ def _snapshot_page(cur, page: dict[str, Any], change_id: str) -> None:
              metadata_review_required, metadata_version, updated_by, change_id)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s)
+        -- A (resource_id, revision) pair identifies an immutable version, so if
+        -- it is already recorded this snapshot is a no-op. Migration-imported
+        -- pages carry their head revision in page_versions (full faithful
+        -- history), which would otherwise collide the first time the page is
+        -- edited/restored through the publish path. Skip the duplicate; history
+        -- is preserved exactly.
+        ON CONFLICT (resource_id, revision) DO NOTHING
         """,
         (
             page["resource_id"], page["path"], page["title"], page["nav_path"],
