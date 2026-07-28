@@ -2,24 +2,34 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from uuid import UUID
 
 from fastapi import FastAPI
 from pydantic import ValidationError
 
-from app import publication, system_api
+from app import agent_shortcuts_api, publication, system_api
 from app.agent_api import router as agent_router
-from app.agent_models import ChangeOperationCreate
+from app.agent_auth import Principal
+from app.agent_models import ChangeOperationCreate, PageReplaceRequest
+from app.agent_shortcuts_api import router as agent_shortcuts_router
 from app.generator import NavConflict, build_nav
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_public_api_has_direct_publish_and_no_review_gate():
+def _contract_app() -> FastAPI:
     app = FastAPI()
     app.include_router(agent_router)
-    paths = {route.path for route in app.routes}
+    app.include_router(agent_shortcuts_router)
+    return app
+
+
+def test_public_api_has_direct_publish_shortcuts_and_no_review_gate():
+    paths = {route.path for route in _contract_app().routes}
     assert "/api/v1/changes/{change_id}/publish" in paths
     assert "/api/v1/changes/{change_id}/validate" in paths
+    assert "/api/v1/pages/{resource_id}/replace" in paths
+    assert "/api/v1/changes/{change_id}/abandon" in paths
     assert not any(path.endswith("/submit") for path in paths)
     assert not any(path.endswith("/approve") for path in paths)
     assert not any(path.endswith("/review") for path in paths)
@@ -28,14 +38,24 @@ def test_public_api_has_direct_publish_and_no_review_gate():
 
 
 def test_openapi_declares_individual_bearer_authentication():
-    app = FastAPI()
-    app.include_router(agent_router)
-    schema = app.openapi()
+    schema = _contract_app().openapi()
     bearer = schema["components"]["securitySchemes"]["DocPlaneBearer"]
     assert bearer["type"] == "http"
     assert bearer["scheme"] == "bearer"
     protected = schema["paths"]["/api/v1/pages"]["get"]
     assert {"DocPlaneBearer": []} in protected["security"]
+
+
+def test_shortcut_mutations_declare_required_idempotency_header():
+    schema = _contract_app().openapi()
+    for path in (
+        "/api/v1/pages/{resource_id}/replace",
+        "/api/v1/changes/{change_id}/abandon",
+    ):
+        parameters = schema["paths"][path]["post"]["parameters"]
+        header = next(item for item in parameters if item["name"] == "Idempotency-Key")
+        assert header["in"] == "header"
+        assert header["required"] is True
 
 
 def test_bound_page_operations_require_exact_revision():
@@ -137,6 +157,83 @@ def test_unsupported_operation_is_a_change_level_failure(monkeypatch):
     assert evaluation["errors"][0]["code"] == "OPERATION_UNSUPPORTED"
 
 
+def test_replace_shortcut_uses_canonical_change_pipeline(monkeypatch):
+    resource_id = UUID("11111111-1111-1111-1111-111111111111")
+    change_id = "22222222-2222-2222-2222-222222222222"
+    principal = Principal(
+        principal_id="33333333-3333-3333-3333-333333333333",
+        principal_kind="AGENT",
+        display_name="contract-test-agent",
+        token_id="44444444-4444-4444-4444-444444444444",
+    )
+    calls: list[tuple] = []
+
+    class Cursor:
+        def execute(self, query, params):
+            calls.append(("lookup", " ".join(query.split()), params))
+
+        def fetchone(self):
+            return ("reference/example.md", "reference")
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def cursor(self):
+            return Cursor()
+
+    monkeypatch.setattr(agent_shortcuts_api, "get_conn", lambda: Connection())
+
+    def fake_create(request, idempotency_key, principal):
+        calls.append(("create", request, idempotency_key, principal))
+        return {"change_id": change_id, "status": "DRAFT", "operations": []}
+
+    def fake_add(change_uuid, request, idempotency_key, principal):
+        calls.append(("operation", change_uuid, request, idempotency_key, principal))
+        return {"change_id": change_id}
+
+    def fake_validate(change_uuid, principal):
+        calls.append(("validate", change_uuid, principal))
+        return {"status": "VALIDATED"}
+
+    def fake_publish(change_uuid, principal):
+        calls.append(("publish", change_uuid, principal))
+        return {"change_id": change_id, "status": "PUBLISHED"}
+
+    monkeypatch.setattr(agent_shortcuts_api, "create_change", fake_create)
+    monkeypatch.setattr(agent_shortcuts_api, "add_operation", fake_add)
+    monkeypatch.setattr(agent_shortcuts_api, "validate_change", fake_validate)
+    monkeypatch.setattr(agent_shortcuts_api, "publish_change", fake_publish)
+
+    result = agent_shortcuts_api.replace_page(
+        resource_id,
+        PageReplaceRequest(
+            expected_revision="revision-7",
+            content="# Replacement\n",
+            purpose="Correct the runbook",
+        ),
+        "outer-idempotency-key",
+        principal,
+    )
+
+    assert result["status"] == "PUBLISHED"
+    assert [call[0] for call in calls] == ["lookup", "create", "operation", "validate", "publish"]
+    create_request = calls[1][1]
+    assert create_request.workspace_key == "reference"
+    assert create_request.purpose == "Correct the runbook"
+    operation_request = calls[2][2]
+    assert operation_request.operation_type == "REPLACE_DOCUMENT"
+    assert operation_request.page_resource_id == resource_id
+    assert operation_request.expected_revision == "revision-7"
+    assert operation_request.payload == {"content": "# Replacement\n"}
+    assert calls[1][2] != "outer-idempotency-key"
+    assert calls[2][3] != "outer-idempotency-key"
+    assert calls[1][2] != calls[2][3]
+
+
 def test_health_labels_total_active_and_archived_counts(monkeypatch):
     class Cursor:
         def __init__(self):
@@ -156,16 +253,10 @@ def test_health_labels_total_active_and_archived_counts(monkeypatch):
             return False
 
         def cursor(self):
-            return Cursor()
-
-    # One cursor is used for both queries in production.
-    cursor = Cursor()
-
-    class SharedCursorConnection(Connection):
-        def cursor(self):
             return cursor
 
-    monkeypatch.setattr(system_api, "get_conn", lambda: SharedCursorConnection())
+    cursor = Cursor()
+    monkeypatch.setattr(system_api, "get_conn", lambda: Connection())
     monkeypatch.setattr(system_api, "certification_status", lambda: {"state": "CURRENT"})
     result = system_api.health()
     assert result["pages"] == 937
