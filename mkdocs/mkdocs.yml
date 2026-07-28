@@ -12,7 +12,7 @@
 # → Change docs/nav:  PUT /api/docs/pages/{path}
 # → Then deploy:      automatic (or POST /api/docs/deploy)
 
-site_name: My Docs            # ← change me
+site_name: Charliehub Docplane
 site_url: http://localhost:8080
 repo_url: ""
 
@@ -21,8 +21,8 @@ theme:
   font: false                 # no external font fetches — good for offline/private nets
   palette:
     scheme: default
-    primary: indigo
-    accent: indigo
+    primary: custom
+    accent: custom
   features:
     - navigation.top
     - search.highlight
@@ -30,6 +30,12 @@ theme:
     - content.code.copy
     - content.tabs.link
   custom_dir: overrides
+  logo: assets/charliehub.svg
+  favicon: assets/charliehub.svg
+
+extra_css:
+  - assets/charliehub-tokens.css
+  - assets/charliehub.css
 
 hooks:
   - hooks.py

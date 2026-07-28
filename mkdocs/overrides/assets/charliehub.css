@@ -1,0 +1,47 @@
+/* CharlieHub "Deep Harbour" branding bridge for MkDocs Material.
+   Maps Material's theme variables onto the shared charliehub-ui-kit tokens
+   (charliehub-tokens.css, which extra_css loads first). Brand values are
+   REFERENCED here, never forked — a brand change happens once in the kit.
+   Flat: no gradients, glows or blurred decoration (Deep Harbour doctrine). */
+
+:root {
+  /* Header / primary surface — Mor Gwer (the action colour) */
+  --md-primary-fg-color:            var(--action);
+  --md-primary-fg-color--light:     var(--mg-300);
+  --md-primary-fg-color--dark:      var(--action-hover);
+  --md-primary-bg-color:            var(--on-action);
+  --md-primary-bg-color--light:     var(--mg-50);
+
+  /* Interactive accent — kept on brand (Mor Gwer), not a separate hue */
+  --md-accent-fg-color:             var(--action-hover);
+  --md-accent-fg-color--transparent: var(--mg-50);
+
+  /* Body links */
+  --md-typeset-a-color:             var(--link);
+
+  /* Footer — Noz dark surface */
+  --md-footer-bg-color:             var(--nz-900);
+  --md-footer-bg-color--dark:       var(--nz-900);
+  --md-footer-fg-color:             var(--pearl);
+  --md-footer-fg-color--light:      var(--nz-200);
+  --md-footer-fg-color--lighter:    var(--nz-300);
+
+  /* Typography — kit font families (self-hosting not required; falls back to
+     the system sans/mono stacks, so no external font fetch on a private net) */
+  --md-text-font-family:            var(--font-sans);
+  --md-code-font-family:            var(--font-mono);
+}
+
+/* Link hover moves to the accent tone, per Deep Harbour */
+.md-typeset a:hover { color: var(--md-accent-fg-color); }
+
+/* Focus rings use Maen Roz (accent-only role) */
+.md-typeset a:focus-visible,
+.md-search__input:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 2px;
+}
+
+/* Header logo (CharlieHub glyph) sizing */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg { height: 1.4rem; width: auto; }
