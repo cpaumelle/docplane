@@ -58,8 +58,7 @@ def lookup(
     path: str = Query(min_length=1, max_length=500),
     authorization: str | None = Header(default=None),
 ) -> Any:
-    """Resolve a docs page path (e.g. sites/paris.md) to its resource_id, so the
-    docs-site Edit this page pencil can deep-link straight into this page."""
+    """Resolve a rendered-doc path to the canonical DocPlane resource."""
     try:
         data = client.get(
             "/api/v1/pages",
@@ -174,6 +173,25 @@ def publish(
             authorization=_auth(authorization),
             idempotency_key=idempotency_key,
             json_body={},
+        )
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@router.post("/pages/{resource_id}/replace")
+def replace(
+    resource_id: UUID,
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    """One-call human edit that still uses DocPlane's canonical audited pipeline."""
+    try:
+        return client.post(
+            f"/api/v1/pages/{resource_id}/replace",
+            authorization=_auth(authorization),
+            idempotency_key=idempotency_key,
+            json_body=body,
         )
     except ControlPlaneError as exc:
         _raise(exc)
