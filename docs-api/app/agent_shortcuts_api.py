@@ -99,7 +99,7 @@ def _assert_published_replay(
 def replace_page(
     resource_id: UUID,
     request: PageReplaceRequest,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: str = Header(alias="Idempotency-Key"),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     """Replace one page through the full audited publication workflow in one call."""
@@ -174,7 +174,7 @@ def replace_page(
 def abandon_change(
     change_id: UUID,
     request: ChangeAbandonRequest,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: str = Header(alias="Idempotency-Key"),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     """Close a draft or validated change without publishing it."""
