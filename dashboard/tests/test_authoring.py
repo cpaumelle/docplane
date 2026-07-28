@@ -108,6 +108,15 @@ def test_reader_pencil_enters_same_page_visual_mode():
     assert 'href="/assets/inline-editor.css"' in template
 
 
+def test_visual_editor_assets_are_built_locally():
+    javascript = ROOT / "dashboard/static/inline-editor.js"
+    stylesheet = ROOT / "dashboard/static/inline-editor.css"
+    assert javascript.is_file()
+    assert stylesheet.is_file()
+    assert "DocPlaneInlineEditor" in javascript.read_text(encoding="utf-8")
+    assert ".dp-inline-toolbar" in stylesheet.read_text(encoding="utf-8")
+
+
 def test_unified_front_routes_visual_editor_assets_exactly():
     config = (ROOT / "mkdocs/docplane-front.conf").read_text(encoding="utf-8")
     assert "location = /assets/inline-editor.js" in config
