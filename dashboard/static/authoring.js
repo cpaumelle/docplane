@@ -77,4 +77,27 @@
   $("authoring-propose").addEventListener("click",()=>propose().catch((error)=>status(error.message)));
   $("authoring-validate").addEventListener("click",()=>validate().catch((error)=>status(error.message)));
   $("authoring-publish").addEventListener("click",()=>publish().catch((error)=>status(error.message)));
+
+  // ── Deep-link edit: the docs-site pencil opens /dashboard/?view=authoring&edit=<path> ──
+  async function lookupPath(p){ return api(`/api/control-plane/authoring/lookup?path=${encodeURIComponent(p)}`); }
+  async function openByPath(clean){
+    const candidates = clean === "" ? ["index.md"] : [clean + ".md", clean + "/index.md"];
+    for (const c of candidates) {
+      try { const r = await lookupPath(c); if (r && r.resource_id) { await selectPage(r.resource_id); status(`Editing ${r.path}`); return true; } }
+      catch (e) { /* 404 for this candidate — try the next */ }
+    }
+    status(`No editable page found for \u201c${clean}\u201d.`);
+    return false;
+  }
+  (function honorEditParam(){
+    const editPath = new URLSearchParams(location.search).get("edit");
+    if (editPath === null) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      if (sessionStorage.getItem("docplane-token")) { clearInterval(timer); openByPath(editPath).catch((e) => status(e.message)); }
+      else if (tries === 1) { status(`Sign in to edit \u2014 \u201c${editPath}\u201d will open automatically.`); }
+      else if (tries > 120) { clearInterval(timer); }
+    }, 500);
+  })();
 })();
