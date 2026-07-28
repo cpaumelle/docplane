@@ -49,7 +49,7 @@ _OPERATION_TYPES = {
 
 
 class ChangeOperationCreate(BaseModel):
-    operation_type: str
+    operation_type: str = Field(json_schema_extra={"enum": sorted(_OPERATION_TYPES)})
     page_resource_id: UUID | None = None
     expected_revision: str | None = Field(default=None, max_length=200)
     expected_section_hash: str | None = Field(default=None, max_length=128)
