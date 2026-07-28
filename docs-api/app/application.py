@@ -1,10 +1,10 @@
 """Single supported ASGI assembly for DocPlane."""
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
-from app.agent_api import router as agent_router
+from app.agent_api import router as monolithic_agent_router
 from app.agent_contract_api import (
+    REPLACED_AGENT_PATHS,
     install_agent_contract,
-    remove_replaced_routes,
     router as agent_contract_router,
 )
 from app.agent_shortcuts_api import router as agent_shortcuts_router
@@ -15,9 +15,14 @@ from app.trust_api import router as trust_router
 from app.work_api import router as work_router
 
 # Discovery, page listing and search have been extracted from the original
-# monolithic contributor router. Remove those superseded routes before assembly
-# so runtime routing and OpenAPI each contain exactly one authoritative handler.
-remove_replaced_routes(agent_router)
+# monolithic contributor router. Assemble a filtered copy rather than mutating
+# the shared router object imported by tests and other library consumers.
+agent_router = APIRouter()
+agent_router.routes.extend(
+    route
+    for route in monolithic_agent_router.routes
+    if getattr(route, "path", None) not in REPLACED_AGENT_PATHS
+)
 
 app = FastAPI(
     title="DocPlane",
