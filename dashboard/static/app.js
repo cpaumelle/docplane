@@ -104,6 +104,64 @@ document.querySelectorAll(".nav").forEach((button) => button.addEventListener("c
 $("refresh-overview").addEventListener("click", loadOverview);
 $("refresh-history").addEventListener("click", loadHistory);
 $("refresh-reorganisation").addEventListener("click", loadReorganisation);
+
+// ── Access: operator token issuance (bootstrap-gated; secret never stored server-side) ──
+function accessRefreshLock() {
+  const unlocked = !!sessionStorage.getItem("docplane-bootstrap");
+  if ($("access-issue")) $("access-issue").disabled = !unlocked;
+  if ($("access-unlock")) $("access-unlock").hidden = unlocked;
+  if ($("access-lock")) $("access-lock").hidden = !unlocked;
+}
+$("access-unlock")?.addEventListener("click", () => {
+  const v = $("access-bootstrap").value.trim();
+  if (!v) { $("access-status").textContent = "Enter the bootstrap secret."; return; }
+  sessionStorage.setItem("docplane-bootstrap", v);
+  $("access-bootstrap").value = "";
+  $("access-status").textContent = "Unlocked for this browser tab.";
+  accessRefreshLock();
+});
+$("access-lock")?.addEventListener("click", () => {
+  sessionStorage.removeItem("docplane-bootstrap");
+  $("access-status").textContent = "Locked.";
+  accessRefreshLock();
+});
+$("access-issue")?.addEventListener("click", async () => {
+  const bootstrap = sessionStorage.getItem("docplane-bootstrap") || "";
+  const display_name = $("access-name").value.trim();
+  const principal_kind = $("access-kind").value;
+  if (!bootstrap) { $("access-status").textContent = "Unlock first."; return; }
+  if (!display_name) { $("access-status").textContent = "Enter a full name."; return; }
+  $("access-status").textContent = "Issuing…";
+  try {
+    const resp = await fetch("/api/control-plane/issue-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-DocPlane-Bootstrap-Token": bootstrap },
+      body: JSON.stringify({ display_name, principal_kind }),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const code = payload.detail?.code || payload.detail?.upstream?.detail?.code || ("HTTP " + resp.status);
+      $("access-status").textContent = "Failed: " + code;
+      if (resp.status === 401) { sessionStorage.removeItem("docplane-bootstrap"); accessRefreshLock(); }
+      return;
+    }
+    const tok = payload.token || "";
+    $("access-result").innerHTML =
+      "<p><strong>" + esc(payload.display_name) + "</strong> · " + esc(payload.principal_kind) + " · <code>" + esc(payload.token_prefix) + "</code></p>" +
+      "<label>Token — shown once, copy now<input id=\"access-token-value\" readonly value=\"" + esc(tok) + "\"></label>" +
+      "<div class=\"actions\"><button id=\"access-copy\">Copy token</button></div>";
+    $("access-status").textContent = "Issued.";
+    $("access-name").value = "";
+    $("access-copy")?.addEventListener("click", () => {
+      const el = $("access-token-value");
+      if (navigator.clipboard) { navigator.clipboard.writeText(el.value).then(() => $("access-status").textContent = "Copied to clipboard.").catch(() => { el.select(); }); }
+      else { el.select(); }
+    });
+  } catch (e) {
+    $("access-status").textContent = "Failed: " + (e.message || e);
+  }
+});
+accessRefreshLock();
 $("retry-publication").addEventListener("click", async () => { $("certification").textContent = JSON.stringify(await api("/api/control-plane/publication/retry", {method:"POST",headers:{"Idempotency-Key":key("retry"),"Content-Type":"application/json"},body:"{}"}), null, 2); });
 $("create-plan").addEventListener("click", () => createPlan().catch((error) => $("reorg-detail").textContent = error.message));
 $("add-operation").addEventListener("click", () => addOperation().catch((error) => $("reorg-detail").textContent = error.message));

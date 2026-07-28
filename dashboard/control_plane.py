@@ -37,12 +37,17 @@ class ControlPlaneClient:
         idempotency_key: str | None = None,
         json_body: Any = None,
         params: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> Any:
         headers = {"Accept": "application/json"}
         if authorization:
             headers["Authorization"] = authorization
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
+        if extra_headers:
+            for _k, _v in extra_headers.items():
+                if _v is not None:
+                    headers[_k] = _v
         try:
             with httpx.Client(base_url=self.base_url, timeout=self.timeout) as client:
                 response = client.request(
@@ -101,3 +106,13 @@ class ControlPlaneClient:
 
     def discovery(self) -> dict[str, Any]:
         return self.get("/.well-known/docplane.json")
+
+    def create_principal(self, *, display_name: str, principal_kind: str, bootstrap_token: str) -> Any:
+        """Operator token issuance. The bootstrap secret is supplied per call and
+        forwarded to the authoritative API; it is never stored by the dashboard."""
+        return self._request(
+            "POST",
+            "/api/v1/bootstrap/principals",
+            json_body={"display_name": display_name, "principal_kind": principal_kind},
+            extra_headers={"X-DocPlane-Bootstrap-Token": bootstrap_token},
+        )

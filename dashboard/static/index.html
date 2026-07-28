@@ -17,6 +17,7 @@
       <button class="nav" data-view="authoring">Authoring</button>
       <button class="nav" data-view="reorganisation">Reorganisation</button>
       <button class="nav" data-view="history">Changes & versions</button>
+      <button class="nav" data-view="access">Access</button>
     </nav>
     <main>
       <section id="view-overview" class="view active">
@@ -65,6 +66,25 @@
       <section id="view-history" class="view">
         <div class="heading"><div><h1>Changes & versions</h1><p>Published changes, deployment receipts and page version history.</p></div><button id="refresh-history">Refresh</button></div>
         <div id="changes" class="list muted">Connect to load.</div>
+      </section>
+
+      <section id="view-access" class="view">
+        <div class="heading"><div><h1>Access</h1><p>Issue a named contributor token. Requires the DocPlane bootstrap secret, which is sent per request and never stored. Every token is attributable to the named person.</p></div><span id="access-status" class="status"></span></div>
+        <div class="grid two">
+          <article class="panel">
+            <h2>Operator unlock</h2>
+            <p class="muted">Paste the DocPlane bootstrap secret once. It is kept only in this browser tab for the session.</p>
+            <label>Bootstrap secret<input id="access-bootstrap" type="password" autocomplete="off" placeholder="DOCPLANE_BOOTSTRAP_TOKEN"></label>
+            <div class="actions"><button id="access-unlock">Unlock</button><button id="access-lock" hidden>Lock</button></div>
+          </article>
+          <article class="panel">
+            <h2>Issue a token</h2>
+            <label>Full name<input id="access-name" autocomplete="off" placeholder="Jane Doe"></label>
+            <label>Kind<select id="access-kind"><option value="HUMAN">Human</option><option value="AGENT">Agent</option><option value="AUTOMATION">Automation</option></select></label>
+            <div class="actions"><button id="access-issue" disabled>Issue token</button></div>
+            <div id="access-result" class="list muted">Unlock, then issue a token.</div>
+          </article>
+        </div>
       </section>
     </main>
   </div>

@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from .control_plane import ControlPlaneClient, ControlPlaneError
 
@@ -25,6 +26,31 @@ def _auth(value: str | None) -> str:
 
 def _raise(exc: ControlPlaneError) -> None:
     raise HTTPException(status_code=exc.status_code, detail={"code": exc.code, "upstream": exc.detail}) from exc
+
+
+class IssueTokenRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=200)
+    principal_kind: Literal["HUMAN", "AGENT", "AUTOMATION"] = "HUMAN"
+
+
+@app.post("/api/control-plane/issue-token")
+def issue_token(
+    request: IssueTokenRequest,
+    x_docplane_bootstrap_token: str | None = Header(default=None),
+) -> Any:
+    """Operator-only token issuance for the Access panel. Minting stays gated by
+    the bootstrap secret, which the operator supplies per request and which is
+    never stored server-side. Every token is attributable to the named person."""
+    if not x_docplane_bootstrap_token:
+        raise HTTPException(status_code=401, detail={"code": "BOOTSTRAP_TOKEN_REQUIRED"})
+    try:
+        return client.create_principal(
+            display_name=request.display_name,
+            principal_kind=request.principal_kind,
+            bootstrap_token=x_docplane_bootstrap_token,
+        )
+    except ControlPlaneError as exc:
+        _raise(exc)
 
 
 @app.get("/")
