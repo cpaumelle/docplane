@@ -17,7 +17,8 @@ missing there** and must be re-applied.
 
 The delta is six edits, supplied as a unified diff alongside this file:
 
-    2026-07-28-cbre-occupancy-hub2-switchoff.v8-to-v9.diff
+    2026-07-28-cbre-occupancy-hub2-switchoff.v8-to-v9.diff        <- prefer this
+    2026-07-28-cbre-occupancy-hub2-switchoff.v9-SNAPSHOT.md      <- fallback only
 
 Apply the diff, not a full-page copy — the page is actively maintained and a wholesale replace
 would revert anyone else's later edits.
