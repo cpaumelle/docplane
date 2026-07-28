@@ -77,6 +77,18 @@ class ChangeOperationCreate(BaseModel):
         return self
 
 
+class PageReplaceRequest(BaseModel):
+    expected_revision: str = Field(min_length=1, max_length=200)
+    content: str
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    nav_path: str | None = Field(default=None, min_length=1, max_length=1000)
+    purpose: str = Field(default="Replace a page through the audited agent shortcut", min_length=1, max_length=4000)
+
+
+class ChangeAbandonRequest(BaseModel):
+    reason: str = Field(default="Abandoned by contributor", min_length=1, max_length=4000)
+
+
 class ChangeCommentCreate(BaseModel):
     body: str = Field(min_length=1, max_length=10000)
 
