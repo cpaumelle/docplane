@@ -118,6 +118,9 @@ services:
         condition: service_completed_successfully
     volumes:
       - docs-site:/usr/share/nginx/html:ro
+      # Unified front: serve docs at / and mount the authoring dashboard under
+      # /dashboard (exact-match asset/API routing; see mkdocs/docplane-front.conf).
+      - ./mkdocs/docplane-front.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "${DOCPLANE_SITE_PORT:-8080}:80"
 
