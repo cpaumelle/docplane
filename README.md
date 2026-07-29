@@ -70,11 +70,10 @@ The bundled MCP server is a client of the same API and preserves its concurrency
 
 Migration redaction markers are sanitised authored bytes, not references that DocPlane rehydrates at write time. The bundled MCP therefore fails closed around them:
 
-- `read_doc` reports whether markers are present, their count, and whether full-document replacement is allowed;
+- `read_doc` reports marker presence/count and whether full-document replacement is allowed;
 - full-document replacement is refused when the current page or submitted document contains a `<REDACTED:...>` marker;
-- bounded section edits may proceed on a marker-free explicit section even when another section contains markers;
-- a bounded edit is refused when its addressed section or submitted content contains a marker;
-- marker-bearing sections must be handled through a separately governed redaction-remediation workflow with an attributable remediation principal; clear secrets must never be restored to documentation.
+- bounded edits are allowed only on marker-free explicit sections with marker-free submitted content;
+- marker-bearing sections require a separately governed redaction-remediation workflow and must never be repopulated with clear secrets.
 
 The MCP surface remains a convenience layer. Raw HTTP and the machine-readable operation contract remain complete and authoritative.
 
