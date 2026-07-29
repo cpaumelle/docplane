@@ -112,7 +112,7 @@ def authenticate(authorization: str | None) -> Principal:
 
 
 def require_contributor(
-    authorization: str | None = Header(default=None),
+    authorization: str | None = Header(default=None, include_in_schema=False),
     _credentials: HTTPAuthorizationCredentials | None = Security(_bearer),
 ) -> Principal:
     # Parse the raw header ourselves to preserve DocPlane's precise error codes;
