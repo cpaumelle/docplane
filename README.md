@@ -15,7 +15,7 @@ The complete threat model, trusted-front requirements, token constraints and con
 
 Private-fabric issuance is dual-gated: docs-api must be configured for `private_fabric`, and the request must arrive through the trusted routed front, which injects an internal admission marker on the exact self-issue route. Direct docs-api reachability does not admit issuance.
 
-Clients must start from `/.well-known/docplane.json`; it reports the active profile and exact credential-acquisition path.
+Clients must start from `/.well-known/docplane.json`; it reports the active profile and exact credential-acquisition path. The complete copy-pasteable path from discovery through create, publish, verify, archive and cleanup is in [Agent onboarding and first publication](docs/architecture/agent-onboarding.md).
 
 A caller's own agent framework may still classify credential issuance as a sensitive action and require human confirmation. That is a caller-side policy gate, not a DocPlane failure. Before approving it, verify the routed endpoint, requested AGENT/CONTRIBUTOR scope and token expiry.
 
