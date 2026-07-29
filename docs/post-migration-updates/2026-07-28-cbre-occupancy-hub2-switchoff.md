@@ -1,6 +1,6 @@
 # CBRE occupancy — hub2 ingest cut, route 46 retired, and the pages that still deny it
 
-**Status:** PENDING
+**Status:** APPLIED
 **Legacy page(s):** `operations/occupancy-hub2-switchoff.md` (already written, v9) ·
 `control-plane/architecture.md` · `services/occupancy-pipeline-hub2/*` · `sites/ovhcloud/hub2.md` ·
 `operations/microshare-eu-cloudflare-migration.md`
@@ -146,3 +146,14 @@ vps3 — not hub2 work. Teardown (Phase 4) stays gated behind them plus the 7-da
 2. If not, apply `2026-07-28-cbre-occupancy-hub2-switchoff.v8-to-v9.diff`.
 3. Work section 4 into the imported pages (or fix during import).
 4. Set **Status: APPLIED** at the top of this file; do not delete it.
+
+
+## Applied — 2026-07-29
+
+**Status: APPLIED.**
+- §1 `operations/occupancy-hub2-switchoff.md` — live on DocPlane at **v9** (the v8→v9 change was imported); no republish needed.
+- §4 (pages that still denied the cutover) — corrected through DocPlane publication:
+  - `control-plane/architecture.md` — change `28aabb5e-2adc-4beb-bfc7-7ab7c800965e`, revision `f1683cba…` → `ae4ca2e0…`, release `3b84eb1d-4ddb-4468-b9ac-b84d626549b1` ("cutover not yet done" removed; now cutover-complete / hub2 stack idle pending Phase 4 teardown).
+  - `sites/ovhcloud/hub2.md` — change `4abbafb1-667e-403d-bab0-7ce549497480`, revision → `bf7b341e…`, release `ddb29988-58dc-46d8-aee3-fd76b5dfb468`.
+  - `services/occupancy-pipeline-hub2/*` already corrected under the occupancy-cutover entry; `operations/microshare-eu-cloudflare-migration.md` carried no cutover-denial (nothing to correct).
+- certification CURRENT, working == deployed after each publication.

@@ -1,6 +1,6 @@
 # browan-fw-dev moved px2 → px5: VMID, node, IP and peer-SSH restrictions all stale
 
-**Status:** PENDING
+**Status:** APPLIED
 **Legacy page(s):** `services/microshare-dev/browan-fw-dev.md`
 **Raised:** 2026-07-29 by claude-code
 
@@ -225,3 +225,11 @@ Single page, `services/microshare-dev/browan-fw-dev.md`:
 
 Nothing here depends on legacy docs-api content, so this entry is self-contained: it does not
 need a pre-decommission export of the source page.
+
+
+## Applied — 2026-07-29
+
+**Status: APPLIED.** `services/microshare-dev/browan-fw-dev.md` corrected through DocPlane publication:
+- resource `800a4840-9807-5a28-a7c8-7a8422026c95`, revision `101d0033…` → `249d65dc…`, change `23ec7217-b03c-4c13-a7e3-4319d736bb2b`, release `b3083879-2f87-4702-8209-76cc4b192156`.
+- Applied surgically: VMID 5513, host **px5-lemans**, IP `10.35.1.113` (FR LAN), fabric SSH, VM1124 px1→px2, and the 2026-07-29 move note. Deliberately preserved: the `vm2513-to-vm1124` key comment, the `vm-2513-disk-*` names, and the creation history.
+- certification CURRENT, working == deployed.

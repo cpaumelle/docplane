@@ -1,6 +1,6 @@
 # Post-cutover doc corrections — client-validation + report-api
 
-**Status:** PENDING
+**Status:** APPLIED
 **Legacy page(s):** `services/occupancy-pipeline-hub2/client-validation.md` ·
 `services/occupancy-pipeline-hub2/report-api.md`
 **Raised:** 2026-07-27 (unattributed — migrated from `hub2:~/docs-staging/README-occupancy-cutover-2026-07-27.md` on 2026-07-28)
@@ -78,3 +78,12 @@ vps3-vs-vps3 when DNS flipped. **Any parity conclusion drawn from it after 2026-
 3. No snapshot is stored here on purpose: the source is still available, and a copy would go stale.
    **If legacy docs-api is scheduled for decommission while this entry is still PENDING, export
    snapshots first** — that is the point at which fetch-on-demand stops working.
+
+
+## Applied — 2026-07-29
+
+**Status: APPLIED (no republish needed — corrections were imported by the migration).** Verified live on DocPlane:
+- `services/occupancy-pipeline-hub2/client-validation.md` — resource `e2b303d7-9658-556e-8710-8817106598e9`, **v7**, vps3/`api.microshare.eu`→vps3 corrections present.
+- `services/occupancy-pipeline-hub2/report-api.md` — resource `ad645233-5ab0-5efa-96ad-7647adc0a845`, **v10**, dual-legs-read-vps3 correction present.
+
+Both are at the expected version with the corrections, so the migration carried them across. certification CURRENT, working == deployed.

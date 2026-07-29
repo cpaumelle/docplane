@@ -1,6 +1,6 @@
 # Post-migration doc updates — pending queue
 
-**This PR stays open until the legacy → DocPlane migration is complete.** It is a queue, not a
+**MIGRATION COMPLETE (2026-07-29): every entry is APPLIED; this PR is ready to merge and close.** It is a queue, not a
 deliverable. Merge it only when the migration is done and every entry has been applied to DocPlane
 (or explicitly dropped).
 
@@ -68,10 +68,10 @@ the branch tip, not inside a file — rebase and push again.
 
 | Entry | Legacy page(s) | Status |
 |---|---|---|
-| `2026-07-27-occupancy-cutover-doc-corrections.md` | `services/occupancy-pipeline-hub2/{client-validation,report-api}.md` | PENDING |
-| `2026-07-27-dinard-tv-geo-doc-corrections.md` | 6 pages — managed-consumers, address-plan, dinard-fr-site, geo-execution, fire-tv-setup, engineering-backlog | PENDING |
-| `2026-07-28-cbre-occupancy-hub2-switchoff.md` | `operations/occupancy-hub2-switchoff.md` + 4 others | PENDING |
-| `2026-07-29-browan-fw-dev-vm-move.md` | `services/microshare-dev/browan-fw-dev.md` | PENDING |
+| `2026-07-27-occupancy-cutover-doc-corrections.md` | `services/occupancy-pipeline-hub2/{client-validation,report-api}.md` | APPLIED |
+| `2026-07-27-dinard-tv-geo-doc-corrections.md` | 6 pages — managed-consumers, address-plan, dinard-fr-site, geo-execution, fire-tv-setup, engineering-backlog | APPLIED |
+| `2026-07-28-cbre-occupancy-hub2-switchoff.md` | `operations/occupancy-hub2-switchoff.md` + 4 others | APPLIED |
+| `2026-07-29-browan-fw-dev-vm-move.md` | `services/microshare-dev/browan-fw-dev.md` | APPLIED |
 
 ## Snapshots vs fetch-on-demand
 

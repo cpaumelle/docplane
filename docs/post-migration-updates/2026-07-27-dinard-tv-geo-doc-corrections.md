@@ -1,6 +1,6 @@
 # Dinard TV GEO + managed-consumer doc corrections
 
-**Status:** PENDING
+**Status:** APPLIED
 **Legacy page(s):** `operations/managed-consumers-migration-plan.md` · `sites/dinard-fr-site.md` ·
 `operations/engineering-backlog.md` · `network/fabric-v2/address-plan.md` ·
 `network/geo-execution.md` · `services/various/fire-tv-setup.md`
@@ -110,3 +110,19 @@ at least once since.)*
 4. Priority order if applying selectively: the **`managed-consumers-migration-plan.md` + `address-plan.md`**
    pair first — those carry the retired-mechanism claim that actively misleads an operator into
    stranding a device's geo.
+
+
+## Applied — 2026-07-29
+
+**Status: APPLIED (no republish needed — corrections were imported by the migration).** All six pages are live on DocPlane at exactly the recorded versions:
+
+| Page | Version on DocPlane |
+|---|---|
+| operations/managed-consumers-migration-plan.md | v21 |
+| sites/dinard-fr-site.md | v8 |
+| operations/engineering-backlog.md | v40 |
+| network/fabric-v2/address-plan.md | v32 |
+| network/geo-execution.md | v11 |
+| services/various/fire-tv-setup.md | v14 |
+
+certification CURRENT, working == deployed.
