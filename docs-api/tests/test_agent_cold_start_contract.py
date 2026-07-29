@@ -98,6 +98,13 @@ def test_discovery_is_the_complete_unauthenticated_starting_point():
     assert body["legacy"]["legacy_docs_api_contract_applies"] is False
 
 
+def test_discovery_exposes_deployment_site_name_without_changing_product_identity(monkeypatch):
+    monkeypatch.setenv("DOCPLANE_SITE_NAME", "CharlieHub Documentation")
+    body = agent_contract_api.discovery()
+    assert body["product"] == "DocPlane"
+    assert body["site_name"] == "CharlieHub Documentation"
+
+
 def test_assembled_app_has_one_authoritative_handler_per_extracted_path():
     for path in agent_contract_api.REPLACED_AGENT_PATHS:
         routes = [route for route in app.routes if getattr(route, "path", None) == path]

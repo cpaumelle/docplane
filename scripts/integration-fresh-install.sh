@@ -3,13 +3,14 @@
 # Fresh-install integration test — real containers, real named volumes, empty start.
 #
 # This exercises the container/volume boundary that unit tests cannot reach. It
-# is the regression cover for five shipped-runtime defects:
+# is the regression cover for six shipped-runtime defects:
 #
 #   1. generated MkDocs release path resolution (split config directories)
 #   2. docs-site volume ownership on a fresh install
 #   3. MCP host-header validation on a NON-DEFAULT published port
 #   4. the routed host exposing the authoritative agent contract and API
 #   5. neutral brand fallback plus a deployment-local branding overlay
+#   6. one configured site identity shared by rendered docs and dashboard discovery
 #
 # Everything is namespaced under a disposable compose project and disposable
 # volumes, and torn down with `down -v` at the end.
@@ -108,10 +109,17 @@ HTML=$(curl -fsS "$FRONT/work/itest/")
 printf '%s' "$HTML" | grep -q "Synthetic fresh-install probe" || fail "generated page missing expected content"
 printf '%s' "$HTML" | grep -q "Integration DocPlane" || fail "DOCPLANE_SITE_NAME did not reach MkDocs"
 
-log "7. routed human and agent surfaces use portable service DNS"
+log "7. routed human and agent surfaces share configured identity"
 curl -fsS "$FRONT/dashboard/" >/dev/null || fail "dashboard route failed"
 curl -fsS "$FRONT/assets/app.js" >/dev/null || fail "dashboard asset route failed"
-curl -fsS "$FRONT/.well-known/docplane.json" | grep -q 'docplane-agent-discovery-v2' || fail "agent discovery is not routed"
+DISCOVERY=$(curl -fsS "$FRONT/.well-known/docplane.json")
+python3 - "$DISCOVERY" <<'PY'
+import json,sys
+d=json.loads(sys.argv[1])
+assert d["contract_version"] == "docplane-agent-discovery-v2"
+assert d["product"] == "DocPlane"
+assert d["site_name"] == "Integration DocPlane"
+PY
 curl -fsS "$FRONT/openapi.json" | grep -q '"title":"DocPlane"' || fail "OpenAPI is not routed"
 curl -fsS "$FRONT/healthz" | grep -q '"page_counts"' || fail "authority health is not routed"
 NOAUTH=$(curl -s -o /dev/null -w '%{http_code}' "$FRONT/api/v1/capabilities")
