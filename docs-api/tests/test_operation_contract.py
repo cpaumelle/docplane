@@ -41,6 +41,11 @@ def test_cold_start_discovery_links_the_operation_contract_before_writes():
     assert body["surfaces"]["operation_contracts"] == CONTRACT_ENDPOINT
     assert body["quick_start"]["multi_operation_change"][0].startswith(f"GET {CONTRACT_ENDPOINT}")
 
+    caller_note = body["authentication"]["token_acquisition"]["caller_policy_note"]
+    assert "caller" in caller_note.lower()
+    assert "framework" in caller_note.lower()
+    assert "expiry" in caller_note.lower()
+
 
 def test_openapi_publishes_payload_schemas_mapping_and_complete_examples():
     schema = app.openapi()
