@@ -88,6 +88,7 @@ jobs:
             docs-api/tests/test_private_fabric_access.py \
             docs-api/tests/test_generated_release.py \
             mcp/tests/test_allowed_hosts.py \
+            mcp/tests/test_docs_tools.py \
             dashboard/tests/test_authoring.py
       - name: Static legacy scan
         run: |
