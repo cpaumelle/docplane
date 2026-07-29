@@ -8,6 +8,7 @@ from app.agent_shortcuts_api import router as agent_shortcuts_router
 from app.event_api import router as event_router
 from app.http_semantics import HeadAsGetMiddleware
 from app.operation_contract_api import install_operation_contract, router as operation_contract_router
+from app.operation_request_openapi import install_discriminated_operation_requests
 from app.reorganisation_api import router as reorganisation_router
 from app.system_api import router as system_router
 from app.trust_api import router as trust_router
@@ -34,5 +35,6 @@ app.include_router(trust_router)
 app.include_router(reorganisation_router)
 install_agent_contract(app)
 install_operation_contract(app)
+install_discriminated_operation_requests(app)
 
 __all__ = ["app"]
