@@ -117,7 +117,13 @@ def deploy_current_state(*, requested_by: str, change_id: str | None = None) -> 
             conn.commit()
 
         try:
-            result = generator.run(active, section_order=sections)
+            # Redirects are part of the release, not just of the identity hash:
+            # they are already folded into target_state_identity above, so a
+            # release that omitted them would certify as CURRENT while old URLs
+            # 404 (docplane#65). The generator fails the build if any recorded
+            # redirect produces no artifact, which surfaces here as a FAILED
+            # deployment rather than a silently incomplete site.
+            result = generator.run(active, section_order=sections, redirects=redirects)
             search.build_index(active)
             release_id = result["release_id"]
             seal = _canonical_hash(

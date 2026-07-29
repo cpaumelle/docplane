@@ -87,6 +87,7 @@ jobs:
             docs-api/tests/test_operation_contract.py \
             docs-api/tests/test_private_fabric_access.py \
             docs-api/tests/test_generated_release.py \
+            docs-api/tests/test_redirect_serving.py \
             mcp/tests/test_allowed_hosts.py \
             dashboard/tests/test_authoring.py
       - name: Static legacy scan

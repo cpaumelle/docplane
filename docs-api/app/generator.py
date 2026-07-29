@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
 import yaml
@@ -37,6 +37,56 @@ class NavConflict(RuntimeError):
         self.segment = segment
         self.message = message
         super().__init__(message)
+
+
+class RedirectConflict(RuntimeError):
+    """Redirect state that must fail publication rather than be silently omitted."""
+
+    def __init__(self, kind: str, source: str, message: str):
+        self.kind = kind
+        self.source = source
+        self.message = message
+        super().__init__(message)
+
+
+def rendered_html_path(md_path: str) -> str:
+    """Site-relative HTML MkDocs emits for a Markdown path (use_directory_urls)."""
+    path = PurePosixPath(md_path)
+    if path.name == "index.md":
+        return str(path.with_name("index.html"))
+    return f"{path.with_suffix('')}/index.html"
+
+
+def validate_redirects(redirects: dict[str, str], pages: list[dict]) -> dict[str, str]:
+    """Check the redirect map against the active corpus; raise on anything unsound.
+
+    OPERATIONAL INTENT. Redirect preservation is the property that makes a page
+    move non-destructive, so an unrepresentable redirect must abort the release
+    instead of quietly disappearing from the rendered site — which is exactly the
+    failure this function exists to prevent (docplane#65: rows were recorded in
+    docs.redirects, used for the state-identity hash, and never rendered, so old
+    URLs 404'd while every status surface reported success).
+
+    Chains and cycles are structurally impossible under the operation contract:
+    a source may never be an active page and a target must always be one, so the
+    two sets are disjoint and no target can itself be a source. That is asserted
+    here rather than assumed, so a future contract change fails loudly and at
+    build time instead of emitting a redirect that points at another redirect.
+    """
+    active = {str(page["path"]) for page in pages}
+    for source, target in sorted(redirects.items()):
+        if not source.endswith(".md") or not target.endswith(".md"):
+            raise RedirectConflict("invalid-path", source, f"redirect {source!r} -> {target!r} must use .md paths")
+        if source == target:
+            raise RedirectConflict("self-redirect", source, f"{source!r} redirects to itself")
+        if source in active:
+            # Would shadow a live page with a redirect stub.
+            raise RedirectConflict("source-is-active-page", source, f"{source!r} is an active page and cannot be a redirect source")
+        if target not in active:
+            raise RedirectConflict("target-missing", source, f"redirect target {target!r} is not an active page")
+        if target in redirects:
+            raise RedirectConflict("chain", source, f"redirect target {target!r} is itself a redirect source")
+    return dict(sorted(redirects.items()))
 
 
 def _augment_content(page: dict) -> str:
@@ -154,7 +204,7 @@ def distinct_section_paths(pages: list[dict]) -> list[str]:
     return sorted(sections)
 
 
-def _write_nav(nav: list) -> None:
+def _write_nav(nav: list, redirects: dict[str, str] | None = None) -> None:
     # docs_dir MUST be absolute and generator-owned. MkDocs defaults it to
     # "docs" relative to the config file it was invoked with, which would
     # resolve to MKDOCS_CONFIG_DIR/docs — never where DocPlane actually renders
@@ -162,6 +212,19 @@ def _write_nav(nav: list) -> None:
     # content the single input to the build. See _sync_base_config_assets for
     # the sibling relative-path problem this pairs with.
     payload = {"INHERIT": str(MKDOCS_YML), "docs_dir": str(DOCS_CONTENT_DIR), "nav": nav}
+    # Compatibility routes are DB-derived, so they belong in the generated child
+    # config beside the DB-derived nav — never appended to the hand-maintained
+    # parent, which was the legacy mechanism and is why nothing rendered them
+    # once the legacy writer was removed.
+    #
+    # MkDocs deep-merges dict-form config across INHERIT, so declaring only
+    # plugins.redirects.redirect_maps here ADDS to the parent's plugin
+    # configuration rather than replacing its plugin list. That is why the
+    # parent declares `plugins` as a mapping; see the note in mkdocs/mkdocs.yml.
+    # Restating the parent's plugins here would silently drop any plugin it
+    # gains later, so do not do that.
+    if redirects:
+        payload["plugins"] = {"redirects": {"redirect_maps": dict(sorted(redirects.items()))}}
     MKDOCS_NAV_YML.parent.mkdir(parents=True, exist_ok=True)
     temp = MKDOCS_NAV_YML.with_suffix(".tmp")
     temp.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
@@ -209,7 +272,7 @@ def _sync_base_config_assets() -> None:
             shutil.copy2(source, destination)
 
 
-def _build_site() -> int:
+def _build_site(redirect_sources: list[str] | None = None) -> int:
     started = time.monotonic()
     if STAGING_SITE_DIR.exists():
         shutil.rmtree(STAGING_SITE_DIR)
@@ -221,6 +284,19 @@ def _build_site() -> int:
     )
     if build.returncode:
         raise RuntimeError(f"mkdocs build failed: {build.stderr[-2000:]}")
+    # Verify compatibility routes in STAGING, before promotion. A recorded
+    # redirect that produced no artifact must fail the deployment — otherwise the
+    # release certifies as CURRENT while old URLs 404, which is precisely the
+    # silent failure of docplane#65. Checking staging (not SITE_DIR) means a bad
+    # release is never promoted in the first place.
+    missing = [
+        source for source in (redirect_sources or [])
+        if not (STAGING_SITE_DIR / rendered_html_path(source)).is_file()
+    ]
+    if missing:
+        raise RuntimeError(
+            "redirect routes missing from the generated release: " + ", ".join(sorted(missing)[:20])
+        )
     SITE_DIR.mkdir(parents=True, exist_ok=True)
     sync = subprocess.run(
         # SITE_INIT_SENTINEL is excluded from --delete on purpose. The compose
@@ -241,16 +317,30 @@ def _build_site() -> int:
     return int((time.monotonic() - started) * 1000)
 
 
-def run(pages: list[dict], dry_run: bool = False, section_order: dict[str, int] | None = None) -> dict:
+def run(
+    pages: list[dict],
+    dry_run: bool = False,
+    section_order: dict[str, int] | None = None,
+    redirects: dict[str, str] | None = None,
+) -> dict:
     release_id = str(uuid4())
     for page in pages:
         if not str(page["path"]).endswith(".md"):
             raise RuntimeError(f"invalid page path: {page['path']}")
         if not str(page["content"]).strip():
             raise RuntimeError(f"empty page: {page['path']}")
+    # Validated before the nav is built so unsound redirect state fails a dry run
+    # too, rather than first surfacing at promotion time.
+    compatibility = validate_redirects(dict(redirects or {}), pages)
     nav = build_nav(pages, section_order=section_order)
     if dry_run:
-        return {"release_id": release_id, "dry_run": True, "pages": len(pages), "nav": nav}
+        return {
+            "release_id": release_id,
+            "dry_run": True,
+            "pages": len(pages),
+            "redirects": len(compatibility),
+            "nav": nav,
+        }
 
     stage = Path(tempfile.mkdtemp(prefix="docplane-corpus-"))
     try:
@@ -279,16 +369,25 @@ def run(pages: list[dict], dry_run: bool = False, section_order: dict[str, int] 
             shutil.copy2(source, temp)
             os.replace(temp, target)
         MANIFEST_PATH.write_text(
-            json.dumps({"managed_files": sorted(managed), "release_id": release_id, "published_at": datetime.now(timezone.utc).isoformat()}, indent=2),
+            json.dumps(
+                {
+                    "managed_files": sorted(managed),
+                    "redirects": compatibility,
+                    "release_id": release_id,
+                    "published_at": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
-        _write_nav(nav)
-        build_time_ms = _build_site()
+        _write_nav(nav, compatibility)
+        build_time_ms = _build_site(list(compatibility))
     finally:
         shutil.rmtree(stage, ignore_errors=True)
     return {
         "release_id": release_id,
         "dry_run": False,
         "pages": len(pages),
+        "redirects": len(compatibility),
         "build_time_ms": build_time_ms,
     }
