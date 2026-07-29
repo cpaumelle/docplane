@@ -48,6 +48,15 @@ def test_private_fabric_discovery_is_an_unambiguous_zero_credential_path(monkeyp
     assert discovery["quick_start"]["authenticate"][0] == "POST /api/v1/auth/self-issue"
 
 
+def test_private_fabric_profile_does_not_trust_direct_api_reachability(monkeypatch):
+    monkeypatch.setenv("DOCPLANE_ACCESS_PROFILE", "private_fabric")
+    response = client.post("/api/v1/auth/self-issue", json={"display_name": "direct-agent"})
+    assert response.status_code == 403
+    detail = response.json()["detail"]
+    assert detail["code"] == "FABRIC_ADMISSION_REQUIRED"
+    assert "routed" in detail["remedy"]
+
+
 def test_head_uses_get_status_and_headers_without_a_body(monkeypatch):
     monkeypatch.setenv("DOCPLANE_ACCESS_PROFILE", "private_fabric")
     response = client.head("/.well-known/docplane.json")
@@ -70,3 +79,7 @@ def test_openapi_uses_bearer_security_and_self_issue_is_credential_free():
     )
     self_issue = schema["paths"]["/api/v1/auth/self-issue"]["post"]
     assert not self_issue.get("security")
+    assert not any(
+        parameter.get("name") in {"X-DocPlane-Fabric-Admission", "X-DocPlane-Source-IP"}
+        for parameter in self_issue.get("parameters", [])
+    )
