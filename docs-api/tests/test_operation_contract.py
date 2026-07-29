@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from app.application import app
+from app.operation_contract_api import CONTRACT_ENDPOINT, CONTRACT_VERSION, OPERATION_ENDPOINT
+from app.publication import operation_types
+
+client = TestClient(app)
+
+
+def test_operation_contract_endpoint_covers_every_runtime_operation():
+    response = client.get(CONTRACT_ENDPOINT)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["contract_version"] == CONTRACT_VERSION
+    assert body["operation_endpoint"] == OPERATION_ENDPOINT
+    assert set(body["operations"]) == set(operation_types())
+
+    create = body["operations"]["CREATE_PAGE"]
+    assert create["binding"]["page_resource_id"] == "omit"
+    assert create["payload_schema"]["required"] == ["path", "title", "nav_path", "content"]
+    assert create["request_example"]["payload"]["path"] == "reference/example.md"
+
+    section = body["operations"]["REPLACE_SECTION"]
+    assert section["binding"]["page_resource_id"] == "required"
+    assert section["binding"]["expected_revision"] == "required"
+    assert section["binding"]["expected_section_hash"] == "required"
+
+    archive = body["operations"]["ARCHIVE_PAGE"]
+    assert archive["payload_schema"]["properties"] == {}
+    assert archive["request_example"]["payload"] == {}
+
+
+def test_openapi_publishes_payload_schemas_mapping_and_complete_examples():
+    schema = app.openapi()
+    runtime = set(operation_types())
+
+    assert schema["x-docplane-operation-contract-version"] == CONTRACT_VERSION
+    extension = schema["x-docplane-operation-contracts"]
+    assert extension["endpoint"] == CONTRACT_ENDPOINT
+    assert set(extension["mapping"]) == runtime
+
+    request_model = schema["components"]["schemas"]["ChangeOperationCreate"]
+    payload_variants = request_model["properties"]["payload"]["oneOf"]
+    assert len(payload_variants) == len(runtime)
+    assert set(request_model["x-docplane-operation-contracts"]) == runtime
+
+    operation = schema["paths"][OPERATION_ENDPOINT]["post"]
+    assert set(operation["x-docplane-operation-contracts"]) == runtime
+    examples = operation["requestBody"]["content"]["application/json"]["examples"]
+    assert set(examples) == runtime
+    assert examples["CREATE_PAGE"]["value"]["payload"]["content"].startswith("# Example")
+    assert examples["ARCHIVE_PAGE"]["value"]["payload"] == {}
+
+
+def test_openapi_accounts_for_caller_side_credential_approval_gates():
+    guidance = app.openapi()["x-docplane-caller-safety"]["credential_issuance"]
+    assert "caller" in guidance.lower()
+    assert "framework" in guidance.lower()
+    assert "expiry" in guidance.lower()
