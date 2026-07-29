@@ -7,14 +7,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import psycopg2.extras
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Header, HTTPException, Request, status
 
 from app.access_policy import current_access_policy
 from app.agent_auth import Principal, issue_token
 from app.agent_models import SelfIssueRequest, SelfIssuedPrincipalToken
 from app.db import get_conn
 from app.event_store import append_event
-
 
 router = APIRouter(tags=["docplane-auth"])
 _SELF_ISSUE_MODE = "private_fabric_self_service"
@@ -24,24 +23,20 @@ def _json(value: Any) -> psycopg2.extras.Json:
     return psycopg2.extras.Json(value, dumps=lambda item: json.dumps(item, sort_keys=True, default=str))
 
 
-def _request_evidence(request: Request) -> dict[str, str]:
+def _request_evidence(request: Request, admitted_source: str | None) -> dict[str, str]:
     peer = request.client.host if request.client else "unknown"
-    forwarded = request.headers.get("x-forwarded-for", "")[:512]
-    observed = (forwarded.split(",", 1)[0].strip() or peer)[:128]
+    observed = (admitted_source or peer).strip()[:128]
     user_agent = request.headers.get("user-agent", "")[:512]
     fingerprint = hashlib.sha256(observed.encode("utf-8")).hexdigest()
     return {
         "observed_source": observed,
         "source_fingerprint": fingerprint,
         "proxy_peer": peer[:128],
-        "forwarded_chain": forwarded,
         "user_agent": user_agent,
     }
 
 
 def _rate_limit(cur, *, fingerprint: str, source_limit: int, global_limit: int) -> None:
-    # Serialize the check+insert window so parallel cold starts cannot exceed the
-    # configured ceiling by racing one another.
     cur.execute("SELECT pg_advisory_xact_lock(hashtext('docplane-private-fabric-self-issue'))")
     cur.execute(
         """
@@ -94,6 +89,12 @@ def _rate_limit(cur, *, fingerprint: str, source_limit: int, global_limit: int) 
 def self_issue_agent_token(
     request: Request,
     body: SelfIssueRequest | None = None,
+    fabric_admission: str | None = Header(
+        default=None, alias="X-DocPlane-Fabric-Admission", include_in_schema=False
+    ),
+    admitted_source: str | None = Header(
+        default=None, alias="X-DocPlane-Source-IP", include_in_schema=False
+    ),
 ) -> SelfIssuedPrincipalToken:
     policy = current_access_policy()
     if not policy.self_service:
@@ -105,8 +106,17 @@ def self_issue_agent_token(
                 "remedy": "Follow the token_acquisition procedure in /.well-known/docplane.json.",
             },
         )
+    if fabric_admission != "1":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "FABRIC_ADMISSION_REQUIRED",
+                "message": "Private-fabric self-issuance is available only through the trusted routed front.",
+                "remedy": "Use the DocPlane hostname advertised by the deployment, not a direct docs-api port.",
+            },
+        )
 
-    evidence = _request_evidence(request)
+    evidence = _request_evidence(request, admitted_source)
     clear, digest, prefix = issue_token()
     display_name = (
         body.display_name.strip()
