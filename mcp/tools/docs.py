@@ -2,17 +2,29 @@
 
 The MCP surface is a convenience client, never a second document authority.
 Existing-page mutations require the revision observed by the caller. Small edits
-use the bounded operation types exposed by DocPlane rather than forcing a full
-page replacement.
+use bounded DocPlane operations instead of forcing full-page replacement.
+
+Migration redaction markers are sanitised authored bytes, not references that
+are rehydrated during publication. The convenience layer therefore fails closed:
+full-document replacement is disabled for pages containing markers, while a
+bounded edit may proceed only when its addressed section and submitted content
+are marker-free.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 from uuid import uuid4
 
 import httpx
 
 from common import DOCPLANE_API_URL, DOCPLANE_TOKEN
+
+_REDACTION_MARKER_RE = re.compile(r"<REDACTED:[^>\r\n]+>")
+_EXPLICIT_HEADING_RE = re.compile(
+    r"^(?P<marks>#{1,6})[ \t]+.*?[ \t]+\{#(?P<heading_id>[A-Za-z0-9_-]+)\}[ \t]*$"
+)
+_CODE_FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
 
 
 def _key(prefix: str) -> str:
@@ -60,6 +72,88 @@ def _find_path(path: str, *, include_archived: bool = True) -> dict | None:
         return None
     pages = body.get("pages", []) if isinstance(body, dict) else []
     return pages[0] if pages else None
+
+
+def _page_context(resource_id: str) -> tuple[int, dict | Any]:
+    return _request("GET", f"/api/v1/pages/{resource_id}?view=edit_context")
+
+
+def _redaction_count(content: str) -> int:
+    return len(_REDACTION_MARKER_RE.findall(content or ""))
+
+
+def _redaction_read_metadata(content: str) -> dict[str, Any]:
+    count = _redaction_count(content)
+    return {
+        "redactions_present": count > 0,
+        "redaction_marker_count": count,
+        "full_document_replace_allowed": count == 0,
+    }
+
+
+def _redaction_error(
+    *,
+    code: str,
+    path: str,
+    resource_id: str | None,
+    marker_count: int,
+    detail: str,
+    heading_id: str | None = None,
+) -> dict:
+    result: dict[str, Any] = {
+        "error": code,
+        "detail": detail,
+        "path": path,
+        "resource_id": resource_id,
+        "redaction_marker_count": marker_count,
+        "remedy": (
+            "Use a bounded operation on a marker-free explicit section, or route the page "
+            "through the governed redaction-remediation workflow. Do not restore clear secrets "
+            "to documentation."
+        ),
+    }
+    if heading_id is not None:
+        result["heading_id"] = heading_id
+    return result
+
+
+def _explicit_section_content(content: str, heading_id: str) -> str | None:
+    """Return one explicit-ID section, ignoring headings inside fenced code."""
+    lines = content.splitlines(keepends=True)
+    headings: list[tuple[int, int, str]] = []
+    in_fence = False
+    fence_marker = ""
+
+    for index, raw in enumerate(lines):
+        line = raw.rstrip("\r\n")
+        fence = _CODE_FENCE_RE.match(line)
+        if fence:
+            marker = fence.group(1)[0]
+            if not in_fence:
+                in_fence = True
+                fence_marker = marker
+            elif marker == fence_marker:
+                in_fence = False
+                fence_marker = ""
+            continue
+        if in_fence:
+            continue
+        match = _EXPLICIT_HEADING_RE.match(line)
+        if match:
+            headings.append(
+                (index, len(match.group("marks")), match.group("heading_id"))
+            )
+
+    for position, (start, level, current_id) in enumerate(headings):
+        if current_id != heading_id:
+            continue
+        end = len(lines)
+        for candidate_start, candidate_level, _candidate_id in headings[position + 1 :]:
+            if candidate_level <= level:
+                end = candidate_start
+                break
+        return "".join(lines[start:end])
+    return None
 
 
 def _conflict(path: str, resource_id: str | None, body: Any) -> dict:
@@ -117,7 +211,11 @@ def _run_change(
         return _error(code, body)
 
     code, body = _request("POST", f"/api/v1/changes/{change_id}/validate", body={})
-    passed = code == 200 and isinstance(body, dict) and body.get("validation_summary", {}).get("passed") is True
+    passed = (
+        code == 200
+        and isinstance(body, dict)
+        and body.get("validation_summary", {}).get("passed") is True
+    )
     if not passed:
         _abandon(change_id, "MCP change validation failed")
         if code in {409, 412} or "STALE" in str(body):
@@ -157,10 +255,18 @@ def read_doc_impl(path_or_slug: str) -> dict:
             return _error(code, body)
         results = body.get("results", [])
         if len(results) != 1:
-            return {"error": "page is not uniquely resolved", "query": path_or_slug, "matches": results}
+            return {
+                "error": "page is not uniquely resolved",
+                "query": path_or_slug,
+                "matches": results,
+            }
         page = results[0]
-    code, body = _request("GET", f"/api/v1/pages/{page['resource_id']}?view=edit_context")
-    return body if code == 200 else _error(code, body)
+    code, body = _page_context(page["resource_id"])
+    if code != 200 or not isinstance(body, dict):
+        return _error(code, body)
+    result = dict(body)
+    result.update(_redaction_read_metadata(str(body.get("content") or "")))
+    return result
 
 
 def list_docs_impl(status: str = "active") -> list[dict]:
@@ -179,9 +285,22 @@ def write_doc_impl(
     expected_revision: str | None = None,
     workspace_key: str = "reference",
 ) -> dict:
-    """Create a page or replace an existing page with caller-owned concurrency."""
+    """Create a page or replace an existing clean page with caller-owned concurrency."""
     if not content:
         return {"error": "content is required", "path": path}
+    submitted_marker_count = _redaction_count(content)
+    if submitted_marker_count:
+        return _redaction_error(
+            code="redaction_marker_in_submitted_content",
+            path=path,
+            resource_id=None,
+            marker_count=submitted_marker_count,
+            detail=(
+                "The submitted full document contains migration redaction markers. "
+                "The MCP convenience layer will not author or replay marker-bearing documents."
+            ),
+        )
+
     existing = _find_path(path)
     if existing:
         if not expected_revision:
@@ -192,6 +311,34 @@ def write_doc_impl(
                 "resource_id": existing.get("resource_id"),
                 "current_revision": existing.get("revision"),
             }
+
+        code, current = _page_context(existing["resource_id"])
+        if code != 200 or not isinstance(current, dict):
+            return _error(code, current)
+        if current.get("revision") != expected_revision:
+            return _conflict(
+                path,
+                existing.get("resource_id"),
+                {
+                    "code": "PAGE_REVISION_STALE",
+                    "expected": expected_revision,
+                    "current": current.get("revision"),
+                },
+            )
+        current_marker_count = _redaction_count(str(current.get("content") or ""))
+        if current_marker_count:
+            return _redaction_error(
+                code="redacted_full_document_replace_forbidden",
+                path=path,
+                resource_id=existing.get("resource_id"),
+                marker_count=current_marker_count,
+                detail=(
+                    "The current page contains migration redaction markers. Full-document "
+                    "replacement is disabled because markers are sanitised authored bytes and "
+                    "are not rehydrated during publication."
+                ),
+            )
+
         body: dict[str, Any] = {
             "expected_revision": expected_revision,
             "content": content,
@@ -212,7 +359,10 @@ def write_doc_impl(
         return response if code == 200 else _error(code, response)
 
     if expected_revision is not None:
-        return {"error": "expected_revision must be omitted when creating a page", "path": path}
+        return {
+            "error": "expected_revision must be omitted when creating a page",
+            "path": path,
+        }
     if not title or not nav_path:
         return {
             "error": "title and nav_path are required when creating a page",
@@ -251,6 +401,58 @@ def _bounded_edit(
     page = _find_path(path, include_archived=False)
     if page is None:
         return {"error": "active page not found", "path": path}
+
+    submitted_marker_count = _redaction_count(content)
+    if submitted_marker_count:
+        return _redaction_error(
+            code="redaction_marker_in_submitted_content",
+            path=path,
+            resource_id=page.get("resource_id"),
+            heading_id=heading_id,
+            marker_count=submitted_marker_count,
+            detail="The bounded edit content contains migration redaction markers.",
+        )
+
+    code, current = _page_context(page["resource_id"])
+    if code != 200 or not isinstance(current, dict):
+        return _error(code, current)
+    if current.get("revision") != expected_revision:
+        return _conflict(
+            path,
+            page.get("resource_id"),
+            {
+                "code": "PAGE_REVISION_STALE",
+                "expected": expected_revision,
+                "current": current.get("revision"),
+            },
+        )
+
+    section = _explicit_section_content(str(current.get("content") or ""), heading_id)
+    if section is None:
+        return {
+            "error": "explicit_section_not_found",
+            "detail": (
+                "The requested explicit heading ID was not found outside fenced code. "
+                "Re-read the page and choose an explicit heading ID from its outline."
+            ),
+            "path": path,
+            "resource_id": page.get("resource_id"),
+            "heading_id": heading_id,
+        }
+    target_marker_count = _redaction_count(section)
+    if target_marker_count:
+        return _redaction_error(
+            code="redacted_section_edit_forbidden",
+            path=path,
+            resource_id=page.get("resource_id"),
+            heading_id=heading_id,
+            marker_count=target_marker_count,
+            detail=(
+                "The addressed section contains migration redaction markers. "
+                "The MCP convenience layer will not replace or insert adjacent to that section."
+            ),
+        )
+
     operation = {
         "operation_type": operation_type,
         "page_resource_id": page["resource_id"],
@@ -367,7 +569,11 @@ def patch_doc_metadata_impl(
     )
 
 
-def archive_doc_impl(path: str, purpose: str, expected_revision: str | None = None) -> dict:
+def archive_doc_impl(
+    path: str,
+    purpose: str,
+    expected_revision: str | None = None,
+) -> dict:
     existing = _find_path(path, include_archived=False)
     if existing is None:
         return {"error": "active page not found", "path": path}
@@ -403,7 +609,7 @@ def register(mcp) -> None:
 
     @mcp.tool()
     def read_doc(path_or_slug: str) -> dict:
-        """Read a canonical page, including revision and section hashes for safe edits."""
+        """Read a page with revision, section hashes and redaction safety metadata."""
         return read_doc_impl(path_or_slug)
 
     @mcp.tool()
@@ -421,11 +627,13 @@ def register(mcp) -> None:
         expected_revision: str | None = None,
         workspace_key: str = "reference",
     ) -> dict:
-        """Create or replace a page.
+        """Create or fully replace a clean page.
 
         Existing pages require expected_revision from read_doc. title and nav_path
         are optional and preserved when omitted. New pages require title and
-        nav_path and must omit expected_revision.
+        nav_path and must omit expected_revision. Full replacement is refused when
+        either the current page or submitted content contains migration redaction
+        markers; use a marker-free bounded section operation or governed remediation.
         """
         return write_doc_impl(
             path,
@@ -446,7 +654,7 @@ def register(mcp) -> None:
         content: str,
         purpose: str,
     ) -> dict:
-        """Replace one explicitly identified section without resending the page."""
+        """Replace one marker-free explicit section without resending the page."""
         return replace_doc_section_impl(
             path,
             heading_id,
@@ -465,7 +673,7 @@ def register(mcp) -> None:
         content: str,
         purpose: str,
     ) -> dict:
-        """Insert Markdown before an explicit heading with revision/hash safety."""
+        """Insert marker-free Markdown before a marker-free explicit section."""
         return insert_doc_before_heading_impl(
             path,
             heading_id,
@@ -484,7 +692,7 @@ def register(mcp) -> None:
         content: str,
         purpose: str,
     ) -> dict:
-        """Insert Markdown after an explicit heading with revision/hash safety."""
+        """Insert marker-free Markdown after a marker-free explicit section."""
         return insert_doc_after_heading_impl(
             path,
             heading_id,
@@ -518,7 +726,11 @@ def register(mcp) -> None:
         )
 
     @mcp.tool()
-    def archive_doc(path: str, purpose: str, expected_revision: str | None = None) -> dict:
+    def archive_doc(
+        path: str,
+        purpose: str,
+        expected_revision: str | None = None,
+    ) -> dict:
         """Archive a page using the exact revision observed by the caller."""
         return archive_doc_impl(path, purpose, expected_revision)
 
