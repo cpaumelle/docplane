@@ -1,9 +1,10 @@
 const $ = (id) => document.getElementById(id);
+const VIEWS = new Set(["overview", "authoring", "reorganisation", "history"]);
 let token = sessionStorage.getItem("docplane-token") || "";
 let selectedPlan = null;
 
 function headers(extra = {}) {
-  return { Authorization: `Bearer ${token}`, ...extra };
+  return token ? { Authorization: `Bearer ${token}`, ...extra } : { ...extra };
 }
 function key(prefix) { return `${prefix}-${crypto.randomUUID()}`; }
 function esc(value) { const node = document.createElement("span"); node.textContent = String(value ?? ""); return node.innerHTML; }
@@ -13,15 +14,49 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(payload.detail?.upstream?.message || payload.detail?.code || payload.detail || payload.raw || `HTTP ${response.status}`);
   return payload;
 }
+
+function validView(name) { return VIEWS.has(name) ? name : "overview"; }
+function viewFromHash() { return validView((location.hash || "").replace(/^#/, "")); }
 function activate(name) {
+  const view = validView(name);
   document.querySelectorAll(".view").forEach((item) => item.classList.remove("active"));
   document.querySelectorAll(".nav").forEach((item) => item.classList.remove("active"));
-  $(`view-${name}`)?.classList.add("active");
-  document.querySelector(`.nav[data-view="${name}"]`)?.classList.add("active");
-  history.replaceState({}, "", name === "overview" ? "/" : `/?view=${encodeURIComponent(name)}`);
-  if (name === "overview") loadOverview();
-  if (name === "reorganisation") loadReorganisation();
-  if (name === "history") loadHistory();
+  $(`view-${view}`)?.classList.add("active");
+  document.querySelector(`.nav[data-view="${view}"]`)?.classList.add("active");
+  if (view === "overview") loadOverview();
+  if (view === "reorganisation") loadReorganisation();
+  if (view === "history") loadHistory();
+}
+function navigate(name) {
+  const view = validView(name);
+  if (location.hash.replace(/^#/, "") === view) activate(view);
+  else location.hash = view;
+}
+function initialiseNavigation() {
+  const params = new URLSearchParams(location.search);
+  const hash = (location.hash || "").replace(/^#/, "");
+  const requested = validView(hash || params.get("view") || "overview");
+  if (hash !== requested) {
+    const url = new URL(location.href);
+    url.hash = requested;
+    // Initial canonicalisation only: preserve ?view=...&edit=... for authoring.js.
+    history.replaceState({ view: requested }, "", url);
+  }
+  activate(requested);
+}
+
+async function loadProductIdentity() {
+  try {
+    const discovery = await api("/api/control-plane/discovery");
+    const name = String(discovery.site_name || discovery.product || "DocPlane").trim() || "DocPlane";
+    document.querySelectorAll("[data-product-name]").forEach((node) => { node.textContent = name; });
+    document.querySelectorAll("[data-product-aria]").forEach((node) => {
+      node.setAttribute("aria-label", `${name} ${node.dataset.productAria}`);
+    });
+    document.title = `${name} Dashboard`;
+  } catch (_error) {
+    // The dashboard remains usable with the neutral fallback if discovery is unavailable.
+  }
 }
 
 async function connect() {
@@ -100,7 +135,7 @@ async function planAction(action) {
 
 $("token").value = token;
 $("connect").addEventListener("click", () => connect().catch((error) => $("identity").textContent = error.message));
-document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => activate(button.dataset.view)));
+document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
 $("refresh-overview").addEventListener("click", loadOverview);
 $("refresh-history").addEventListener("click", loadHistory);
 $("refresh-reorganisation").addEventListener("click", loadReorganisation);
@@ -110,6 +145,7 @@ $("add-operation").addEventListener("click", () => addOperation().catch((error) 
 $("analyze-plan").addEventListener("click", () => planAction("analyze").catch((error) => $("reorg-detail").textContent = error.message));
 $("validate-plan").addEventListener("click", () => planAction("validate").catch((error) => $("reorg-detail").textContent = error.message));
 $("publish-plan").addEventListener("click", () => planAction("publish").catch((error) => $("reorg-detail").textContent = error.message));
-const requested = new URLSearchParams(location.search).get("view");
-if (requested && $(`view-${requested}`)) activate(requested);
+window.addEventListener("hashchange", () => activate(viewFromHash()));
+initialiseNavigation();
+loadProductIdentity();
 if (token) connect().catch(() => sessionStorage.removeItem("docplane-token"));

@@ -83,6 +83,8 @@ jobs:
           python -m compileall -q docs-api dashboard mcp
           python -m pytest -q \
             docs-api/tests/test_fresh_contract.py \
+            docs-api/tests/test_agent_cold_start_contract.py \
+            docs-api/tests/test_private_fabric_access.py \
             docs-api/tests/test_generated_release.py \
             mcp/tests/test_allowed_hosts.py \
             dashboard/tests/test_authoring.py

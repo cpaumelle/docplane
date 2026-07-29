@@ -12,8 +12,8 @@
 # → Change docs/nav:  PUT /api/docs/pages/{path}
 # → Then deploy:      automatic (or POST /api/docs/deploy)
 
-site_name: My Docs            # ← change me
-site_url: http://localhost:8080
+site_name: !ENV [DOCPLANE_SITE_NAME, "DocPlane"]
+site_url: !ENV [DOCPLANE_SITE_URL, null]   # unset -> header brand links to the site root (Home)
 repo_url: ""
 
 theme:
@@ -21,8 +21,8 @@ theme:
   font: false                 # no external font fetches — good for offline/private nets
   palette:
     scheme: default
-    primary: indigo
-    accent: indigo
+    primary: custom
+    accent: custom
   features:
     - navigation.top
     - search.highlight
@@ -30,6 +30,13 @@ theme:
     - content.code.copy
     - content.tabs.link
   custom_dir: overrides
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+
+extra_css:
+  - assets/theme.css        # neutral shared design tokens
+  - assets/brand-bridge.css # maps Material vars to the tokens
+  - assets/brand.css        # local brand override slot (neutral by default)
 
 hooks:
   - hooks.py
