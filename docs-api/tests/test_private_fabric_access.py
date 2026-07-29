@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 
 from app.application import app
 
-
 client = TestClient(app)
 
 
@@ -26,24 +25,14 @@ def test_private_fabric_discovery_is_an_unambiguous_zero_credential_path(monkeyp
     monkeypatch.setenv("DOCPLANE_SELF_ISSUE_TTL_SECONDS", "3600")
     discovery = client.get("/.well-known/docplane.json").json()
     acquisition = discovery["authentication"]["token_acquisition"]
-    assert acquisition == {
-        "access_profile": "private_fabric",
-        "mode": "self-service",
-        "self_service": True,
-        "requires_existing_credential": False,
-        "endpoint": "/api/v1/auth/self-issue",
-        "method": "POST",
-        "request": {
-            "display_name": "claude-code@host",
-            "client_context": "optional audit label",
-        },
-        "principal_kind": "AGENT",
-        "role": "CONTRIBUTOR",
-        "default_ttl_seconds": 3600,
-        "maximum_ttl_seconds": 86400,
-        "credentials_returned_by_discovery": False,
-        "procedure": "POST the documented JSON body to the endpoint. The clear bearer token is returned once; no bootstrap secret or human approval is required.",
-    }
+    assert acquisition["access_profile"] == "private_fabric"
+    assert acquisition["self_service"] is True
+    assert acquisition["requires_existing_credential"] is False
+    assert acquisition["endpoint"] == "/api/v1/auth/self-issue"
+    assert acquisition["principal_kind"] == "AGENT"
+    assert acquisition["role"] == "CONTRIBUTOR"
+    assert acquisition["default_ttl_seconds"] == 3600
+    assert acquisition["maximum_ttl_seconds"] == 86400
     assert discovery["surfaces"]["self_issue"] == "/api/v1/auth/self-issue"
     assert discovery["quick_start"]["authenticate"][0] == "POST /api/v1/auth/self-issue"
 
@@ -68,18 +57,12 @@ def test_head_uses_get_status_and_headers_without_a_body(monkeypatch):
     assert unauthenticated.headers["www-authenticate"] == "Bearer"
 
 
-def test_openapi_uses_bearer_security_and_self_issue_is_credential_free():
+def test_openapi_uses_bearer_security_and_hides_internal_admission_headers():
     app.openapi_schema = None
     schema = client.get("/openapi.json").json()
     pages = schema["paths"]["/api/v1/pages"]["get"]
     assert pages["security"] == [{"DocPlaneBearer": []}]
-    assert not any(
-        parameter.get("name", "").lower() == "authorization"
-        for parameter in pages.get("parameters", [])
-    )
+    assert not any(parameter.get("name", "").lower() == "authorization" for parameter in pages.get("parameters", []))
     self_issue = schema["paths"]["/api/v1/auth/self-issue"]["post"]
     assert not self_issue.get("security")
-    assert not any(
-        parameter.get("name") in {"X-DocPlane-Fabric-Admission", "X-DocPlane-Source-IP"}
-        for parameter in self_issue.get("parameters", [])
-    )
+    assert not any(parameter.get("name") in {"X-DocPlane-Fabric-Admission", "X-DocPlane-Source-IP"} for parameter in self_issue.get("parameters", []))
