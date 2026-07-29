@@ -40,5 +40,15 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python -m pytest -q migration/tests
-      - name: CI assertion — balanced braces, well-formed markers, no drift
+      - name: Parity contract — two transforms can never silently diverge
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest -q migration/tests/test_redaction_parity.py
+      - name: Fenced-policy tests — redact-in-fence, preserve placeholder, fail closed
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: >-
+          python -m pytest -q migration/tests/test_redaction.py
+          -k "fenced_secret_in_safe_position or fenced_approved_placeholder or fenced_unsafe_replacement"
+      - name: CI assertion — balanced braces, well-formed markers, no drift, fail-closed
         run: python scripts/redaction_ci_scan.py

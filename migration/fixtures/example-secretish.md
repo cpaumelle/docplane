@@ -15,7 +15,8 @@ Synthetic personal-token-shaped string: ghp_abcdefghijklmnopqrstuvwxyz0123456789
 Synthetic bearer header: Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345
 
 ```bash
-# Code fence is preserved verbatim, including the shaped token below.
+# REVISED policy: the shaped token below IS redacted (safe assignment-RHS
+# position), while the approved placeholder is preserved.
 export AKIAZZZZZZZZZZZZZZZZ
 echo "{{password}}"
 ```

@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from migration.redaction import (  # noqa: E402
+    DocumentRefusedError,
     MalformedMarkerError,
     braces_balanced,
     count_redaction_markers,
@@ -34,6 +35,10 @@ from migration.redaction import (  # noqa: E402
 
 FIXTURES = REPO_ROOT / "migration" / "fixtures"
 MALFORMED_FIXTURE = "malformed-marker.md"
+# Fenced fixture whose secret sits in a position with no safe syntactic
+# replacement: the transform must REFUSE it (fail closed) rather than emit
+# broken output or silently pass the token through.
+REFUSE_FIXTURE = "fence-unsafe-refuse.md"
 
 
 def _fail(msg: str) -> None:
@@ -56,6 +61,26 @@ def main() -> int:
             else:
                 violations += 1
                 _fail(f"{path.name}: malformed-marker fixture was NOT rejected")
+            continue
+
+        if path.name == REFUSE_FIXTURE:
+            # This fixture must be REFUSED (fail closed) with a content-free
+            # remediation finding — a fenced secret with no safe replacement.
+            try:
+                redact(text, label=path.stem)
+            except DocumentRefusedError as exc:
+                # Content-free guarantee: no finding may echo secret bytes.
+                leaked = any(
+                    "ghp_" in repr(f) or "AKIA" in repr(f) for f in exc.findings
+                )
+                if leaked:
+                    violations += 1
+                    _fail(f"{path.name}: refusal finding leaked secret-shaped bytes")
+                else:
+                    print(f"ok (refused as required): {path.name}")
+            else:
+                violations += 1
+                _fail(f"{path.name}: unsafe-fence fixture was NOT refused")
             continue
 
         result = redact(text, label=path.stem)
