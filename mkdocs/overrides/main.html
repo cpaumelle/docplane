@@ -85,4 +85,19 @@ document.addEventListener('DOMContentLoaded', function() {
   contentHeader.appendChild(editBtn);
 });
 </script>
+<script>
+// Docs -> dashboard header link (symmetric with the dashboard's "Docs" link).
+document.addEventListener("DOMContentLoaded", function() {
+  var inner = document.querySelector(".md-header__inner");
+  if (!inner || inner.querySelector(".md-header__dashboard")) return;
+  var a = document.createElement("a");
+  a.className = "md-header__dashboard md-header__button md-icon";
+  a.href = "/dashboard/";
+  a.title = "Open the authoring dashboard";
+  a.setAttribute("aria-label", "Authoring dashboard");
+  a.innerHTML = '<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"1.2rem\" height=\"1.2rem\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/></svg>';
+  var search = inner.querySelector(".md-header__option, .md-search");
+  if (search) inner.insertBefore(a, search); else inner.appendChild(a);
+});
+</script>
 {% endblock %}

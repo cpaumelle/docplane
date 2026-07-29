@@ -131,6 +131,29 @@ def test_inline_publish_timeout_is_coherent_through_the_unified_front():
     assert "proxy_send_timeout 300s;" in config
 
 
+def test_dashboard_navigation_preserves_exact_page_deep_links_and_browser_history():
+    app_js = (ROOT / "dashboard/static/app.js").read_text(encoding="utf-8")
+    authoring_js = (ROOT / "dashboard/static/authoring.js").read_text(encoding="utf-8")
+    assert "const url = new URL(location.href);" in app_js
+    assert "url.hash = requested;" in app_js
+    assert 'history.replaceState({ view: requested }, "", url);' in app_js
+    assert "else location.hash = view;" in app_js
+    assert 'window.addEventListener("hashchange"' in app_js
+    assert 'new URLSearchParams(location.search).get("edit")' in authoring_js
+    assert 'history.replaceState({}, "", "#" + name)' not in app_js
+
+
+def test_dashboard_uses_discovered_site_name_and_reciprocal_navigation():
+    app_js = (ROOT / "dashboard/static/app.js").read_text(encoding="utf-8")
+    dashboard = (ROOT / "dashboard/static/index.html").read_text(encoding="utf-8")
+    template = (ROOT / "mkdocs/overrides/main.html").read_text(encoding="utf-8")
+    assert 'api("/api/control-plane/discovery")' in app_js
+    assert "discovery.site_name" in app_js
+    assert "data-product-name" in dashboard
+    assert 'href="/" title="Browse documentation"' in dashboard
+    assert 'a.href = "/dashboard/"' in template
+
+
 def test_dashboard_has_no_submit_or_review_controls():
     from dashboard.combined_app import app as combined_app
 

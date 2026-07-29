@@ -3,16 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>DocPlane</title>
+  <title>DocPlane Dashboard</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/brand.css">  <!-- optional local brand overlay -->
 </head>
 <body>
   <header class="topbar">
-    <div><strong>DocPlane</strong><span>Private-fabric documentation control plane</span></div>
+    <a class="brand" href="/" title="Documentation home">
+      <img class="brand__logo" src="/assets/logo.svg" alt="" onerror="this.style.display='none'">
+      <span class="brand__name" data-product-name>DocPlane</span>
+    </a>
+    <nav class="topnav" data-product-aria="sections" aria-label="DocPlane sections">
+      <a class="navlink" href="/" title="Browse documentation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v4h4"/></svg>Docs</a>
+      <span class="navlink navlink--active" title="Authoring dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</span>
+    </nav>
     <div class="connect"><input id="token" type="password" placeholder="Contributor bearer token"><button id="connect">Connect</button></div>
   </header>
   <div class="shell">
-    <nav class="sidebar" aria-label="DocPlane modules">
+    <nav class="sidebar" data-product-aria="modules" aria-label="DocPlane modules">
       <button class="nav active" data-view="overview">Overview</button>
       <button class="nav" data-view="authoring">Authoring</button>
       <button class="nav" data-view="reorganisation">Reorganisation</button>

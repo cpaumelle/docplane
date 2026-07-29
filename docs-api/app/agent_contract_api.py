@@ -6,6 +6,7 @@ credentials and does not create a second write authority.
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -172,8 +173,10 @@ def _error_catalog_document() -> dict[str, dict[str, str]]:
 @router.get("/.well-known/docplane.json")
 def discovery() -> dict[str, Any]:
     operations = operation_types()
+    site_name = os.environ.get("DOCPLANE_SITE_NAME", "DocPlane").strip() or "DocPlane"
     return {
         "product": "DocPlane",
+        "site_name": site_name,
         "contract_version": "docplane-agent-discovery-v2",
         "entrypoint": DISCOVERY_URL,
         "openapi": "/openapi.json",
