@@ -32,6 +32,16 @@ def test_operation_contract_endpoint_covers_every_runtime_operation():
     assert archive["request_example"]["payload"] == {}
 
 
+def test_cold_start_discovery_links_the_operation_contract_before_writes():
+    response = client.get("/.well-known/docplane.json")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["operation_contracts"]["endpoint"] == CONTRACT_ENDPOINT
+    assert body["operation_contracts"]["operation_endpoint"] == OPERATION_ENDPOINT
+    assert body["surfaces"]["operation_contracts"] == CONTRACT_ENDPOINT
+    assert body["quick_start"]["multi_operation_change"][0].startswith(f"GET {CONTRACT_ENDPOINT}")
+
+
 def test_openapi_publishes_payload_schemas_mapping_and_complete_examples():
     schema = app.openapi()
     runtime = set(operation_types())
