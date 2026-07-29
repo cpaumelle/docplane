@@ -2,18 +2,8 @@
 #
 # Fresh-install integration test — real containers, real named volumes, empty start.
 #
-# This exercises the container/volume boundary that unit tests cannot reach. It
-# is the regression cover for six shipped-runtime defects:
-#
-#   1. generated MkDocs release path resolution (split config directories)
-#   2. docs-site volume ownership on a fresh install
-#   3. MCP host-header validation on a NON-DEFAULT published port
-#   4. the routed host exposing the authoritative agent contract and API
-#   5. neutral brand fallback plus a deployment-local branding overlay
-#   6. one configured site identity shared by rendered docs and dashboard discovery
-#
-# Everything is namespaced under a disposable compose project and disposable
-# volumes, and torn down with `down -v` at the end.
+# This exercises the container/volume boundary and the complete cold-agent route:
+# discovery → self-issue → authenticated publication, without bootstrap material.
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -45,10 +35,14 @@ rand() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
 cat > "$ENV_FILE" <<EOF
 POSTGRES_PASSWORD=$(rand)
-DOCPLANE_BOOTSTRAP_TOKEN=$(rand)
+DOCPLANE_BOOTSTRAP_TOKEN=
 DOCPLANE_EVENT_CURSOR_SECRET=$(rand)
 MCP_API_KEY=$(rand)
 DOCPLANE_TOKEN=
+DOCPLANE_ACCESS_PROFILE=private_fabric
+DOCPLANE_SELF_ISSUE_TTL_SECONDS=3600
+DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR=1
+DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR=10
 DOCPLANE_API_PORT=127.0.0.1:${API_PORT}
 DOCPLANE_DASHBOARD_PORT=127.0.0.1:${DASH_PORT}
 DOCPLANE_SITE_PORT=127.0.0.1:${SITE_PORT}
@@ -72,29 +66,54 @@ for _ in $(seq 1 60); do
 done
 curl -fsS "$API/healthz" >/dev/null || fail "docs-api never became healthy"
 
-log "2. site-init ran and owns the docs-site volume"
+log "2. routed HEAD and Link discovery work before any credential exists"
+HEADERS=$(mktemp)
+curl -fsSI "$FRONT/" > "$HEADERS" || fail "HEAD / failed"
+grep -qi '^Link: </.well-known/docplane.json>; rel="describedby"; type="application/json"' "$HEADERS" || fail "root response did not advertise discovery"
+rm -f "$HEADERS"
+curl -fsSI "$FRONT/.well-known/docplane.json" >/dev/null || fail "HEAD discovery failed"
+curl -fsSI "$FRONT/healthz" >/dev/null || fail "HEAD health failed"
+NOAUTH_HEAD=$(curl -s -o /dev/null -w '%{http_code}' -I "$FRONT/api/v1/pages")
+[ "$NOAUTH_HEAD" = "401" ] || fail "unauthenticated HEAD pages returned $NOAUTH_HEAD"
+
+log "3. cold agent discovers and self-issues with no bootstrap secret"
+DISCOVERY=$(curl -fsS "$FRONT/.well-known/docplane.json")
+python3 - "$DISCOVERY" <<'PY'
+import json,sys
+body=json.loads(sys.argv[1])
+assert body["contract_version"] == "docplane-agent-discovery-v3"
+a=body["authentication"]["token_acquisition"]
+assert a["access_profile"] == "private_fabric"
+assert a["self_service"] is True
+assert a["requires_existing_credential"] is False
+assert a["endpoint"] == "/api/v1/auth/self-issue"
+assert body["site_name"] == "Integration DocPlane"
+PY
+ISSUED=$(curl -fsS -X POST -H 'Content-Type: application/json' "$FRONT/api/v1/auth/self-issue" -d '{"display_name":"integration-cold-agent","client_context":"fresh-install proof"}')
+TOKEN=$(printf '%s' "$ISSUED" | python3 -c 'import json,sys; b=json.load(sys.stdin); assert b["principal_kind"]=="AGENT" and b["role"]=="CONTRIBUTOR" and b["access_profile"]=="private_fabric"; print(b["token"])')
+[ -n "$TOKEN" ] || fail "self-issue returned no token"
+SECOND=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$FRONT/api/v1/auth/self-issue" -d '{"display_name":"duplicate-agent"}')
+[ "$SECOND" = "429" ] || fail "per-source issuance limit returned $SECOND, expected 429"
+AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
+curl -fsSI -H "Authorization: Bearer $TOKEN" "$FRONT/api/v1/pages?limit=1" >/dev/null || fail "authenticated HEAD pages failed"
+echo "    discovery -> self-issue -> bearer auth; duplicate issuance rate-limited"
+
+log "4. site-init ran and owns the docs-site volume"
 compose ps -a --format '{{.Service}} {{.State}}' | grep -E '^site-init' || fail "site-init service missing"
 OWNER=$(compose exec -T docs-api sh -c 'stat -c "%u:%g" /data/site')
 [ "$OWNER" = "10001:10001" ] || fail "docs-site owned by $OWNER, expected 10001:10001"
 compose exec -T docs-api sh -c 'test -w /data/site' || fail "docs-site not writable by docs-api"
 compose exec -T docs-api sh -c 'test -f /data/site/.docplane-site-init' || fail "site-init sentinel missing"
-echo "    docs-site 10001:10001, writable, sentinel present"
 
-log "3. bootstrap a contributor"
-TOKEN=$(DOCPLANE_API_URL="$API" sh scripts/bootstrap-contributor.sh "Integration Test" HUMAN | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-[ -n "$TOKEN" ] || fail "no contributor token issued"
-AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
-
-log "4. publish the FIRST page (exercises first-release promotion)"
+log "5. self-issued agent publishes the FIRST page"
 CID=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-change' "$API/api/v1/changes" -d '{"title":"Integration","purpose":"fresh-install integration test","workspace_key":"work"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["change_id"])')
 curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-op' "$API/api/v1/changes/$CID/operations" -d '{"operation_type":"CREATE_PAGE","payload":{"path":"work/itest.md","title":"Integration Test","nav_path":"Test/Integration","content":"# Integration Test\n\nSynthetic fresh-install probe.","workspace_key":"work"}}' >/dev/null
 curl -fsS -X POST "${AUTH[@]}" "$API/api/v1/changes/$CID/validate" -d '{}' >/dev/null
 PUB=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-publish' "$API/api/v1/changes/$CID/publish" -d '{}')
 DEPLOY=$(printf '%s' "$PUB" | python3 -c 'import json,sys; print(json.load(sys.stdin)["publication_receipt"]["deployment"]["status"])')
 [ "$DEPLOY" = "COMPLETED" ] || fail "first-release promotion did not COMPLETE"
-echo "    deployment COMPLETED"
 
-log "5. certification CURRENT with matching identities"
+log "6. certification CURRENT with matching identities"
 CERT=$(curl -fsS "${AUTH[@]}" "$API/api/v1/certification/status")
 python3 - "$CERT" <<'PY'
 import json,sys
@@ -104,29 +123,22 @@ assert c["working_state_identity"]==c["deployed_state_identity"]
 assert c["release_id"]
 PY
 
-log "6. generated site serves the page with configured identity"
+log "7. generated site serves the page with configured identity and HTML discovery"
 HTML=$(curl -fsS "$FRONT/work/itest/")
 printf '%s' "$HTML" | grep -q "Synthetic fresh-install probe" || fail "generated page missing expected content"
 printf '%s' "$HTML" | grep -q "Integration DocPlane" || fail "DOCPLANE_SITE_NAME did not reach MkDocs"
+printf '%s' "$HTML" | grep -q 'rel="describedby" href="/.well-known/docplane.json"' || fail "HTML discovery link missing"
 
-log "7. routed human and agent surfaces share configured identity"
+log "8. routed human and agent surfaces use portable service DNS"
 curl -fsS "$FRONT/dashboard/" >/dev/null || fail "dashboard route failed"
 curl -fsS "$FRONT/assets/app.js" >/dev/null || fail "dashboard asset route failed"
-DISCOVERY=$(curl -fsS "$FRONT/.well-known/docplane.json")
-python3 - "$DISCOVERY" <<'PY'
-import json,sys
-d=json.loads(sys.argv[1])
-assert d["contract_version"] == "docplane-agent-discovery-v2"
-assert d["product"] == "DocPlane"
-assert d["site_name"] == "Integration DocPlane"
-PY
-curl -fsS "$FRONT/openapi.json" | grep -q '"title":"DocPlane"' || fail "OpenAPI is not routed"
+curl -fsS "$FRONT/openapi.json" | grep -q '"DocPlaneBearer"' || fail "OpenAPI bearer scheme is not routed"
 curl -fsS "$FRONT/healthz" | grep -q '"page_counts"' || fail "authority health is not routed"
 NOAUTH=$(curl -s -o /dev/null -w '%{http_code}' "$FRONT/api/v1/capabilities")
 [ "$NOAUTH" = "401" ] || fail "unauthenticated routed API returned $NOAUTH"
 curl -fsS "${AUTH[@]}" "$FRONT/api/v1/pages?limit=1" | grep -q '"total"' || fail "authenticated routed API failed"
 
-log "8. neutral brand fallback and local overlay both serve"
+log "9. neutral brand fallback and local overlay both serve"
 BASE="$FRONT/assets"
 curl -fsS "$BASE/brand.css" | grep -q "brand-override slot" || fail "neutral brand.css fallback failed"
 curl -fsS "$BASE/logo.svg" | grep -q 'aria-label="DocPlane"' || fail "neutral logo fallback failed"
@@ -140,13 +152,13 @@ curl -fsS "$BASE/favicon.svg" | grep -q "integration-favicon" || fail "favicon o
 rm -f branding/brand.css branding/logo.svg branding/favicon.svg
 curl -fsS "$BASE/brand.css" | grep -q "brand-override slot" || fail "neutral fallback did not resume"
 
-log "9. nginx welcome content cleaned and sentinel retained"
+log "10. nginx welcome content cleaned and sentinel retained"
 compose exec -T docs-api sh -c 'test ! -f /data/site/50x.html' || fail "nginx welcome content survived"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$FRONT/50x.html")
 [ "$CODE" = "404" ] || fail "nginx welcome asset still served"
 compose exec -T docs-api sh -c 'test -f /data/site/.docplane-site-init' || fail "sentinel deleted"
 
-log "10. MCP on NON-DEFAULT port ${MCP_PORT}"
+log "11. MCP on NON-DEFAULT port ${MCP_PORT}"
 sed -i "s|^DOCPLANE_TOKEN=.*|DOCPLANE_TOKEN=${TOKEN}|" "$ENV_FILE"
 export DOCPLANE_TOKEN="$TOKEN"
 compose up --build -d docs-mcp >/dev/null
@@ -162,7 +174,7 @@ printf '%s' "$READ" | grep -q 'work/itest.md' || fail "MCP read_doc failed"
 BAD=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$MCP" -H 'Authorization: Bearer wrong-key' -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$INIT")
 [ "$BAD" = "401" ] || fail "invalid MCP key returned $BAD"
 
-log "11. routed mutation forwards auth/idempotency and waits for publication"
+log "12. routed mutation forwards auth/idempotency and waits for publication"
 compose up -d --force-recreate site-init >/dev/null 2>&1 || true
 compose exec -T docs-api sh -c 'test -w /data/site' || fail "site-init not idempotent"
 RETRY=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-retry' "$FRONT/api/v1/publication/retry" -d '{}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
