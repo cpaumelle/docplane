@@ -13,6 +13,8 @@ DocPlane always uses named bearer credentials for protected API reads and writes
 
 The complete threat model, trusted-front requirements, token constraints and configuration are documented in [Authentication profiles](docs/architecture/authentication-profiles.md). Do not enable `private_fabric` on a publicly reachable hostname.
 
+Private-fabric issuance is dual-gated: docs-api must be configured for `private_fabric`, and the request must arrive through the trusted routed front, which injects an internal admission marker on the exact self-issue route. Direct docs-api reachability does not admit issuance.
+
 Clients must start from `/.well-known/docplane.json`; it reports the active profile and exact credential-acquisition path.
 
 ## Authoring contract
