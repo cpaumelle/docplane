@@ -111,6 +111,19 @@ curl -fsS -X POST \
 
 A stale revision is not a successful no-op. On `PAGE_REVISION_STALE`, re-read the current page, rebase the intended edit and retry with the returned current revision and a new idempotency key.
 
+### Redacted pages
+
+Migration redaction markers such as `<REDACTED:...>` are sanitised authored bytes. They are not references that DocPlane rehydrates during publication, and clear replacement secrets must never be restored to documentation.
+
+The bundled MCP fails closed around these markers:
+
+- `read_doc` reports marker presence/count and whether full-document replacement is allowed;
+- full replacement is refused when the current page or submitted document contains markers;
+- bounded edits are allowed only on marker-free explicit sections with marker-free submitted content;
+- marker-bearing sections belong to the governed redaction-remediation workflow.
+
+Raw HTTP remains available to an explicitly governed remediation principal, but ordinary agents should never replay, remove, relocate or reconstruct redaction markers through a full-page rewrite.
+
 ## 5. Create a page through an explicit change
 
 Creation uses the multi-operation workflow. Consult the live operation contract before constructing the operation:
@@ -258,4 +271,4 @@ A successful close-out records content-free identifiers such as page resource ID
 
 ## MCP boundary
 
-The bundled DocPlane MCP server is a client of the same contributor API; it does not own document state. Deployments may expose a local MCP adapter for convenient `search_docs`, `read_doc`, `list_docs`, `write_doc` and `archive_doc` tools. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
+The bundled DocPlane MCP server is a client of the same contributor API; it does not own document state. Deployments may expose a local MCP adapter for convenient `search_docs`, `read_doc`, `list_docs`, `write_doc`, bounded section tools, metadata patching and `archive_doc`. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
