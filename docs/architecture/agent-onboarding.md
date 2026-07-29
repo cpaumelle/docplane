@@ -120,9 +120,9 @@ The bundled MCP fails closed around these markers:
 - `read_doc` reports marker presence/count and whether full-document replacement is allowed;
 - full replacement is refused when the current page or submitted document contains markers;
 - bounded edits are allowed only on marker-free explicit sections with marker-free submitted content;
-- marker-bearing sections belong to the governed redaction-remediation workflow.
+- marker-bearing sections belong to a separately governed redaction-remediation workflow using an attributable remediation principal.
 
-Raw HTTP remains available to an explicitly governed remediation principal, but ordinary agents should never replay, remove, relocate or reconstruct redaction markers through a full-page rewrite.
+Raw HTTP remains available to that explicitly governed remediation workflow, but ordinary agents should never replay, remove, relocate or reconstruct redaction markers through a full-page rewrite.
 
 ## 5. Create a page through an explicit change
 
