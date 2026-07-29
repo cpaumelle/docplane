@@ -245,9 +245,9 @@ def test_bounded_section_tools_preserve_revision_and_section_hash(
 
 def test_clean_bounded_section_is_allowed_when_redactions_exist_elsewhere(monkeypatch, page):
     context = _clean_context(revision="revision-read-by-caller")
-    context["content"] = context["content"].replace(
-        "Other text.",
-        "Other text.\n<REDACTED:SSH_PASSWORD:FAMILY-0027>",
+    context["content"] += (
+        "\n## Redacted appendix {#redacted-appendix}\n\n"
+        "<REDACTED:SSH_PASSWORD:FAMILY-0027>\n"
     )
     calls = _successful_change_recorder(monkeypatch, page, context=context)
 
