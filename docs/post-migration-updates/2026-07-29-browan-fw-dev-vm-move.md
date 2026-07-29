@@ -19,9 +19,11 @@ points at the wrong machine:
 
 Two consequences beyond the identifiers:
 
-1. **The VM1124 peer-SSH section is now non-functional as documented.** Both keys are
-   source-IP restricted; the direction into VM1124 is pinned to `from="10.44.1.13"`, which the
-   VM no longer has. The page presents this as working.
+1. **The VM1124 peer-SSH section's IP is stale on the page, but the live config is correct.**
+   Both keys are source-IP restricted. The restriction into VM1124 was amended to
+   `from="10.35.1.113"` on 2026-07-28; both directions test clean (evidence below). The page
+   still prints the old `10.44.1.13` and needs updating, but **no access is broken**.
+   Separately, VM1124's own `~/.ssh/config` alias *was* stale and has been fixed.
 2. **A second VM with the same name existed on px2 until 2026-07-29.** Anyone following the page
    would have found `browan-fw-dev` on px2 (VMID 2513) and reasonably assumed it was the live
    machine. It is a stopped legacy shell.
@@ -45,10 +47,15 @@ Add to the Operational notes / Known issues section:
 > onto the fabric. It remains stopped and is not a fallback: its guest netplan matches the
 > interface by the *old* MAC, so it would boot with no working network.
 
-Amend the VM1124 peer-SSH section: the `from="10.44.1.13"` restriction on the key installed in
-VM1124's `authorized_keys` must be updated to `from="10.35.1.113"` before that direction works
-again. Flag as **broken until amended** rather than silently correcting the IP — the change has
-to be made on VM1124, not in the docs.
+Amend the VM1124 peer-SSH table: the restriction on the key installed in VM1124's
+`authorized_keys` now reads `from="10.35.1.113"` (amended on the VM 2026-07-28). Update the
+printed value; the mechanism and the key names are unchanged and still correct. Note that the
+key comment is still `vm2513-to-vm1124` — cosmetic, deliberately left alone so the installed
+key and the doc agree.
+
+Also update the VM1124 row itself: **VM1124 has moved from px1-silverstone to px2-monza**. It
+kept `10.44.1.124`, so nothing about reachability changed, but the page's px1 reference is
+wrong.
 
 Retain the USB passthrough warning verbatim — it correctly predicted this migration's
 requirement and was followed.
@@ -62,6 +69,52 @@ Add one operational note to the ST-LINK verification section:
 ## Evidence
 
 All commands run 2026-07-29.
+
+**Peer SSH — verified working both directions** (run as scripts, not nested quotes, so the
+hostnames printed are the real remote ones):
+
+```
+# on 5513 (10.35.1.113), using /root/.ssh/vm2513_to_vm1124
+running on: browan-fw-dev (10.35.1.113)
+  -> landed on: dev-1124-trevarn as ubuntu
+
+# on VM1124, using /home/ubuntu/.ssh/vm1124_to_vm2513
+OK: reached browan-fw-dev as root
+```
+
+The restriction was amended on VM1124 the previous day; its own backup proves it:
+
+```
+$ diff authorized_keys.bak-20260728T111814Z authorized_keys
+20c20
+< from="10.44.1.13"  ssh-ed25519 <KEY> vm2513-to-vm1124
+---
+> from="10.35.1.113" ssh-ed25519 <KEY> vm2513-to-vm1124
+```
+
+VM1124 has also moved node, keeping its address:
+
+```
+$ pvesh get /cluster/resources --type vm   # (filtered)
+  vmid=1124 name=dev-1124-trevarn node=px2-monza status=running
+$ ssh ubuntu@10.44.1.124 'ip -4 -o addr show'
+  eth0 10.44.1.124/24
+```
+
+**`~/.ssh/config` alias on VM1124 — was stale, now fixed.** It still pointed at the old address,
+so `ssh 2513` from VM1124 would have hung on an IP the VM no longer has:
+
+```
+# before                          # after (backup: config.bak-20260729T060748Z)
+Host 2513                         Host 2513 5513
+    HostName 10.44.1.13               HostName 10.35.1.113
+    User root                         User root
+    IdentityFile ~/.ssh/vm1124_to_vm2513
+```
+
+Both alias names were kept so existing muscle memory and any scripts using `2513` keep working.
+Verified: `ssh 2513` and `ssh 5513` both resolve to `root@10.35.1.113` and connect to
+`browan-fw-dev`.
 
 Live VM on px5:
 
@@ -118,17 +171,24 @@ idProduct=3748` re-enumeration events, consistent with the transient first-probe
 ## Confidence
 
 High on every identifier (VMID, node, IP, MAC, onboot, USB) — each is a direct command output
-above.
+above. Peer-SSH is now **tested, not inferred** (both directions, evidence above).
 
-Lower on two points, stated honestly:
+One point remains lower-confidence:
 
-- **VM1124 peer-SSH.** I inferred the breakage from the documented `from="10.44.1.13"`
-  restriction plus the confirmed IP change. I did **not** test the SSH path in either direction,
-  and did not inspect VM1124's `authorized_keys`. The fix belongs on VM1124 and should be
-  verified there before the page is marked correct.
 - **Transient ST-LINK probe failure.** Observed once and cleared on retry. I did not determine
   the root cause; the re-enumeration in `dmesg` is a plausible explanation, not a proven one.
   Recorded as an operational note rather than a diagnosis.
+
+### Correction to this entry (2026-07-29)
+
+As first written, this entry claimed the VM1124 peer-SSH section was "non-functional as
+documented", inferred from the IP change without testing. **That was wrong.** The `from=`
+restriction had already been amended on VM1124 at 2026-07-28 11:18Z — before this entry was
+raised — and both directions verify clean. The claim has been corrected above rather than
+deleted, so the audit trail shows what was asserted and on what basis.
+
+The one thing that *was* stale in that path, and is now fixed, was VM1124's `~/.ssh/config`
+alias (below) — not the `authorized_keys` restriction.
 
 ## Also worth folding in (lower priority)
 
@@ -155,8 +215,9 @@ Single page, `services/microshare-dev/browan-fw-dev.md`:
 
 1. Quick-reference table — VMID, hostname/node, IP, SSH lines.
 2. Access section — replace both `10.44.1.13` occurrences and the `ssh 2513` alias.
-3. VM1124 peer-SSH subsection — mark the `from="10.44.1.13"` direction broken pending an
-   `authorized_keys` amendment on VM1124.
+3. VM1124 peer-SSH subsection — update the printed restriction to `from="10.35.1.113"` (live
+   config is already correct; no access is broken), correct VM1124's node to px2-monza, and
+   record the `~/.ssh/config` alias fix.
 4. Operational notes — add the 2026-07-29 move entry (text above).
 5. USB passthrough — keep the warning; add the transient-probe note to the verification block.
 6. Firmware source reference — refresh the contents table, note the absence of version control,
