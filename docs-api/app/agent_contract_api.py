@@ -1,8 +1,8 @@
 """HTTP-first agent discovery and read contract for DocPlane.
 
 This module owns the unauthenticated cold-start document and the two read
-endpoints whose original response semantics were ambiguous. It does not issue
-credentials and does not create a second write authority.
+endpoints whose original response semantics were ambiguous. Credential issuance
+is implemented separately so it cannot become a second content-write authority.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
+from app.access_policy import current_access_policy
 from app.agent_api import _page_dict, _page_select
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
@@ -33,7 +34,7 @@ DISCOVERY_URL = "/.well-known/docplane.json"
 ERROR_CATALOG: dict[str, dict[str, str]] = {
     "AUTH_REQUIRED": {
         "message": "An individual DocPlane contributor bearer token is required.",
-        "remedy": "Ask a DocPlane operator to issue a named token, then send Authorization: Bearer <token>.",
+        "remedy": "Follow authentication.token_acquisition in /.well-known/docplane.json, then send Authorization: Bearer <token>.",
     },
     "AUTH_SCHEME_INVALID": {
         "message": "The Authorization header is not a valid bearer credential.",
@@ -41,15 +42,23 @@ ERROR_CATALOG: dict[str, dict[str, str]] = {
     },
     "AUTH_TOKEN_INVALID": {
         "message": "The bearer token is unknown or malformed.",
-        "remedy": "Check that the complete issued token was supplied, or ask an operator for a replacement.",
+        "remedy": "Check that the complete issued token was supplied, or acquire a replacement using the discovery contract.",
     },
     "AUTH_PRINCIPAL_INACTIVE": {
         "message": "The principal or token has been revoked or disabled.",
-        "remedy": "Stop retrying this credential and ask an operator to issue or reactivate the correct named principal.",
+        "remedy": "Stop retrying this credential and acquire the correct named principal token.",
     },
     "AUTH_TOKEN_EXPIRED": {
         "message": "The bearer token has expired.",
-        "remedy": "Ask an operator to issue a new time-bounded token.",
+        "remedy": "Acquire a new time-bounded token using the discovery contract.",
+    },
+    "SELF_ISSUE_DISABLED": {
+        "message": "Self-service credential issuance is disabled for this deployment.",
+        "remedy": "Follow the managed token-acquisition procedure in the discovery contract.",
+    },
+    "SELF_ISSUE_RATE_LIMITED": {
+        "message": "The private-fabric credential issuance ceiling was reached.",
+        "remedy": "Reuse an existing unexpired token or retry after the one-hour window.",
     },
     "IDEMPOTENCY_KEY_REQUIRED": {
         "message": "This mutation requires an Idempotency-Key header.",
@@ -170,14 +179,47 @@ def _error_catalog_document() -> dict[str, dict[str, str]]:
     }
 
 
+def _token_acquisition_document() -> dict[str, Any]:
+    policy = current_access_policy()
+    if policy.self_service:
+        return {
+            "access_profile": policy.profile,
+            "mode": "self-service",
+            "self_service": True,
+            "requires_existing_credential": False,
+            "endpoint": "/api/v1/auth/self-issue",
+            "method": "POST",
+            "request": {"display_name": "claude-code@host", "client_context": "optional audit label"},
+            "principal_kind": "AGENT",
+            "role": "CONTRIBUTOR",
+            "default_ttl_seconds": policy.self_issue_ttl_seconds,
+            "maximum_ttl_seconds": 86400,
+            "credentials_returned_by_discovery": False,
+            "procedure": "POST the documented JSON body to the endpoint. The clear bearer token is returned once; no bootstrap secret or human approval is required.",
+        }
+    return {
+        "access_profile": policy.profile,
+        "mode": "operator-issued",
+        "self_service": False,
+        "requires_existing_credential": True,
+        "endpoint": None,
+        "credentials_returned_by_discovery": False,
+        "request": ["display_name", "principal_kind", "requested_expiry"],
+        "procedure": "Ask a DocPlane operator to issue a named contributor token. The bootstrap credential remains operator-only and is never exposed over discovery.",
+        "operator_helper": "scripts/bootstrap-contributor.sh",
+        "agent_default_expiry": "24h when the helper is used without an explicit expiry",
+    }
+
+
 @router.get("/.well-known/docplane.json")
 def discovery() -> dict[str, Any]:
     operations = operation_types()
     site_name = os.environ.get("DOCPLANE_SITE_NAME", "DocPlane").strip() or "DocPlane"
+    acquisition = _token_acquisition_document()
     return {
         "product": "DocPlane",
         "site_name": site_name,
-        "contract_version": "docplane-agent-discovery-v2",
+        "contract_version": "docplane-agent-discovery-v3",
         "entrypoint": DISCOVERY_URL,
         "openapi": "/openapi.json",
         "health": "/healthz",
@@ -191,15 +233,7 @@ def discovery() -> dict[str, Any]:
             "scheme": "Bearer",
             "header": "Authorization: Bearer <token>",
             "principal_model": "one named token per human, agent or automation principal",
-            "token_acquisition": {
-                "mode": "operator-issued",
-                "self_service": False,
-                "credentials_returned_by_discovery": False,
-                "request": ["display_name", "principal_kind", "requested_expiry"],
-                "procedure": "Ask a DocPlane operator to issue a named contributor token. The bootstrap credential remains operator-only and is never exposed over discovery.",
-                "operator_helper": "scripts/bootstrap-contributor.sh",
-                "agent_default_expiry": "24h when the helper is used without an explicit expiry",
-            },
+            "token_acquisition": acquisition,
         },
         "required_headers": {
             "authenticated_requests": ["Authorization"],
@@ -208,9 +242,14 @@ def discovery() -> dict[str, Any]:
         },
         "quick_start": {
             "discover": [
-                "GET /.well-known/docplane.json",
+                "HEAD / and follow the Link rel=describedby header, or GET /.well-known/docplane.json",
                 "GET /openapi.json",
             ],
+            "authenticate": (
+                ["POST /api/v1/auth/self-issue", "Use the returned token as Authorization: Bearer <token>."]
+                if acquisition["self_service"]
+                else ["Follow authentication.token_acquisition.procedure."]
+            ),
             "read": [
                 "GET /api/v1/search?q=<term>",
                 "GET /api/v1/resolve?path=<markdown-path>",
@@ -231,6 +270,7 @@ def discovery() -> dict[str, Any]:
         },
         "operation_types": operations,
         "surfaces": {
+            "self_issue": "/api/v1/auth/self-issue" if acquisition["self_service"] else None,
             "pages": "/api/v1/pages",
             "search": "/api/v1/search",
             "resolve": "/api/v1/resolve",
