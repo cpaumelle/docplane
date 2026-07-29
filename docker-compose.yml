@@ -75,8 +75,15 @@ services:
       DB_NAME: ${POSTGRES_DB:-docs}
       DB_USER: ${POSTGRES_USER:-docs}
       DB_PASS: ${POSTGRES_PASSWORD}
-      DOCPLANE_BOOTSTRAP_TOKEN: ${DOCPLANE_BOOTSTRAP_TOKEN:?set DOCPLANE_BOOTSTRAP_TOKEN}
+      # Operator-only credential administration. Optional in private_fabric mode.
+      DOCPLANE_BOOTSTRAP_TOKEN: ${DOCPLANE_BOOTSTRAP_TOKEN:-}
       DOCPLANE_EVENT_CURSOR_SECRET: ${DOCPLANE_EVENT_CURSOR_SECRET:?set DOCPLANE_EVENT_CURSOR_SECRET}
+      # managed (safe default) or private_fabric (fabric reachability admits
+      # short-lived self-issued AGENT contributors; bearer auth still required).
+      DOCPLANE_ACCESS_PROFILE: ${DOCPLANE_ACCESS_PROFILE:-managed}
+      DOCPLANE_SELF_ISSUE_TTL_SECONDS: ${DOCPLANE_SELF_ISSUE_TTL_SECONDS:-86400}
+      DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR: ${DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR:-10}
+      DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR: ${DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR:-120}
       DOCS_CONTENT_DIR: /data/docs
       MKDOCS_CONFIG_DIR: /data/mkdocs
       MKDOCS_BASE_CONFIG: /app/mkdocs/mkdocs.yml

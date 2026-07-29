@@ -1,6 +1,22 @@
 #!/bin/sh
 set -eu
 
+usage() {
+  cat >&2 <<'USAGE'
+Usage: bootstrap-contributor.sh [display_name] [kind] [expiry]
+  display_name  principal display name       (default: "DocPlane Administrator")
+  kind          HUMAN | AGENT | AUTOMATION    (default: HUMAN)
+  expiry        never | <n>h | <n>d | RFC3339 (default: policy; AGENT defaults to 24h)
+
+Managed-mode operator helper. Requires DOCPLANE_BOOTSTRAP_TOKEN and prints the
+new principal plus its clear token (shown once) as JSON on stdout.
+
+Private-fabric agents do not use this helper: discover and POST directly to
+/api/v1/auth/self-issue with no existing credential.
+USAGE
+}
+case "${1:-}" in -h|--help|help) usage; exit 0 ;; esac
+
 : "${DOCPLANE_BOOTSTRAP_TOKEN:?set DOCPLANE_BOOTSTRAP_TOKEN}"
 
 # Prefer an explicit URL. Otherwise derive a loopback URL from the deployment's

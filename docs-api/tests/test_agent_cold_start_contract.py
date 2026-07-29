@@ -87,7 +87,7 @@ def test_discovery_is_the_complete_unauthenticated_starting_point():
     response = client.get("/.well-known/docplane.json")
     assert response.status_code == 200
     body = response.json()
-    assert body["contract_version"] == "docplane-agent-discovery-v2"
+    assert body["contract_version"] == "docplane-agent-discovery-v3"
     assert body["authentication"]["token_acquisition"]["mode"] == "operator-issued"
     assert body["authentication"]["token_acquisition"]["self_service"] is False
     assert body["authentication"]["token_acquisition"]["credentials_returned_by_discovery"] is False

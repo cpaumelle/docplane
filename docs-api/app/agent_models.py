@@ -24,6 +24,16 @@ class PrincipalToken(BaseModel):
     expires_at: datetime | None
 
 
+class SelfIssueRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    client_context: str | None = Field(default=None, min_length=1, max_length=500)
+
+
+class SelfIssuedPrincipalToken(PrincipalToken):
+    access_profile: Literal["private_fabric"]
+    issued_via: Literal["fabric_reachability"]
+
+
 class ChangeCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     purpose: str = Field(min_length=1, max_length=4000)
