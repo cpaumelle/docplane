@@ -1,8 +1,11 @@
 # ⚠️  PARTIALLY GENERATED — read before editing.
 #
 # This file holds the HAND-MAINTAINED mkdocs config (site name, theme, plugins,
-# markdown_extensions, hooks) plus the API-managed redirect_maps block, which
-# docs-api appends to when a page is moved (small, rare, committable changes).
+# markdown_extensions, hooks).
+#
+# Page-move REDIRECTS are no longer appended here. They live in docs.redirects
+# and are emitted by the generator into the child config alongside the nav, so
+# the database stays the single source of truth for compatibility routes.
 #
 # The site NAV is NOT here. It is derived from PostgreSQL and regenerated on
 # every deploy into a separate, git-IGNORED child config, mkdocs.nav.yml
@@ -41,15 +44,21 @@ extra_css:
 hooks:
   - hooks.py
 
+# Declared as a MAPPING, not a list, and that is load-bearing.
+#
+# The generator emits DB-derived compatibility routes into the child config as
+# plugins.redirects.redirect_maps. MkDocs deep-merges mapping-form config across
+# INHERIT but REPLACES list-form values outright, so with a list here the child's
+# plugins block would silently drop `search` and every other plugin. Keep this a
+# mapping, and add new plugins here rather than in the generated child.
 plugins:
-  - redirects:
-      redirect_maps:
-        # docs-api appends page-move redirects here (8-space indent, inserted
-        # just above the '  - search' line). The placeholder keeps this block a
-        # valid non-empty YAML mapping; its source path never exists so the
-        # only artifact is a harmless _moved/placeholder.html redirect page.
-        _moved/placeholder.md: index.md
-  - search
+  redirects:
+    redirect_maps:
+      # Placeholder keeps the map a valid non-empty mapping when the corpus has
+      # no redirects. Its source path never exists, so the only artifact is a
+      # harmless _moved/placeholder redirect page.
+      _moved/placeholder.md: index.md
+  search: {}
 
 markdown_extensions:
   - tables
