@@ -32,6 +32,9 @@ def _clean_context(*, revision: str = "revision-current") -> dict:
             "# Example\n\n"
             "## Acceptance {#acceptance}\n\n"
             "Current acceptance text.\n\n"
+            "```markdown\n"
+            "## Not a real section {#fake-inside-fence}\n"
+            "```\n\n"
             "## Other {#other}\n\n"
             "Other text.\n"
         ),
@@ -241,6 +244,14 @@ def test_bounded_section_tools_preserve_revision_and_section_hash(
     assert operation["expected_revision"] == "revision-read-by-caller"
     assert operation["expected_section_hash"] == "section-hash-read-by-caller"
     assert operation["payload"]["heading_id"] == "acceptance"
+
+
+def test_section_parser_ignores_explicit_heading_inside_fenced_code():
+    context = _clean_context()
+    assert docs._explicit_section_content(context["content"], "fake-inside-fence") is None
+    real = docs._explicit_section_content(context["content"], "acceptance")
+    assert real is not None
+    assert "Current acceptance text." in real
 
 
 def test_clean_bounded_section_is_allowed_when_redactions_exist_elsewhere(monkeypatch, page):
