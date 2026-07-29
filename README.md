@@ -74,7 +74,7 @@ Migration redaction markers are sanitised authored bytes, not references that Do
 - full-document replacement is refused when the current page or submitted document contains a `<REDACTED:...>` marker;
 - bounded section edits may proceed on a marker-free explicit section even when another section contains markers;
 - a bounded edit is refused when its addressed section or submitted content contains a marker;
-- marker-bearing sections must be handled through the governed redaction-remediation workflow, and clear secrets must never be restored to documentation.
+- marker-bearing sections must be handled through a separately governed redaction-remediation workflow with an attributable remediation principal; clear secrets must never be restored to documentation.
 
 The MCP surface remains a convenience layer. Raw HTTP and the machine-readable operation contract remain complete and authoritative.
 
