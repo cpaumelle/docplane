@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 
+{% block extrahead %}
+  {{ super() }}
+  <!-- Machine-readable agent contract discovery -->
+  <link rel="describedby" href="/.well-known/docplane.json" type="application/json">
+{% endblock %}
+
+
 {% block scripts %}
 {{ super() }}
 <link rel="stylesheet" href="/assets/inline-editor.css">
