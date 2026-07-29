@@ -71,6 +71,7 @@ the branch tip, not inside a file — rebase and push again.
 | `2026-07-27-occupancy-cutover-doc-corrections.md` | `services/occupancy-pipeline-hub2/{client-validation,report-api}.md` | PENDING |
 | `2026-07-27-dinard-tv-geo-doc-corrections.md` | 6 pages — managed-consumers, address-plan, dinard-fr-site, geo-execution, fire-tv-setup, engineering-backlog | PENDING |
 | `2026-07-28-cbre-occupancy-hub2-switchoff.md` | `operations/occupancy-hub2-switchoff.md` + 4 others | PENDING |
+| `2026-07-29-browan-fw-dev-vm-move.md` | `services/microshare-dev/browan-fw-dev.md` | PENDING |
 
 ## Snapshots vs fetch-on-demand
 
