@@ -57,6 +57,19 @@ That document contains, for every supported `operation_type`:
 
 The same schemas, mapping and examples are embedded in `/openapi.json`. CI fails if the runtime operation vocabulary, payload schemas and examples drift apart.
 
+### MCP authoring contract
+
+The bundled MCP server is a client of the same API and preserves its concurrency model:
+
+- `read_doc` returns the exact page `revision` plus the outline and section hashes needed for bounded edits;
+- updating or archiving an existing page requires the caller to pass the revision it actually read;
+- omitting `title` or `nav_path` on an existing-page replacement preserves that metadata;
+- `replace_doc_section`, `insert_doc_before_heading`, and `insert_doc_after_heading` use explicit heading IDs plus exact section hashes, avoiding full-document retransmission for small edits;
+- `patch_doc_metadata` changes title, navigation, workspace classification, knowledge class, or criticality without replacing content;
+- stale revisions and stale section hashes return actionable conflicts rather than being silently rebased by the wrapper.
+
+The MCP surface remains a convenience layer. Raw HTTP and the machine-readable operation contract remain complete and authoritative.
+
 ## Fresh installation
 
 ```bash
