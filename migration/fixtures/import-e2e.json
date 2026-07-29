@@ -1,0 +1,23 @@
+{
+  "note": "Synthetic end-to-end import fixture. No real host, path, identifier, or secret. Class names appear only as string VALUES under neutral keys.",
+  "pages": [
+    {
+      "resource_id": "example-0001",
+      "source_revision": "rev-source-example-0001",
+      "source_file": "example-secretish.md",
+      "expected_changed": true,
+      "expected_markers": {
+        "marker_class": "TOKEN"
+      }
+    },
+    {
+      "resource_id": "example-0002",
+      "source_revision": "rev-source-example-0002",
+      "source_file": "example-clean.md",
+      "expected_changed": false,
+      "expected_markers": {
+        "marker_class": "NONE"
+      }
+    }
+  ]
+}

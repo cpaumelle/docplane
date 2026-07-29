@@ -1,0 +1,44 @@
+name: redaction-regression
+
+# Phase-4 redaction / sanitisation regression suite.
+#
+# Path-scoped to the redaction/importer surface so it runs only when the
+# transform, importer, fixtures, its tests, the CI scan, this workflow, or the
+# invariant docs change.
+
+on:
+  pull_request:
+    paths:
+      - "migration/**"
+      - "scripts/redaction_ci_scan.py"
+      - "docs/architecture/REDACTION_INVARIANTS.md"
+      - ".github/workflows/redaction-regression.yml"
+  push:
+    branches: [main]
+    paths:
+      - "migration/**"
+      - "scripts/redaction_ci_scan.py"
+      - "docs/architecture/REDACTION_INVARIANTS.md"
+      - ".github/workflows/redaction-regression.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  redaction:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pytest
+        run: python -m pip install pytest==8.3.5
+      - name: Compile redaction modules
+        run: python -m compileall -q migration scripts/redaction_ci_scan.py
+      - name: Unit + importer + e2e tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest -q migration/tests
+      - name: CI assertion — balanced braces, well-formed markers, no drift
+        run: python scripts/redaction_ci_scan.py
