@@ -3,16 +3,15 @@
 # Fresh-install integration test — real containers, real named volumes, empty start.
 #
 # This exercises the container/volume boundary that unit tests cannot reach. It
-# is the regression cover for three shipped-runtime defects:
+# is the regression cover for four shipped-runtime defects:
 #
 #   1. generated MkDocs release path resolution (split config directories)
 #   2. docs-site volume ownership on a fresh install
 #   3. MCP host-header validation on a NON-DEFAULT published port
+#   4. the routed host exposing the authoritative agent contract and API
 #
 # It deliberately runs on non-default ports, and publishes them in the
-# loopback-restricted "127.0.0.1:PORT" form that real deployments use, so
-# defect 3 is covered by construction: if MCP only worked on the bare 8049
-# default, or could not parse a bind-address-qualified port spec, this fails.
+# loopback-restricted "127.0.0.1:PORT" form that real deployments use.
 #
 # Everything is namespaced under a disposable compose project and disposable
 # volumes, and torn down with `down -v` at the end. It never touches another
@@ -29,6 +28,7 @@ SITE_PORT=${SITE_PORT:-18180}
 MCP_PORT=${MCP_PORT:-18149}          # deliberately NOT the 8049 default
 ENV_FILE=$(mktemp)
 API="http://127.0.0.1:${API_PORT}"
+FRONT="http://127.0.0.1:${SITE_PORT}"
 MCP="http://127.0.0.1:${MCP_PORT}/mcp"
 
 log()  { printf '\n=== %s\n' "$*"; }
@@ -116,29 +116,41 @@ print("    CURRENT, identities equal, release", c["release_id"][:8])
 PY
 
 log "6. generated site serves the page"
-CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SITE_PORT}/work/itest/")
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$FRONT/work/itest/")
 [ "$CODE" = "200" ] || fail "generated page returned $CODE"
-curl -s "http://127.0.0.1:${SITE_PORT}/work/itest/" | grep -q "Synthetic fresh-install probe" \
+curl -s "$FRONT/work/itest/" | grep -q "Synthetic fresh-install probe" \
   || fail "generated page missing expected content"
 echo "    site serves the published page"
 
-log "7. nginx welcome content was cleaned out by the first release"
+log "7. routed human and agent surfaces use portable service DNS"
+curl -fsS "$FRONT/dashboard/" >/dev/null || fail "dashboard route failed"
+curl -fsS "$FRONT/assets/app.js" >/dev/null || fail "dashboard asset route failed"
+curl -fsS "$FRONT/.well-known/docplane.json" | grep -q 'docplane-agent-discovery-v2' \
+  || fail "agent discovery is not routed"
+curl -fsS "$FRONT/openapi.json" | grep -q '"title":"DocPlane"' \
+  || fail "OpenAPI is not routed"
+curl -fsS "$FRONT/healthz" | grep -q '"page_counts"' \
+  || fail "authoritative docs-api health is not routed"
+NOAUTH=$(curl -s -o /dev/null -w '%{http_code}' "$FRONT/api/v1/capabilities")
+[ "$NOAUTH" = "401" ] || fail "unauthenticated routed API returned $NOAUTH"
+curl -fsS "${AUTH[@]}" "$FRONT/api/v1/pages?limit=1" | grep -q '"total"' \
+  || fail "authenticated routed agent API failed"
+echo "    discovery, OpenAPI, health and authenticated API routed correctly"
+
+log "8. nginx welcome content was cleaned out by the first release"
 compose exec -T docs-api sh -c 'test ! -f /data/site/50x.html' \
   || fail "nginx welcome content survived the first publish"
-CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SITE_PORT}/50x.html")
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$FRONT/50x.html")
 [ "$CODE" = "404" ] || fail "nginx welcome asset still served (HTTP $CODE)"
 echo "    served site is DocPlane's, not nginx's"
 
-log "8. sentinel survived rsync --delete"
+log "9. sentinel survived rsync --delete"
 compose exec -T docs-api sh -c 'test -f /data/site/.docplane-site-init' \
   || fail "sentinel deleted by publish - volume repopulation would re-arm"
 echo "    sentinel intact after publish"
 
-log "9. MCP on NON-DEFAULT port ${MCP_PORT}, no Host override"
+log "10. MCP on NON-DEFAULT port ${MCP_PORT}, no Host override"
 sed -i "s|^DOCPLANE_TOKEN=.*|DOCPLANE_TOKEN=${TOKEN}|" "$ENV_FILE"
-# The shell environment outranks --env-file in Compose, and DOCPLANE_TOKEN was
-# exported empty when this script sourced that file. Export the real token, or
-# docs-mcp starts with no contributor credential and every tool call fails.
 export DOCPLANE_TOKEN="$TOKEN"
 compose up --build -d docs-mcp >/dev/null
 for _ in $(seq 1 30); do
@@ -149,13 +161,12 @@ curl -fsS "http://127.0.0.1:${MCP_PORT}/healthz" \
   | grep -q '"contributor_token_configured":true' \
   || fail "docs-mcp has no contributor token; tool calls cannot succeed"
 
-MH=(-H "Authorization: Bearer $MCP_API_KEY" -H 'Content-Type: application/json'
+MH=(-H "Authorization: Bearer $MCP_API_KEY" -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream')
 INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"itest","version":"1"}}}'
-
 SID=$(curl -s -D - -o /dev/null -X POST "$MCP" "${MH[@]}" -d "$INIT" \
       | grep -i '^mcp-session-id:' | tr -d '\r' | awk '{print $2}')
-[ -n "$SID" ] || fail "MCP handshake failed on non-default port ${MCP_PORT} (the 421 defect)"
+[ -n "$SID" ] || fail "MCP handshake failed on non-default port ${MCP_PORT}"
 echo "    handshake OK on :${MCP_PORT} with no Host override"
 
 curl -s -X POST "$MCP" "${MH[@]}" -H "Mcp-Session-Id: $SID" -H 'MCP-Protocol-Version: 2025-06-18' \
@@ -166,19 +177,20 @@ READ=$(curl -s -X POST "$MCP" "${MH[@]}" -H "Mcp-Session-Id: $SID" -H 'MCP-Proto
 printf '%s' "$READ" | grep -q 'work/itest.md' || fail "MCP read_doc did not return the page"
 echo "    read_doc returned the published page"
 
-log "10. invalid MCP key is still rejected"
+log "11. invalid MCP key is still rejected"
 BAD=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$MCP" \
       -H 'Authorization: Bearer wrong-key' -H 'Content-Type: application/json' \
       -H 'Accept: application/json, text/event-stream' -d "$INIT")
 [ "$BAD" = "401" ] || fail "invalid MCP key returned $BAD, expected 401"
 echo "    invalid key -> 401"
 
-log "11. converges on repeat: re-run site-init and re-publish"
+log "12. routed mutation forwards auth/idempotency and waits for publication"
 compose up -d --force-recreate site-init >/dev/null 2>&1 || true
 compose exec -T docs-api sh -c 'test -w /data/site' || fail "site-init not idempotent"
-RETRY=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-retry' "$API/api/v1/publication/retry" -d '{}' \
-        | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
-[ "$RETRY" = "COMPLETED" ] || fail "re-publish after re-init returned $RETRY"
-echo "    idempotent; re-publish COMPLETED"
+RETRY=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-retry' \
+  "$FRONT/api/v1/publication/retry" -d '{}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+[ "$RETRY" = "COMPLETED" ] || fail "routed publication retry returned $RETRY"
+echo "    routed retry idempotent; publication COMPLETED"
 
 log "FRESH-INSTALL INTEGRATION TEST PASSED"
