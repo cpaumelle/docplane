@@ -17,3 +17,8 @@ venv/
 .DS_Store
 *.swp
 *~
+
+# Local brand overlay -- brand assets stay OUT of the repo (see branding/README.md)
+/branding/brand.css
+/branding/logo.svg
+/branding/favicon.svg

@@ -1,0 +1,5 @@
+/* DocPlane brand-override slot (neutral by default).
+ * A local deployment overlays this file (via a gitignored branding mount) to
+ * rebrand without editing tracked files: redefine --brand-* / role tokens here,
+ * e.g.  :root{ --brand-500:#1E7D6E; --brand-700:#15564B; --action:var(--brand-500); }
+ * Leave empty for the neutral default theme. */

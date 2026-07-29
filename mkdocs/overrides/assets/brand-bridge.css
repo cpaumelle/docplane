@@ -1,0 +1,40 @@
+/* DocPlane — Material ↔ token bridge.
+ * Maps MkDocs Material's theme variables onto the shared DocPlane tokens
+ * (theme.css, loaded first). Adopters should NOT edit this — override the
+ * `--brand-*`/role tokens in a local /assets/brand.css instead. Flat styling. */
+
+:root {
+  /* Header / primary surface */
+  --md-primary-fg-color:             var(--action);
+  --md-primary-fg-color--light:      var(--brand-300);
+  --md-primary-fg-color--dark:       var(--action-hover);
+  --md-primary-bg-color:             var(--on-action);
+  --md-primary-bg-color--light:      var(--brand-50);
+
+  /* Interactive accent (kept on-brand, not a separate hue) */
+  --md-accent-fg-color:              var(--action-hover);
+  --md-accent-fg-color--transparent: var(--brand-50);
+
+  /* Body links */
+  --md-typeset-a-color:              var(--link);
+
+  /* Footer */
+  --md-footer-bg-color:              var(--brand-900);
+  --md-footer-bg-color--dark:        var(--brand-900);
+  --md-footer-fg-color:              var(--pearl);
+  --md-footer-fg-color--light:       var(--brand-200);
+  --md-footer-fg-color--lighter:     var(--brand-300);
+
+  /* Typography (system fallback; no external fetch on private nets) */
+  --md-text-font-family:             var(--font-sans);
+  --md-code-font-family:             var(--font-mono);
+}
+
+.md-typeset a:hover { color: var(--md-accent-fg-color); }
+.md-typeset a:focus-visible,
+.md-search__input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Header mark: rendered white so a single-colour glyph reads on the header. A
+ * local brand may ship an already-light logo and neutralise this if preferred. */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg { height: 1.4rem; width: auto; filter: brightness(0) invert(1); }
