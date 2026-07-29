@@ -108,8 +108,8 @@ def _redaction_error(
         "redaction_marker_count": marker_count,
         "remedy": (
             "Use a bounded operation on a marker-free explicit section, or route the page "
-            "through the governed redaction-remediation workflow. Do not restore clear secrets "
-            "to documentation."
+            "through a separately governed redaction-remediation workflow. Do not restore "
+            "clear secrets to documentation."
         ),
     }
     if heading_id is not None:
