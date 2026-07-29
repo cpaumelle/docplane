@@ -42,7 +42,7 @@ def test_openapi_publishes_payload_schemas_mapping_and_complete_examples():
     assert set(extension["mapping"]) == runtime
 
     request_model = schema["components"]["schemas"]["ChangeOperationCreate"]
-    payload_variants = request_model["properties"]["payload"]["oneOf"]
+    payload_variants = request_model["properties"]["payload"]["anyOf"]
     assert len(payload_variants) == len(runtime)
     assert set(request_model["x-docplane-operation-contracts"]) == runtime
 
@@ -52,6 +52,29 @@ def test_openapi_publishes_payload_schemas_mapping_and_complete_examples():
     assert set(examples) == runtime
     assert examples["CREATE_PAGE"]["value"]["payload"]["content"].startswith("# Example")
     assert examples["ARCHIVE_PAGE"]["value"]["payload"] == {}
+
+
+def test_operation_endpoint_uses_complete_discriminated_request_union():
+    schema = app.openapi()
+    runtime = set(operation_types())
+    media_schema = schema["paths"][OPERATION_ENDPOINT]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+
+    assert len(media_schema["oneOf"]) == len(runtime)
+    discriminator = media_schema["discriminator"]
+    assert discriminator["propertyName"] == "operation_type"
+    assert set(discriminator["mapping"]) == runtime
+
+    for operation_type, ref in discriminator["mapping"].items():
+        component = schema["components"]["schemas"][ref.rsplit("/", 1)[-1]]
+        assert component["properties"]["operation_type"]["const"] == operation_type
+        assert "payload" in component["required"]
+        assert component["properties"]["payload"]["$ref"].endswith("Payload")
+
+    archive_ref = discriminator["mapping"]["ARCHIVE_PAGE"]
+    restore_ref = discriminator["mapping"]["RESTORE_PAGE"]
+    assert archive_ref != restore_ref
 
 
 def test_openapi_accounts_for_caller_side_credential_approval_gates():
