@@ -1,4 +1,4 @@
-"""Extend the cold-start document with the exact operation payload contract."""
+"""Extend the cold-start document with exact operation and caller-safety guidance."""
 from __future__ import annotations
 
 from typing import Any
@@ -10,6 +10,13 @@ from app.operation_contract_api import CONTRACT_ENDPOINT, CONTRACT_VERSION, OPER
 
 router = APIRouter(tags=["docplane-contract"])
 DISCOVERY_PATH = "/.well-known/docplane.json"
+
+_CALLER_POLICY_NOTE = (
+    "DocPlane private-fabric mode requires no server-side bootstrap secret or human approval, "
+    "but the caller's own agent framework may classify credential issuance as sensitive and "
+    "require confirmation. Before approving that caller-side gate, verify the routed endpoint, "
+    "AGENT/CONTRIBUTOR scope and token expiry shown in this document."
+)
 
 
 @router.get(DISCOVERY_PATH)
@@ -26,6 +33,10 @@ def discovery() -> dict[str, Any]:
         ],
     }
     document.setdefault("surfaces", {})["operation_contracts"] = CONTRACT_ENDPOINT
+
+    authentication = document.setdefault("authentication", {})
+    acquisition = authentication.setdefault("token_acquisition", {})
+    acquisition["caller_policy_note"] = _CALLER_POLICY_NOTE
 
     quick_start = document.setdefault("quick_start", {})
     multi_operation = list(quick_start.get("multi_operation_change") or [])
