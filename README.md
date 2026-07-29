@@ -9,13 +9,15 @@ Every approved active identity is a **contributor**. There are no document-reade
 DocPlane always uses named bearer credentials for protected API reads and writes. How those credentials are obtained is switchable by deployment:
 
 - **`managed`** — safe repository default for public, external or partner-facing installations. Credentials are operator-issued and self-service issuance is disabled.
-- **`private_fabric`** — for installations whose routed hostname is already protected by a private VPN, SD-WAN or equivalent internal-fabric boundary. A reachable agent can self-issue a short-lived, individually attributable AGENT contributor token with no bootstrap secret or human round-trip.
+- **`private_fabric`** — for installations whose routed hostname is already protected by a private VPN, SD-WAN or equivalent internal-fabric boundary. A reachable agent can self-issue a short-lived, individually attributable AGENT contributor token with no bootstrap secret or DocPlane-side approval round-trip.
 
 The complete threat model, trusted-front requirements, token constraints and configuration are documented in [Authentication profiles](docs/architecture/authentication-profiles.md). Do not enable `private_fabric` on a publicly reachable hostname.
 
 Private-fabric issuance is dual-gated: docs-api must be configured for `private_fabric`, and the request must arrive through the trusted routed front, which injects an internal admission marker on the exact self-issue route. Direct docs-api reachability does not admit issuance.
 
 Clients must start from `/.well-known/docplane.json`; it reports the active profile and exact credential-acquisition path.
+
+A caller's own agent framework may still classify credential issuance as a sensitive action and require human confirmation. That is a caller-side policy gate, not a DocPlane failure. Before approving it, verify the routed endpoint, requested AGENT/CONTRIBUTOR scope and token expiry.
 
 ## Authoring contract
 
@@ -38,6 +40,22 @@ A successful publication:
 - records a deployment attempt, release identity and certification state.
 
 If the database mutation succeeds but the site build fails, DocPlane records `DEPLOYMENT_FAILED`. The authored state remains durable and can be published again with `POST /api/v1/publication/retry`; no approval or re-authoring is required.
+
+### Machine-readable operation payloads
+
+A cold client must not infer `CREATE_PAGE`, section-edit, move, redirect or archive payloads from implementation code. DocPlane publishes the complete unauthenticated operation contract at:
+
+```text
+GET /api/v1/operation-contracts
+```
+
+That document contains, for every supported `operation_type`:
+
+- required revision and section bindings;
+- an exact JSON Schema for `payload`;
+- a complete request example for `POST /api/v1/changes/{change_id}/operations`.
+
+The same schemas, mapping and examples are embedded in `/openapi.json`. CI fails if the runtime operation vocabulary, payload schemas and examples drift apart.
 
 ## Fresh installation
 
