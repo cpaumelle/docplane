@@ -1,0 +1,49 @@
+--- a/operations/occupancy-hub2-switchoff.md (v8)
++++ b/operations/occupancy-hub2-switchoff.md (v9)
+@@ -19,7 +19,7 @@
+     This does not alter the teardown steps below — the Phase 4 archive is a **forward**
+     action taken at teardown time, and remains part of the procedure.
+ 
+-**Status:** In progress — Phase 1 (ingest cut) pending; api/app read-routes retired 2026-07-20
++**Status:** In progress — **Phase 1 + 2 complete 2026-07-28** (Actility stopped delivering to hub2 at 15:06:59Z; DM route 46 disabled 15:22); Phase 3 soak running
+ 
+ Living record of the deliberate decommission of the incumbent CBRE occupancy
+ pipeline (`cbre_pipeline` / `*.microshare.eu`) from **hub2**, now that the
+@@ -81,6 +81,8 @@
+ | C3 | 2026-07-20 ~08:53 | **Retire Spacen monitoring + re-home vps3 host alerts** — rm `rules/occ-platform.yml`, `targets/occ-platform.yml`, the `occ-platform` scrape job; `rules/vps-occupancy.yml` → `rules/vps3-node.yml` (drop dead `vps_occupancy_soak` group); rename job `vps-occupancy` → `vps3-node`. | Worktree off `origin/main`, **PR #240**. `promtool` SUCCESS 2 rules; YAML valid; no dangling refs; Alertmanager clean. **DEPLOYED + verified 2026-07-20 ~09:37** — PR #240 merged (`6ba6d35`) → prod `git pull` (#232→6ba6d35) → `docker restart charliehub_prometheus` (WAL replay ~2.5s, config+rules loaded clean). Verified via container IP: prometheus healthy; `vps3_node` group live (`Vps3NodeDown`,`Vps3DiskLow`); jobs `vps3-node`+`vps3-trevarn` up; occ-platform/vps-occupancy gone. | Revert PR #240; prod `git pull` restores |
+ | C4 | 2026-07-20 | **`cbre-backup` cron disabled by owner** (`.disabled-20260720-hub2-retiring`) — daily 02:10 px1 `pg_dump` stopped | Ahead of teardown. ⚠ `CbreBackupStale`/`CbreBackupNeverRan` (critical) will fire ~26h out — silence during soak. Final manual `pg_dump` still required at Phase 4. | Re-enable the cron file |
+ | C5 | 2026-07-27 | **Retired the CT2151 pre-cutover parity pipeline.** Domain Manager record 161 was changed only from backend port 8002 to 8000 (rev 12→13), the canonical route soaked successfully, the two `-vps3` timers and port-8002 service were disabled, and fabric-only parity record 239 was disabled/deleted through ccm-domain. The obsolete units/environment were archived root-only. | `dx-occupancy.microshare.eu` now uses the authoritative port-8000 service; no ccm-domain route targets CT2151 port 8002; `cbre_reports_vps3` is frozen rollback evidence through 2026-08-10. | Restore `/root/cbre-parity-retire-20260726T2235Z`, recreate record 239 from the preserved representation if required, re-enable the parity services, and use the governed record-161 API to restore port 8002. |
++| C6 | 2026-07-28 15:22 | **DM route 46 `ingest.microshare.eu` → disabled — Phase 2 complete.** Actility stopped delivering to hub2 at **15:06:59Z**; confirmed by 9 consecutive probes over 4.5 min with zero new rows in `ingest_raw`, against a prior steady ~11–12/min from 85 distinct devices. vps3 continuity verified concurrently (gateway `1000B6AD` last uplink 1 s, 57 devices heard/30 min). | `POST /api/domains/46/disable` → HTTP 200. `routes.yml` regenerated 15:22:11 with zero `ingest.microshare.eu` refs; Traefik router `ingest-microshare-eu@file` gone; `POST https://ingest.microshare.eu/uplink` → **404**. `charliehub_routing_drift_router_mismatch` showed the documented 1→0 propagation transient, then 0 across 5 consecutive samples; all other drift gauges 0. | `POST /api/domains/46/activate`; pre-change snapshot `hub2:~/dm_ingest46_snapshot_20260728.json` (revision 7, status=active) |
++| C7 | 2026-07-28 15:25 | **`cbre-comparison.timer` stopped + disabled.** Its D10 rationale (*keep parity comparison live*) expired the moment the hub2 leg was cut. **Finding: the job was already dead** — `ExecStart` runs `/opt/cbre-pipeline/scripts/continuous_comparison.py`, which **does not exist**; every invocation exits in ~25 ms with `status=2/INVALIDARGUMENT`. 86 failures and 0 successes in the retained journal (earliest retained failure 2026-07-21 — the journal was vacuumed to 1 GB on 2026-07-28, so the true start is likely earlier). Any assumption that hub2↔vps3 parity was being continuously compared during the soak is unfounded. | `systemctl is-active` → inactive, `is-enabled` → disabled; removed from `timers.target.wants`. Remaining CBRE timers: `cbre-robot3`, `cbre-robot3-weekly`. | `systemctl enable --now cbre-comparison.timer` — note this restores a unit that has never successfully run |
+ 
+ > Note: the naive `PUT {"status":"disabled"}` was correctly rejected (`422` — `status` is
+ > lifecycle-immutable). The Domain Manager owns the lifecycle transition; use
+@@ -113,7 +115,7 @@
+ - **systemd timers** (all → `/opt/cbre-pipeline/ops/` scripts) — **keep through soak**:
+   - `cbre-robot3.timer` — hourly → R3 production aggregation (`people_counter_agg`)
+   - `cbre-robot3-weekly.timer` — weekly Mon 05:00
+-  - `cbre-comparison.timer` — every 2h → hub2-vs-vps3 parity comparison
++  - `cbre-comparison.timer` — every 2h → hub2-vs-vps3 parity comparison — 🔴 **STOPPED + DISABLED 2026-07-28 (C7)**; had been failing on every run (missing script), never a live comparison
+ - **`.env`:** `CBRE_DATA_SOURCE_NAME`
+ - **Prometheus:** `cbre.yml` (30 alerts) + `cbre-probe` / `cbre_postgres_exporter` jobs remain (retire at teardown). Spacen `occ-platform.yml` / `vps-occupancy.yml` retired via **PR #240** (C3).
+ 
+@@ -155,9 +157,9 @@
+ 
+ | Phase | Action | Status |
+ |-------|--------|--------|
+-| 1 | Cut hub2 Actility ingest leg (ThingPark API; disable the AS-routing connection → `ingest.microshare.eu`) | ⏳ pending — pin connection id |
+-| 2 | Reconcile dead DM routes: `api`(119) ✅, `app`(17) ✅; `ingest`(46) after Phase 1 | 🟡 partial (api/app done) |
+-| 3 | Soak (suggest 7 days, aligns with `MICROSHARE-WILDCARD-RETIREMENT-1`), monitor vps3 ingest continuity + `cbre_client_validation.py` | ⏳ |
++| 1 | Cut hub2 Actility ingest leg (ThingPark API; disable the AS-routing connection → `ingest.microshare.eu`) | ✅ **done 2026-07-28** — last uplink 15:06:59Z |
++| 2 | Reconcile dead DM routes: `api`(119) ✅, `app`(17) ✅, `ingest`(46) ✅ | ✅ **done 2026-07-28** (C6) |
++| 3 | Soak (suggest 7 days, aligns with `MICROSHARE-WILDCARD-RETIREMENT-1`), monitor vps3 ingest continuity + `cbre_client_validation.py` | 🟢 **running from 2026-07-28 15:22** — earliest teardown 2026-08-04 |
+ | 4 | Archive (`pg_dumpall` cbre_postgres + config → px3-nas + px5) then remove containers/volumes/networks, cron, prometheus, `.env`, `/opt/cbre-pipeline`, `occupancy.microshare.eu` DNS | ⏳ |
+ | 5 | Doc/authority reconciliation (DF1–DF4; `occupancy-pipeline-hub2/*` → ARCHIVED; hub2 → zero customer workloads) | ⏳ |
+ 
+@@ -168,4 +170,4 @@
+ - [Occupancy Data Pipeline (hub2)](../services/occupancy-pipeline-hub2/architecture.md) — the stack being retired
+ - [Smart Parking (decommissioned on hub2)](../services/parking.md) — decommission precedent
+ - [microshare.eu → Cloudflare](microshare-eu-cloudflare-migration.md) — DNS zone
+-- [CharlieHub Architecture](../control-plane/architecture.md) — hub2 (control plane) vs vps3 (customer platform)
++- [CharlieHub Architecture](../control-plane/architecture.md) — hub2 (control plane) vs vps3 (customer platform)
+\ No newline at end of file
