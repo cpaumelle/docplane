@@ -9,6 +9,7 @@ import pytest
 from migration.redaction import (
     APPROVED_PLACEHOLDERS,
     DEFAULT_RULES,
+    DocumentRefusedError,
     MalformedMarkerError,
     REDACTION_MARKER_RE,
     assert_no_malformed_markers,
@@ -111,15 +112,56 @@ def test_wellformed_marker_input_is_accepted():
 
 
 # --------------------------------------------------------------------------
-# Fenced/executable code stays byte-for-byte intact.
+# REVISED fenced-code policy: secret-shaped values inside fences ARE redacted,
+# with a syntax-preserving replacement where it can be guaranteed, and a
+# fail-closed refusal where it cannot. Approved placeholders inside a fence are
+# still preserved. (See docs/architecture/REDACTION_INVARIANTS.md invariant 4.)
 # --------------------------------------------------------------------------
-def test_fenced_code_is_preserved_byte_for_byte():
+def test_fenced_secret_in_safe_position_is_redacted():
+    # A shaped token in a shell-assignment RHS is a syntax-safe position: the
+    # bare marker replaces it without breaking the assignment.
     fence = f"```bash\nexport TOKEN={TOKEN_SHAPED}\necho done\n```"
     source = f"intro\n\n{fence}\n\noutro {TOKEN_SHAPED}"
     result = redact(source, label="example-0001")
-    # The shaped token inside the fence survives; the one outside is redacted.
-    assert fence in result.sanitised
-    assert result.marker_count == 1
+    # Both the fenced and unfenced token are redacted now.
+    assert TOKEN_SHAPED not in result.sanitised
+    assert result.marker_count == 2
+    # Replacement stays syntactically valid: assignment form is preserved.
+    assert "export TOKEN=<REDACTED:TOKEN:example-0001>" in result.sanitised
+    for marker in REDACTION_MARKER_RE.findall(result.sanitised):
+        assert REDACTION_MARKER_RE.fullmatch(marker)
+
+
+def test_fenced_approved_placeholder_survives():
+    # An approved placeholder inside a fence must remain unchanged.
+    fence = "```yaml\nauth:\n  password: {{password}}\n```"
+    result = redact(fence, label="example-0001")
+    assert "{{password}}" in result.sanitised
+    assert result.marker_count == 0
+    assert not result.changed
+
+
+def test_fenced_unsafe_replacement_fails_closed():
+    # A shaped token with no safe syntactic position (embedded in a URL, no
+    # delimiter) cannot be replaced without risking broken output => the
+    # document is REFUSED with a content-free remediation finding.
+    fence = (
+        "```bash\n"
+        f"curl https://{TOKEN_SHAPED}@example.invalid/path\n"
+        "```\n"
+    )
+    with pytest.raises(DocumentRefusedError) as exc:
+        redact(fence, label="example-0001")
+    findings = exc.value.findings
+    assert findings, "refusal must carry at least one finding"
+    for f in findings:
+        assert f.reason == "unsafe-fence-replacement"
+        assert f.marker_class == "TOKEN"
+        # Content-free: the finding must NOT echo the secret bytes or the line.
+        assert TOKEN_SHAPED not in repr(f)
+        assert "example.invalid" not in repr(f)
+    # The exception message itself must not leak the secret either.
+    assert TOKEN_SHAPED not in str(exc.value)
 
 
 # --------------------------------------------------------------------------

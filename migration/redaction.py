@@ -25,12 +25,30 @@ Design constraints (all asserted by the test suite):
 
   * Deterministic: identical input + identical rules => identical output and
     identical ``sanitised_sha256``.
-  * Placeholder-safe: approved placeholders are never redacted.
-  * Structure-safe: braces stay balanced; fenced code blocks are left
-    byte-for-byte intact; Markdown headings/anchors are not rewritten.
+  * Placeholder-safe: approved placeholders are never redacted (inside or
+    outside code fences).
+  * Structure-safe: braces stay balanced; Markdown headings/anchors are not
+    rewritten.
   * Marker-well-formed: every emitted marker matches ``REDACTION_MARKER_RE``.
   * Drift-observable: the caller can compare marker counts before/after via
     ``count_redaction_markers`` to detect silent marker drift.
+
+Fenced-code policy (REVISED — see ``docs/architecture/REDACTION_INVARIANTS.md``):
+
+  The earlier "fenced code preserved byte-for-byte" rule was wrong for
+  production: it let a confirmed-secret-shaped value survive purely because it
+  sat inside a ``` fence. The revised policy is:
+
+    * Approved placeholders / synthetic examples inside fences stay unchanged.
+    * Real / confirmed-secret-shaped values inside fences ARE redacted.
+    * The replacement preserves valid shell / YAML / JSON / config syntax
+      wherever it can be guaranteed (the marker is emitted in a
+      syntax-appropriate position, e.g. as a quoted scalar value).
+    * When a safe syntactic replacement CANNOT be guaranteed, the importer
+      REFUSES the document (``DocumentRefusedError``) and emits a content-free
+      remediation finding. No silent pass, no broken output.
+    * No importer may preserve a confirmed credential just because it is inside
+      a fence.
 
 The redaction targets here are SYNTHETIC secret-shaped tokens only (e.g.
 ``AKIA...`` access-key-shaped strings, ``ghp_...`` token-shaped strings).
@@ -147,15 +165,21 @@ class RedactionResult:
 # --------------------------------------------------------------------------
 # Fenced code-block handling
 #
-# Fenced code blocks (```lang ... ```) must survive byte-for-byte so that
-# executable examples stay syntactically intact. We split the document into
-# code and non-code spans and only run detection on the non-code spans.
+# REVISED policy (see module docstring + REDACTION_INVARIANTS.md): fenced code
+# is NO LONGER preserved byte-for-byte. Approved placeholders / synthetic
+# examples inside a fence survive, but a confirmed-secret-shaped value inside a
+# fence IS redacted — with a replacement that keeps the surrounding shell /
+# YAML / JSON / config line syntactically valid where that can be guaranteed,
+# and a hard REFUSAL (fail closed) where it cannot.
+#
+# We split the document into code and non-code spans; both are now processed,
+# but code spans go through the syntax-aware fenced path (``_redact_fenced``).
 # --------------------------------------------------------------------------
 _FENCE_RE = re.compile(r"(^```.*?^```)", re.DOTALL | re.MULTILINE)
 
 
 def _split_fences(text: str) -> list[tuple[bool, str]]:
-    """Return spans as (is_code, text). Code spans are left untouched."""
+    """Return spans as (is_code, text)."""
     spans: list[tuple[bool, str]] = []
     last = 0
     for match in _FENCE_RE.finditer(text):
@@ -267,6 +291,138 @@ def braces_balanced(text: str) -> bool:
 
 
 # --------------------------------------------------------------------------
+# Fail-closed refusal for fenced content
+#
+# When a confirmed-secret-shaped value sits inside a code fence and we cannot
+# GUARANTEE a syntax-preserving replacement, we must not emit broken output and
+# must not silently pass the secret through. Instead we REFUSE the document and
+# surface a *content-free* remediation finding: it names the marker class and
+# the fence language, but never echoes the secret bytes or the offending line.
+# --------------------------------------------------------------------------
+@dataclass(frozen=True)
+class RemediationFinding:
+    """Content-free description of why a document was refused.
+
+    Deliberately carries NO secret bytes, no offending line, no surrounding
+    context — only the machine-actionable facts an operator needs to remediate:
+    the reason code, the marker class that triggered it, and the fence language.
+    """
+
+    reason: str          # stable machine code, e.g. "unsafe-fence-replacement"
+    marker_class: str    # the CLASS that would have been emitted, e.g. "TOKEN"
+    fence_language: str   # fence info-string language, or "" if none
+
+
+class DocumentRefusedError(ValueError):
+    """Raised when a document cannot be safely sanitised and must be refused.
+
+    Carries the content-free ``findings`` so the importer can record a
+    remediation task without ever persisting the offending content.
+    """
+
+    def __init__(self, findings: tuple[RemediationFinding, ...]):
+        self.findings = findings
+        classes = ", ".join(sorted({f.marker_class for f in findings}))
+        super().__init__(
+            f"document refused: unsafe fenced redaction for class(es) [{classes}] "
+            f"({len(findings)} finding(s))"
+        )
+
+
+# Info-string on the opening fence line: ```lang -> "lang" (lower-cased).
+_FENCE_INFO_RE = re.compile(r"^```[ \t]*([A-Za-z0-9_.+-]*)", re.MULTILINE)
+
+# Syntactically SAFE positions for a bare ``<REDACTED:...>`` marker inside a
+# fence. A match is safe to replace iff its immediate surroundings match one of
+# these shapes, because the marker then lands in a position that stays valid:
+#
+#   * shell / env assignment RHS, bare or double-quoted:
+#         export FOO=<token>            FOO="<token>"
+#   * YAML / config ``key: value`` scalar, bare or quoted:
+#         key: <token>                  key: "<token>"
+#   * JSON string value (already quoted):
+#         "key": "<token>"
+#
+# In every safe shape the token is a self-contained word terminated by
+# whitespace, a quote, a comma, or end-of-line — so swapping it for a bare
+# marker cannot break the surrounding delimiters. Anything else is unsafe.
+_SAFE_BEFORE_RE = re.compile(r"""(?x)
+    (?:
+        [=:]\s*      |   # assignment / mapping value position
+        ["']             # opening quote (quoted scalar / JSON string)
+    )
+    $
+""")
+_SAFE_AFTER_RE = re.compile(r"""(?x)
+    ^(?:
+        \s   |           # whitespace terminates a bare word
+        ["']  |          # closing quote
+        ,     |          # JSON / flow-seq separator
+        $                # end of line
+    )
+""")
+
+
+def _fence_language(fence: str) -> str:
+    match = _FENCE_INFO_RE.match(fence)
+    return (match.group(1) if match else "").lower()
+
+
+def _replacement_is_safe(span: str, start: int, end: int) -> bool:
+    """True iff the secret at ``span[start:end]`` sits in a syntax-safe spot.
+
+    Conservative by design: unknown context is treated as UNSAFE so the
+    document is refused rather than mangled.
+    """
+    before = span[:start]
+    after = span[end:]
+    before_ok = bool(_SAFE_BEFORE_RE.search(before)) or before.endswith((" ", "\t"))
+    after_ok = bool(_SAFE_AFTER_RE.match(after)) or after == ""
+    return before_ok and after_ok
+
+
+def _redact_fenced(
+    fence: str,
+    *,
+    rules: tuple[RedactionRule, ...],
+    label: str,
+    findings: list[str],
+    refusals: list[RemediationFinding],
+) -> str:
+    """Redact secret-shaped values inside a code fence, fail-closed on unsafe.
+
+    Approved placeholders inside the fence are masked out first and always
+    survive. Each remaining secret-shaped match is replaced with a bare marker
+    IF the replacement is syntax-safe; otherwise a content-free refusal finding
+    is recorded and the (caller-visible) refusal mechanism fails the document.
+    """
+    language = _fence_language(fence)
+    masked, protected = _mask_protected(fence)
+
+    for rule in rules:
+        def _replace(match: re.Match[str], marker_class=rule.marker_class) -> str:
+            if not _replacement_is_safe(masked, match.start(), match.end()):
+                # Fail closed: record a content-free finding and leave the
+                # ORIGINAL token in place for now. The presence of any refusal
+                # is turned into a DocumentRefusedError by ``redact`` before the
+                # (still-secret-bearing) output can ever be returned.
+                refusals.append(
+                    RemediationFinding(
+                        reason="unsafe-fence-replacement",
+                        marker_class=marker_class,
+                        fence_language=language,
+                    )
+                )
+                return match.group(0)
+            findings.append(marker_class)
+            return f"<REDACTED:{marker_class}:{label}>"
+
+        masked = rule.pattern.sub(_replace, masked)
+
+    return _unmask_protected(masked, protected)
+
+
+# --------------------------------------------------------------------------
 # The transform
 # --------------------------------------------------------------------------
 def redact(
@@ -287,12 +443,22 @@ def redact(
 
     fp = rules_fingerprint(rules)
     findings: list[str] = []
+    refusals: list[RemediationFinding] = []
     out_parts: list[str] = []
 
     for is_code, span in _split_fences(source):
         if is_code:
-            # Executable examples are preserved byte-for-byte.
-            out_parts.append(span)
+            # REVISED policy: secret-shaped values inside fences ARE redacted,
+            # fail-closed when a safe syntactic replacement can't be guaranteed.
+            out_parts.append(
+                _redact_fenced(
+                    span,
+                    rules=rules,
+                    label=label,
+                    findings=findings,
+                    refusals=refusals,
+                )
+            )
             continue
 
         masked, protected = _mask_protected(span)
@@ -303,6 +469,12 @@ def redact(
 
             masked = rule.pattern.sub(_replace, masked)
         out_parts.append(_unmask_protected(masked, protected))
+
+    # Fail closed BEFORE building any returnable output: if any fenced secret
+    # could not be safely replaced, refuse the whole document. The refusal
+    # findings are content-free (no secret bytes, no offending line).
+    if refusals:
+        raise DocumentRefusedError(tuple(refusals))
 
     sanitised = "".join(out_parts)
 
