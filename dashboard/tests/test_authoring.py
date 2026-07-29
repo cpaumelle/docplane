@@ -123,6 +123,14 @@ def test_unified_front_routes_visual_editor_assets_exactly():
     assert "location = /assets/inline-editor.css" in config
 
 
+def test_inline_publish_timeout_is_coherent_through_the_unified_front():
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    config = (ROOT / "mkdocs/docplane-front.conf").read_text(encoding="utf-8")
+    assert "DOCPLANE_API_TIMEOUT: ${DOCPLANE_API_TIMEOUT:-180}" in compose
+    assert "proxy_read_timeout 300s;" in config
+    assert "proxy_send_timeout 300s;" in config
+
+
 def test_dashboard_has_no_submit_or_review_controls():
     from dashboard.combined_app import app as combined_app
 

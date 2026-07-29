@@ -103,6 +103,10 @@ services:
         condition: service_healthy
     environment:
       DOCPLANE_API_URL: http://docs-api:8010
+      # Inline publish runs publish + certify + mkdocs render synchronously
+      # (tens of seconds for a large corpus); the client timeout must exceed it,
+      # else the dashboard 503s while the publication actually succeeds server-side.
+      DOCPLANE_API_TIMEOUT: ${DOCPLANE_API_TIMEOUT:-180}
     ports:
       - "${DOCPLANE_DASHBOARD_PORT:-8051}:8051"
 
