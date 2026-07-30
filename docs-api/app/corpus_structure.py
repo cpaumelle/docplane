@@ -344,6 +344,7 @@ def build(
             }),
             "maintenance_policy": "shared-maintenance-policy-v1",
             "protected_prefixes": list(_PROTECTED_PREFIXES),
+            "exclusions": [],
             "legacy_lifecycle_canonical": False,
         },
         "signals": {

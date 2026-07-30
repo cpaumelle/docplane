@@ -103,6 +103,8 @@ main { padding:1.4rem 1.6rem; min-width:0; }
 .scope-action label { margin:0; }
 .advanced { margin-top:1rem; }
 .advanced > summary { cursor:pointer; color:var(--text-strong); }
+footer { display:flex; align-items:center; gap:1rem; padding:.7rem 1.2rem; border-top:1px solid var(--border); background:var(--bg-surface); color:var(--text-muted); font-size:.82rem; }
+footer #troubleshoot-auth { margin-left:auto; padding:.25rem .55rem; font-size:.8rem; }
 
 /* results / rows */
 .authoring-result { text-align:left; display:grid; gap:.1rem; }

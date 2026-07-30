@@ -257,16 +257,16 @@ async function loadOverview() {
 }
 
 function renderCertification(value, available) {
-  if (!available) {
+  if (!available || value.state === "UNAVAILABLE") {
     $("certification").innerHTML = `<strong>Unavailable</strong><p>The certification module is unavailable.</p>`;
     return;
   }
   const working = value.working_state_identity || value.working_identity;
   const deployed = value.deployed_state_identity || value.deployed_identity;
-  const failure = value.failure || value.failed_stage;
+  const failure = value.last_failure || value.failure || value.failed_stage;
   let state = "Current";
   let detail = "Working and deployed identities match.";
-  if (failure) {
+  if (value.state === "DEPLOYMENT_FAILED" || failure) {
     state = "Deployment failed";
     detail = `Failed at ${failure.stage || failure}. Inspect the latest deployment receipt before retrying.`;
   } else if (working && deployed && working !== deployed) {
@@ -593,6 +593,11 @@ if (typeof document !== "undefined") {
       link.click();
       URL.revokeObjectURL(link.href);
     } catch (error) { $("explore-pages").textContent = error.message; }
+  });
+  $("troubleshoot-auth").addEventListener("click", () => {
+    $("auth-presentation").hidden = false;
+    $("auth-fallback").open = true;
+    $("auth-guidance").textContent = "Use a bearer only for managed mode or troubleshooting.";
   });
   $("capture-save").addEventListener("click", () => saveCapture().catch((error) => { $("work-inbox").textContent = error.message; }));
   $("verify-section").addEventListener("click", () => {

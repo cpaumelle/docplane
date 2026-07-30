@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import base64
+import binascii
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -745,7 +746,7 @@ def _cursor(value: str | None) -> int:
         if offset < 0:
             raise ValueError
         return offset
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, binascii.Error):
         raise HTTPException(
             status_code=422, detail={"code": "OBSERVATORY_CURSOR_INVALID"}
         )
