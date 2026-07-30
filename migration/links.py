@@ -46,6 +46,7 @@ deterministic.
 from __future__ import annotations
 
 import posixpath
+from urllib.parse import unquote
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -135,6 +136,7 @@ class LinkRef:
     label: str
     target: str
     resolved: str | None  # corpus path, or None for external/non-Markdown links
+    resolved_candidates: tuple[str, ...] = ()  # every viable corpus path; resolved is candidates[0]
     start: int = field(repr=False, default=0)
     end: int = field(repr=False, default=0)
 
@@ -278,16 +280,79 @@ def split_target(target: str) -> tuple[str, str, bool]:
     return base, ("#" + fragment if fragment else ""), base.startswith("/")
 
 
-def resolve(page_path: str, target: str) -> str | None:
-    """Corpus path a link points at, or None for external/non-Markdown links."""
+def absolute_candidates(target: str) -> list[str]:
+    """Canonical corpus paths a root-absolute DocPlane link may denote.
+
+    DocPlane renders pages at pretty URLs, so a controlled internal link is
+    normally written '/control-plane/ccm/' rather than '/control-plane/ccm.md'.
+    Both forms are internal and both must resolve. Returns the page form first
+    and the directory/index form second; callers check them against the live
+    corpus in order. Returns [] for anything that is not a root-absolute
+    internal link, so external URLs and other URI schemes stay excluded.
+
+    The fragment is not part of the corpus path and is stripped here; callers
+    keep the anchor from the raw target.
+    """
+    if not isinstance(target, str) or not target.startswith("/"):
+        return []
+    if target.startswith("//") or "://" in target:
+        return []
+    core = target.split("#", 1)[0].split("?", 1)[0]
+    core = unquote(core).strip("/")
+    if not core:
+        return ["index.md"]
+    if core.endswith(".md"):
+        return [core]
+    last_segment = core.rsplit("/", 1)[-1]
+    if "." in last_segment:
+        return []  # non-Markdown asset (e.g. "/images/logo.png"), not a pretty-URL page
+    return [core + ".md", core + "/index.md"]
+
+
+def resolve_candidates(page_path: str, target: str) -> list[str]:
+    """Ordered corpus-path candidates ``target`` may denote, most-likely first.
+
+    A target with no '.md' suffix is DocPlane's pretty-URL form and is
+    ambiguous between a page ('foo.md') and a section landing
+    ('foo/index.md'); both are valid corpus paths and an existence-aware
+    caller (stale-reference scanning, rewrite planning, inbound counting)
+    must check both, not just the first guess. A target ending '.md' has
+    exactly one candidate. Root-absolute targets resolve against the corpus
+    root via :func:`absolute_candidates`; relative targets resolve against
+    ``page_path``'s directory. Returns [] for external links and anything
+    that does not denote a corpus page.
+    """
     base, _, root_absolute = split_target(target)
-    if not base.endswith(".md"):
-        return None
     if "://" in base:
-        return None
+        return []
     if root_absolute:
-        return base[1:]
-    return posixpath.normpath(posixpath.join(posixpath.dirname(page_path), base))
+        return absolute_candidates(base)
+    if not base or base in (".", ".."):
+        return []
+    if base.endswith(".md"):
+        return [posixpath.normpath(posixpath.join(posixpath.dirname(page_path), base))]
+    joined = posixpath.normpath(posixpath.join(posixpath.dirname(page_path), base))
+    if joined in (".", "", ".."):
+        return []
+    last_segment = joined.rsplit("/", 1)[-1]
+    if "." in last_segment:
+        return []  # non-Markdown asset (e.g. "logo.png"), not a pretty-URL page
+    return [joined + ".md", joined + "/index.md"]
+
+
+def resolve(page_path: str, target: str) -> str | None:
+    """Best-guess corpus path a link points at, or None for external/non-Markdown links.
+
+    For a pretty-URL target this is only the first of possibly several viable
+    candidates (see :func:`resolve_candidates`). Existence-aware callers must
+    not trust this single guess for anything that decides whether a link is
+    live, stale, or broken -- they must check every candidate against the
+    live corpus themselves. ``resolve()`` remains useful only as a stable,
+    deterministic display value and for the "did depth-relative resolution
+    change" comparison in :func:`plan_source_move`.
+    """
+    cands = resolve_candidates(page_path, target)
+    return cands[0] if cands else None
 
 
 def retarget(page_path: str, target: str, new_path: str) -> str:
@@ -309,7 +374,8 @@ def find_links(page_path: str, text: str):
             end_line=end_line + 1,
             label=match.group(1),
             target=match.group(2),
-            resolved=resolve(page_path, match.group(2)),
+            resolved=(cands[0] if (cands := resolve_candidates(page_path, match.group(2))) else None),
+            resolved_candidates=tuple(cands),
             start=match.start(2),
             end=match.end(2),
         )
@@ -430,7 +496,10 @@ def plan_rewrites(page_path: str, text: str, mapping: dict[str, str]) -> Rewrite
     preservations: list[Preservation] = []
 
     for ref in find_links(page_path, text):
-        if ref.resolved is None or ref.resolved not in mapping:
+        if ref.resolved is None:
+            continue
+        matched = next((c for c in ref.resolved_candidates if c in mapping), None)
+        if matched is None:
             continue
         reason = None
         for line in range(ref.line - 1, ref.end_line):
@@ -443,14 +512,14 @@ def plan_rewrites(page_path: str, text: str, mapping: dict[str, str]) -> Rewrite
             reason = PreservationReason.EVIDENCE_SURFACE
         if reason is not None:
             preservations.append(
-                Preservation(page_path, ref.line, ref.target, ref.resolved, reason)
+                Preservation(page_path, ref.line, ref.target, matched, reason)
             )
             continue
-        new_target = retarget(page_path, ref.target, mapping[ref.resolved])
+        new_target = retarget(page_path, ref.target, mapping[matched])
         edits.append((ref.start, ref.end, new_target))
         rewrites.append(
-            Rewrite(page_path, ref.line, ref.target, new_target, ref.resolved,
-                    mapping[ref.resolved])
+            Rewrite(page_path, ref.line, ref.target, new_target, matched,
+                    mapping[matched])
         )
 
     if not edits:
@@ -494,7 +563,10 @@ def scan_stale_references(corpus: dict[str, str], old_paths):
         spans = inline_code_spans(text)
         evidence = is_evidence_surface(path)
         for ref in find_links(path, text):
-            if ref.resolved is None or ref.resolved not in mapping:
+            if ref.resolved is None:
+                continue
+            matched = next((c for c in ref.resolved_candidates if c in mapping), None)
+            if matched is None:
                 continue
             reason = None
             for line in range(ref.line - 1, ref.end_line):
@@ -509,7 +581,7 @@ def scan_stale_references(corpus: dict[str, str], old_paths):
                 unintended.append(ref)
             else:
                 preserved.append(
-                    Preservation(path, ref.line, ref.target, ref.resolved, reason)
+                    Preservation(path, ref.line, ref.target, matched, reason)
                 )
     return unintended, preserved
 
