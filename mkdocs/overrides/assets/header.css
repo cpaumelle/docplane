@@ -50,11 +50,19 @@
 .navlink:hover { opacity: 1; text-decoration: none; background: rgba(255, 255, 255, .14); color: inherit; }
 .navlink--active { background: rgba(255, 255, 255, .20); opacity: 1; }
 .navlink svg { width: 1.05em; height: 1.05em; }
-/* Material wraps injected content in header-button spacing — neutralise it
- * so the switcher sits exactly like the dashboard's. */
-.md-header__inner .topnav { margin: 0 .4rem 0 auto; }
-.md-header__inner .topnav + .md-header__option,
-.md-header__inner .topnav + .md-search { margin-left: 0; }
+
+/* ── One switcher position on BOTH surfaces: the left cluster ──────────── */
+/* The switcher sits immediately after the brand, then claims the flexible
+ * space (margin-right auto) so surface-specific controls — search on docs,
+ * connection state on the dashboard — collect on the right. Toggling
+ * surfaces must never move the pill the user just clicked. */
+.md-header__inner .topnav { margin: 0 auto 0 .6rem; }
+/* Material gives the title flex-grow to fill the bar; that would push the
+ * switcher right, so the title yields the flexible space to the switcher
+ * and keeps ellipsis behaviour for long page titles. */
+.md-header__title { flex: 0 1 auto; min-width: 0; max-width: 28rem; }
+.topbar .topnav { margin: 0 auto 0 .6rem; }
+.topbar .connect { margin-left: 0; }
 
 /* ── Right-side controls read as one family ────────────────────────────── */
 .md-search__form,
@@ -62,5 +70,3 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, .14);
 }
-.topbar .connect { margin-left: 0; }
-.topbar .topnav { margin-left: auto; }
