@@ -1,9 +1,10 @@
 {
  "certification_version": 109,
  "evidence_commit": "ee97ceab",
- "holder": null,
- "live_snapshot": "2026-07-30T13:07:11Z (pages total=947 active=513, open_changes=0)",
- "notes": "Agent 44 published control-plane-specs-transit-convergence (7c95535a/be903189) and control-plane-design-transport-plane-authority (4d55c3a4/6acbc0b9). Zero open changes; both rehearsals abandoned with zero residual. Existence-aware audit: 9 broken targets, unchanged from the accepted baseline (8 evidence-surface preservations + Pi4 #78); zero new broken targets. Agent 45 must refresh its prepared ccm-* cohort and may take the lane.",
- "since": "2026-07-30T13:07:11Z",
- "state": "released"
+ "holder": "agent-45",
+ "live_snapshot": "2026-07-30T13:11:03Z (pages total=947 active=513, open_changes=0)",
+ "notes": "Agent 45 acquiring the lane for a multi-cohort publication session (per updated throughput protocol): (1) ccm-* design pair -> control-plane/design/, (2) ccm-interface-realization-step6-runbook.md -> operations/runbooks/ (cross-subtree singleton), (3) topology-invariants Site/GEO-Fabric Edge (5 pages) -> control-plane/invariants/, (4) topology-invariants Framework/Registry (4 pages) -> control-plane/invariants/. Target 12 pages this session, refreshing live state between each cohort. Not touching ccm.md (hub, deferred), ccm-interface-realization-capability.md (authoring decision pending), i-config-projection-1.md (destination decision pending), i-interface-realization-1.md (sequencing dependency, deferred), or the old topology-invariants/index.md (retirement, deferred) this session. Acquired from branch head 0824c58977db2fdf1f101316af9b7530dbfbbd0c (agent-44's transit-convergence + transport-plane-authority release). Agent-44 territory (control-plane/*.md flat root minus ccm-* and this claim) is untouched.",
+ "since": "2026-07-30T13:11:03Z",
+ "state": "held",
+ "acquired_from_head": "0824c58977db2fdf1f101316af9b7530dbfbbd0c"
 }
