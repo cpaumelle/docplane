@@ -62,6 +62,8 @@ compose down -v --remove-orphans >/dev/null 2>&1 || true
 compose up --build -d postgres docs-api dashboard docs-web >/dev/null
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS "$API/healthz" >/dev/null || fail "docs-api never became healthy"
+for _ in $(seq 1 30); do curl -fsS "$FRONT/dashboard/healthz" >/dev/null 2>&1 && break; sleep 1; done
+curl -fsS "$FRONT/dashboard/healthz" >/dev/null || fail "routed dashboard never became healthy"
 
 log "2. routed HEAD and Link discovery work before any credential exists"
 HEADERS=$(mktemp)
@@ -77,7 +79,7 @@ log "3. direct API cannot satisfy private-fabric admission"
 DIRECT=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$API/api/v1/auth/self-issue" -d '{"display_name":"direct-agent"}')
 [ "$DIRECT" = "403" ] || fail "direct self-issue returned $DIRECT, expected 403"
 
-log "4. cold agent discovers and self-issues with no bootstrap secret"
+log "4. dashboard discovers and automatically self-issues with no bootstrap secret"
 DISCOVERY=$(curl -fsS "$FRONT/.well-known/docplane.json")
 python3 - "$DISCOVERY" <<'PY'
 import json,sys
@@ -90,8 +92,51 @@ assert a["requires_existing_credential"] is False
 assert a["endpoint"] == "/api/v1/auth/self-issue"
 assert body["site_name"] == "Integration DocPlane"
 PY
-ISSUED=$(curl -fsS -X POST -H 'Content-Type: application/json' "$FRONT/api/v1/auth/self-issue" -d '{"display_name":"integration-cold-agent","client_context":"fresh-install proof"}')
-TOKEN=$(printf '%s' "$ISSUED" | python3 -c 'import json,sys; b=json.load(sys.stdin); assert b["principal_kind"]=="AGENT" and b["role"]=="CONTRIBUTOR" and b["access_profile"]=="private_fabric"; print(b["token"])')
+BOOTSTRAP=$(FRONT="$FRONT" node <<'JS'
+require("./dashboard/static/app.js");
+const {createAuthentication, TOKEN_KEY} = globalThis.DocPlaneAuth;
+class Storage {
+  constructor() { this.values = new Map(); }
+  getItem(key) { return this.values.get(key) || null; }
+  setItem(key, value) { this.values.set(key, value); }
+  removeItem(key) { this.values.delete(key); }
+}
+const storage = new Storage();
+let issued = null;
+let capability = null;
+let acquisitionEndpoint = null;
+let lastState = null;
+const calls = [];
+const request = async (path, options = {}) => {
+  calls.push(path);
+  const response = await fetch(new URL(path, process.env.FRONT), options);
+  const payload = await response.json();
+  if (!response.ok) throw Object.assign(new Error(payload.detail?.code || `HTTP ${response.status}`), {status: response.status});
+  if (path === "/api/control-plane/discovery") acquisitionEndpoint = payload.authentication?.token_acquisition?.endpoint;
+  if (path === "/api/v1/auth/self-issue") issued = payload;
+  return payload;
+};
+(async () => {
+  const auth = createAuthentication({
+    request,
+    storage,
+    onState: (state, detail) => { lastState = {state, message: detail?.message, error: detail?.error?.message, status: detail?.error?.status}; },
+    onConnected: (value) => { capability = value; },
+  });
+  if (!await auth.initialize()) throw new Error(`dashboard bootstrap did not connect: ${JSON.stringify(lastState)}`);
+  const overview = await request("/api/control-plane/overview", {
+    headers: {Authorization: `Bearer ${auth.token()}`},
+  });
+  const principal = capability?.principal || {};
+  if (principal.principal_kind !== "AGENT" || principal.role !== "CONTRIBUTOR") throw new Error("wrong dashboard principal");
+  if (issued?.access_profile !== "private_fabric" || issued?.issued_via !== "fabric_reachability" || !issued?.expires_at) throw new Error("wrong issuance provenance");
+  if (typeof overview?.modules?.structure?.data?.summary?.active_pages !== "number") throw new Error("dashboard overview did not return corpus values");
+  if (!acquisitionEndpoint || calls.filter((path) => path === acquisitionEndpoint).length !== 1) throw new Error("dashboard did not issue exactly once through discovery");
+  process.stdout.write(JSON.stringify({token: storage.getItem(TOKEN_KEY), principal, issued, active_pages: overview.modules.structure.data.summary.active_pages}));
+})().catch((error) => { console.error(error); process.exit(1); });
+JS
+)
+TOKEN=$(printf '%s' "$BOOTSTRAP" | python3 -c 'import json,sys; b=json.load(sys.stdin); assert b["principal"]["principal_kind"]=="AGENT" and b["principal"]["role"]=="CONTRIBUTOR"; assert b["issued"]["access_profile"]=="private_fabric" and b["issued"]["issued_via"]=="fabric_reachability" and b["issued"]["expires_at"]; print(b["token"])')
 [ -n "$TOKEN" ] || fail "self-issue returned no token"
 SECOND=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$FRONT/api/v1/auth/self-issue" -d '{"display_name":"duplicate-agent"}')
 [ "$SECOND" = "429" ] || fail "per-source issuance limit returned $SECOND, expected 429"
@@ -155,5 +200,36 @@ log "13. routed publication retry"
 compose up -d --force-recreate site-init >/dev/null 2>&1 || true
 RETRY=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-retry' "$FRONT/api/v1/publication/retry" -d '{}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
 [ "$RETRY" = "COMPLETED" ] || fail "routed publication retry returned $RETRY"
+
+log "14. managed routed front does not self-issue"
+compose down -v --remove-orphans >/dev/null
+sed -i 's/^DOCPLANE_ACCESS_PROFILE=.*/DOCPLANE_ACCESS_PROFILE=managed/' "$ENV_FILE"
+export DOCPLANE_ACCESS_PROFILE=managed
+compose up -d postgres docs-api dashboard docs-web >/dev/null
+for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
+for _ in $(seq 1 30); do curl -fsS "$FRONT/dashboard/healthz" >/dev/null 2>&1 && break; sleep 1; done
+curl -fsS "$FRONT/dashboard/healthz" >/dev/null || fail "managed routed dashboard never became healthy"
+FRONT="$FRONT" node <<'JS'
+require("./dashboard/static/app.js");
+const {createAuthentication} = globalThis.DocPlaneAuth;
+const values = new Map();
+const storage = {getItem: (key) => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key)};
+const calls = [];
+const states = [];
+const request = async (path, options = {}) => {
+  calls.push(path);
+  const response = await fetch(new URL(path, process.env.FRONT), options);
+  const payload = await response.json();
+  if (!response.ok) throw Object.assign(new Error(payload.detail?.code || `HTTP ${response.status}`), {status: response.status});
+  return payload;
+};
+(async () => {
+  const auth = createAuthentication({request, storage, onState: (state, detail) => states.push({state, detail})});
+  if (await auth.initialize()) throw new Error("managed dashboard unexpectedly connected");
+  if (calls.some((path) => path.includes("self-issue"))) throw new Error("managed dashboard attempted self-issue");
+  if (auth.state() !== "managed-token-required") throw new Error(`wrong managed state: ${auth.state()}`);
+  if (!states.at(-1).detail.procedure) throw new Error("managed operator procedure missing");
+})().catch((error) => { console.error(error); process.exit(1); });
+JS
 
 log "FRESH-INSTALL INTEGRATION TEST PASSED"
