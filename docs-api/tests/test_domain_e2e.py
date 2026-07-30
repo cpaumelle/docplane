@@ -263,10 +263,13 @@ def test_generated_page_guard_fails_closed_at_publish_evaluation():
     entity = client.post("/api/v1/model/entities", json={"entity_kind": "SCHEMA", "entity_key": f"e2e-schema-{RUN}", "display_name": "E2E schema", "attributes": {}}, headers={**AGENT, "Idempotency-Key": _key()})
     declared = client.post("/api/v1/model/artifacts", json={"artifact_key": f"e2e-gen-{RUN}", "generator_name": "tbls", "generator_version": "1", "source_entity_id": entity.json()["entity_id"], "target_page_resource_ids": [page["resource_id"]]}, headers={**AUTOMATION, "Idempotency-Key": _key()})
     assert declared.status_code == 201, declared.text
+    # The declaration itself must arm the guard — no manual provenance
+    # UPDATE here. (A hand-set flag is exactly how the Sprint 5 canary found
+    # production pages declared-but-unprotected.)
     with get_conn() as conn:
         cur = conn.cursor()
-        cur.execute("UPDATE docs.pages SET provenance = 'GENERATED' WHERE resource_id = %s", (page["resource_id"],))
-        conn.commit()
+        cur.execute("SELECT provenance FROM docs.pages WHERE resource_id = %s", (page["resource_id"],))
+        assert cur.fetchone()[0] == "GENERATED"
 
     change = client.post("/api/v1/changes", json={"title": "E2E tamper", "purpose": "prove the guard", "workspace_key": "reference"}, headers={**AGENT, "Idempotency-Key": _key()})
     change_id = change.json()["change_id"]
@@ -326,9 +329,15 @@ def test_only_the_declaring_automation_can_retire_a_declaration():
         cur = conn.cursor()
         cur.execute("SELECT count(*) FROM model.artifact_targets WHERE artifact_id = %s", (artifact_id,))
         assert cur.fetchone()[0] == 1  # targets intact, pages still protected
+        cur.execute("SELECT provenance FROM docs.pages WHERE resource_id = %s", (page["resource_id"],))
+        assert cur.fetchone()[0] == "GENERATED"  # declaration armed it; refused retire left it armed
 
     retired = client.post(f"/api/v1/model/artifacts/{artifact_id}/retire", json={"expected_version": 1}, headers={**AUTOMATION, "Idempotency-Key": _key()})
     assert retired.status_code == 200 and retired.json()["status"] == "RETIRED"
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT provenance FROM docs.pages WHERE resource_id = %s", (page["resource_id"],))
+        assert cur.fetchone()[0] == "AUTHORED"  # retirement releases the page honestly
 
 
 def test_rollback_image_tolerates_upgraded_database():
