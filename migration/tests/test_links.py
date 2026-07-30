@@ -24,6 +24,7 @@ from migration.links import (
     PreservationReason,
     expected_redirect_hop,
     find_links,
+    inline_code_spans,
     mask_links,
     blocking_page_for_section,
     find_duplicate_routes,
@@ -583,3 +584,56 @@ def test_duplicate_routes_are_detected():
 
 def test_distinct_paths_produce_no_duplicate_routes():
     assert find_duplicate_routes(["a/b.md", "a/c.md", "index.md"]) == []
+
+
+# --- inline code is quoted text, not a hyperlink -----------------------------
+
+def test_a_link_inside_inline_code_is_preserved_not_rewritten():
+    """`[x](a.md)` renders as literal text. Rewriting it edits prose."""
+    result = plan("control-plane/index.md", "See `[x](doctrine.md)` for the form.\n")
+    assert not result.rewrites and not result.changed
+    assert result.preservations[0].reason is PreservationReason.INLINE_CODE
+
+
+def test_a_quoted_historical_link_is_not_falsified():
+    """The real case: prose quoting a link precisely because it used to be wrong.
+    Rewriting the quotation makes the sentence contradict itself."""
+    text = ("The earlier `[I-3](doctrine.md)` link here resolved to nothing "
+            "- corrected later.\n")
+    result = plan("control-plane/index.md", text)
+    assert not result.changed and text == result.original
+    assert result.preservations[0].reason is PreservationReason.INLINE_CODE
+
+
+def test_a_real_link_and_a_quoted_link_on_one_line_are_treated_differently():
+    text = "See the [catalog](doctrine.md) - the earlier `[I-3](doctrine.md)` resolved to nothing.\n"
+    result = plan("control-plane/index.md", text)
+    assert len(result.rewrites) == 1 and len(result.preservations) == 1
+    assert result.rewrites[0].new_target == "foundational/doctrine.md"
+    assert "`[I-3](doctrine.md)`" in result.content, "quotation must survive verbatim"
+
+
+def test_source_move_also_preserves_inline_code_links():
+    result = plan_source_move("control-plane/invariants.md",
+                              "control-plane/invariants/index.md",
+                              "example: `[x](sibling.md)`\n")
+    assert not result.rewrites
+    assert result.preservations[0].reason is PreservationReason.INLINE_CODE
+
+
+def test_scan_classifies_inline_code_references_as_preserved():
+    corpus = {"control-plane/index.md": "quoted `[x](doctrine.md)` here\n"}
+    unintended, preserved = scan_stale_references(corpus, MAP)
+    assert not unintended
+    assert preserved[0].reason is PreservationReason.INLINE_CODE
+
+
+def test_inline_code_spans_do_not_cross_lines():
+    spans = inline_code_spans("a `one` b\nc `two` d\n")
+    assert len(spans) == 2
+
+
+def test_an_unmatched_backtick_protects_nothing():
+    """A stray backtick must not silently protect the rest of the document."""
+    result = plan("control-plane/index.md", "stray ` tick then [x](doctrine.md)\n")
+    assert len(result.rewrites) == 1 and not result.preservations
