@@ -90,6 +90,7 @@ jobs:
             docs-api/tests/test_redirect_serving.py \
             docs-api/tests/test_work_capture_contract.py \
             docs-api/tests/test_model_contract.py \
+            docs-api/tests/test_observe_contract.py \
             mcp/tests/test_allowed_hosts.py \
             mcp/tests/test_work_tools.py \
             dashboard/tests/test_authoring.py \
