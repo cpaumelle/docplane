@@ -146,6 +146,12 @@ services:
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
       MCP_PUBLIC_PORT: ${DOCPLANE_MCP_PORT:-8049}
+      # Large-document exchange for write_doc's content_path (docplane#88).
+      # Empty disables the variant. To enable, set this to a container path
+      # and bind-mount the matching host directory in a deployment overlay,
+      # e.g.  volumes: ["/srv/docplane-mcp-exchange:/exchange:ro"] with
+      # DOCPLANE_MCP_CONTENT_DIR=/exchange.
+      DOCPLANE_MCP_CONTENT_DIR: ${DOCPLANE_MCP_CONTENT_DIR:-}
     ports:
       - "${DOCPLANE_MCP_PORT:-8049}:8049"
 

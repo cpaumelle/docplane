@@ -1,15 +1,51 @@
 """DocPlane MCP tools using the same contributor API as the dashboard."""
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
 
+import common
 from common import DOCPLANE_API_URL, DOCPLANE_TOKEN
+
+# Bound for content_path reads: generous for documentation, small enough that
+# a mistaken path (a log, a dump) fails loudly instead of publishing garbage.
+CONTENT_PATH_MAX_BYTES = 5 * 1024 * 1024
 
 
 def _key(prefix: str) -> str:
     return f"mcp-{prefix}-{uuid4()}"
+
+
+def _load_content_path(content_path: str) -> tuple[str | None, dict | None]:
+    """Read page content from the allowlisted exchange directory.
+
+    The path must resolve INSIDE DOCPLANE_MCP_CONTENT_DIR after symlink
+    resolution — anything else would turn this tool into a file-disclosure
+    primitive for whatever the MCP container can see (docplane#88 review
+    constraint). Returns (content, None) or (None, error)."""
+    base = common.DOCPLANE_MCP_CONTENT_DIR
+    if not base:
+        return None, {
+            "error": "content_path is disabled: DOCPLANE_MCP_CONTENT_DIR is not configured",
+            "remedy": "Mount an exchange directory into the docs-mcp container and set DOCPLANE_MCP_CONTENT_DIR to it, or pass content inline.",
+        }
+    base_dir = Path(base).resolve()
+    if not base_dir.is_dir():
+        return None, {"error": f"DOCPLANE_MCP_CONTENT_DIR does not exist in the MCP container: {base}"}
+    candidate = (base_dir / content_path).resolve()
+    if not candidate.is_relative_to(base_dir):
+        return None, {"error": "content_path escapes the allowlisted exchange directory", "content_path": content_path}
+    if not candidate.is_file():
+        return None, {"error": "content_path not found in the exchange directory", "content_path": content_path}
+    size = candidate.stat().st_size
+    if size > CONTENT_PATH_MAX_BYTES:
+        return None, {"error": f"content_path exceeds {CONTENT_PATH_MAX_BYTES} bytes", "bytes": size}
+    try:
+        return candidate.read_text(encoding="utf-8"), None
+    except UnicodeDecodeError:
+        return None, {"error": "content_path is not valid UTF-8 text", "content_path": content_path}
 
 
 def _request(method: str, path: str, *, body: dict | None = None, idempotency_key: str | None = None):
@@ -78,8 +114,24 @@ def register(mcp) -> None:
         return body.get("pages", []) if code == 200 else [_error(code, body)]
 
     @mcp.tool()
-    def write_doc(path: str, title: str, nav_path: str, content: str, purpose: str) -> dict:
-        """Create or replace a Markdown page and publish it directly with exact-revision safety."""
+    def write_doc(path: str, title: str, nav_path: str, content: str = "", purpose: str = "", content_path: str = "") -> dict:
+        """Create or replace a Markdown page and publish it directly with exact-revision safety.
+
+        Provide the document either inline via `content` or — for large pages —
+        via `content_path`, a file path relative to the server's allowlisted
+        exchange directory (DOCPLANE_MCP_CONTENT_DIR), which the MCP server
+        reads itself so the document never has to transit the calling agent's
+        context. Exactly one of the two must be provided; `purpose` is always
+        required."""
+        if not purpose.strip():
+            return {"error": "purpose is required"}
+        if bool(content) == bool(content_path):
+            return {"error": "provide exactly one of content or content_path"}
+        if content_path:
+            loaded, failure = _load_content_path(content_path)
+            if failure is not None:
+                return failure
+            content = loaded
         existing = _find_path(path)
         change_key = _key("change")
         code, change = _request(
