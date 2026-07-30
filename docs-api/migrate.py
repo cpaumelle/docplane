@@ -116,11 +116,30 @@ def applied(conn) -> dict[int, dict]:
         return {int(row["ordinal"]): dict(row) for row in cur.fetchall()}
 
 
-def verify_history(migrations: list[Migration], history: dict[int, dict]) -> None:
+def verify_history(migrations: list[Migration], history: dict[int, dict]) -> list[str]:
+    """Verify the database history against this image's migrations.
+
+    Rollback/forward-compatibility contract: DocPlane migrations are
+    additive-only (new schemas, tables, defaulted/nullable columns, CHECK
+    vocabularies extended by adding values). An OLDER image may therefore run
+    safely against a database that a NEWER image has already advanced — the
+    old code simply does not use the newer objects. Ordinals BEYOND this
+    image's newest migration are tolerated and reported, never fatal, which
+    is what makes restoring the previous image a real rollback path.
+
+    Divergence is still fatal: an unknown ordinal at-or-below this image's
+    newest migration, a filename mismatch, or a checksum mismatch means the
+    database and this image share no consistent history.
+    """
     known = {migration.ordinal: migration for migration in migrations}
-    for ordinal, record in history.items():
+    newest_known = migrations[-1].ordinal
+    ahead: list[str] = []
+    for ordinal, record in sorted(history.items()):
         migration = known.get(ordinal)
         if migration is None:
+            if ordinal > newest_known:
+                ahead.append(f"{ordinal:03d} ({record['filename']})")
+                continue
             raise MigrationError(
                 f"database carries unknown migration {ordinal:03d} ({record['filename']})"
             )
@@ -134,14 +153,19 @@ def verify_history(migrations: list[Migration], history: dict[int, dict]) -> Non
                 f"migration checksum drift at {ordinal:03d} ({migration.filename})"
             )
     applied_ordinals = sorted(history)
-    if applied_ordinals and applied_ordinals != list(range(migrations[0].ordinal, max(applied_ordinals) + 1)):
-        raise MigrationError(f"database migration history has a gap: {applied_ordinals}")
+    if applied_ordinals:
+        expected = list(range(migrations[0].ordinal, max(applied_ordinals) + 1))
+        if applied_ordinals != expected:
+            raise MigrationError(f"database migration history has a gap: {applied_ordinals}")
+    return ahead
 
 
 def apply_pending(conn, migrations: list[Migration], *, dry_run: bool = False) -> list[str]:
     ensure_ledger(conn)
     history = applied(conn)
-    verify_history(migrations, history)
+    ahead = verify_history(migrations, history)
+    for name in ahead:
+        print(f"AHEAD {name} (applied by a newer image; tolerated under the additive-schema contract)")
     pending = [migration for migration in migrations if migration.ordinal not in history]
     if dry_run:
         return [migration.filename for migration in pending]
@@ -181,11 +205,14 @@ def apply_pending(conn, migrations: list[Migration], *, dry_run: bool = False) -
     return applied_names
 
 
-def status(conn, migrations: list[Migration]) -> list[dict]:
+def status(conn, migrations: list[Migration]) -> tuple[list[dict], list[str]]:
+    """Rows for this image's migrations, plus the tolerated-ahead entries a
+    newer image applied. Both surfaces must be reported: hiding the ahead
+    list would make an upgraded database look identical to a current one."""
     ensure_ledger(conn)
     history = applied(conn)
-    verify_history(migrations, history)
-    return [
+    ahead = verify_history(migrations, history)
+    rows = [
         {
             "ordinal": migration.ordinal,
             "filename": migration.filename,
@@ -199,6 +226,7 @@ def status(conn, migrations: list[Migration]) -> list[dict]:
         }
         for migration in migrations
     ]
+    return rows, ahead
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -219,16 +247,21 @@ def main(argv: list[str] | None = None) -> int:
             for name in apply_pending(conn, migrations, dry_run=True):
                 print(f"PENDING {name}")
         else:
-            rows = status(conn, migrations)
+            rows, ahead = status(conn, migrations)
             if args.command == "status":
                 for row in rows:
                     state = "APPLIED" if row["applied"] else "PENDING"
                     print(f"{state} {row['filename']} {row['checksum']}")
+                for name in ahead:
+                    print(f"AHEAD {name} (applied by a newer image; tolerated under the additive-schema contract)")
             else:
                 pending = [row["filename"] for row in rows if not row["applied"]]
                 if pending:
                     raise MigrationError("pending migrations: " + ", ".join(pending))
-                print(f"VERIFIED {len(rows)} migrations")
+                if ahead:
+                    print(f"VERIFIED {len(rows)} migrations ({len(ahead)} ahead, applied by a newer image)")
+                else:
+                    print(f"VERIFIED {len(rows)} migrations")
     return 0
 
 
