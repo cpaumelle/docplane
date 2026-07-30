@@ -19,12 +19,15 @@ from app.work_models import (
     CaptureCreate,
     CaptureDiscard,
     CapturePromote,
+    DispositionsUpdate,
     InitiativeCreate,
     InitiativeDependencyCreate,
     InitiativeLinkCreate,
     PromotionUpdate,
     WorkspaceCreate,
     WorkTransition,
+    closure_gate_errors,
+    soak_gate_errors,
 )
 
 router = APIRouter(tags=["work-v1"])
@@ -70,9 +73,12 @@ def _initiative_select() -> str:
                i.work_state, i.priority, i.version, i.target_date, i.review_due_at,
                i.blocker_summary, i.soak_started_at, i.soak_review_at,
                i.soak_success_criteria, i.soak_failure_conditions,
+               i.soak_monitoring_ref,
                i.parked_reason, i.parked_review_at, i.parked_indefinitely,
-               i.promotion_state, i.promotion_change_id, i.completed_at,
-               i.created_at, i.updated_at
+               i.promotion_state, i.promotion_change_id,
+               i.model_disposition, i.model_disposition_note,
+               i.observe_disposition, i.observe_disposition_note,
+               i.completed_at, i.created_at, i.updated_at
           FROM work.initiatives i
           JOIN docplane.workspaces w ON w.workspace_id = i.workspace_id
     """
@@ -83,9 +89,12 @@ def _initiative(row) -> dict[str, Any]:
         "initiative_id", "initiative_key", "workspace_id", "workspace_key", "title",
         "objective", "scope", "owner_principal_id", "work_state", "priority", "version",
         "target_date", "review_due_at", "blocker_summary", "soak_started_at", "soak_review_at",
-        "soak_success_criteria", "soak_failure_conditions", "parked_reason", "parked_review_at",
-        "parked_indefinitely", "promotion_state", "promotion_change_id", "completed_at",
-        "created_at", "updated_at",
+        "soak_success_criteria", "soak_failure_conditions", "soak_monitoring_ref",
+        "parked_reason", "parked_review_at", "parked_indefinitely",
+        "promotion_state", "promotion_change_id",
+        "model_disposition", "model_disposition_note",
+        "observe_disposition", "observe_disposition_note",
+        "completed_at", "created_at", "updated_at",
     )
     value = dict(zip(keys, row))
     for key in ("initiative_id", "workspace_id", "owner_principal_id", "promotion_change_id"):
@@ -276,28 +285,83 @@ def transition_initiative(
             raise HTTPException(status_code=409, detail={"code": "INITIATIVE_VERSION_STALE", "current": initiative["version"]})
         if request.work_state not in _TRANSITIONS[initiative["work_state"]]:
             raise HTTPException(status_code=409, detail={"code": "WORK_TRANSITION_INVALID", "from": initiative["work_state"], "to": request.work_state})
-        completed_at = datetime.now(timezone.utc) if request.work_state in {"COMPLETE", "ABANDONED"} else None
         cur = conn.cursor()
+        # Effective dispositions: values on this request win, otherwise what
+        # was already recorded via the dispositions endpoint persists.
+        model_disposition = request.model_disposition or initiative["model_disposition"]
+        model_note = request.model_disposition_note or initiative["model_disposition_note"]
+        observe_disposition = request.observe_disposition or initiative["observe_disposition"]
+        observe_note = request.observe_disposition_note or initiative["observe_disposition_note"]
+        soak_monitoring_ref = request.soak_monitoring_ref or initiative["soak_monitoring_ref"]
+        if request.work_state == "SOAKING":
+            cur.execute(
+                "SELECT 1 FROM work.initiative_links WHERE initiative_id = %s AND resource_type IN ('MODEL_ENTITY', 'ARTIFACT', 'OBSERVATION') LIMIT 1",
+                (str(initiative_id),),
+            )
+            gate = soak_gate_errors(soak_monitoring_ref, cur.fetchone() is not None)
+            if gate:
+                raise HTTPException(status_code=409, detail={"code": "WORK_SOAK_REQUIRES_OBSERVABILITY", "missing": gate})
+        if request.work_state == "COMPLETE":
+            gate = closure_gate_errors(initiative["promotion_state"], model_disposition, model_note, observe_disposition, observe_note)
+            if gate:
+                raise HTTPException(status_code=409, detail={"code": "WORK_CLOSURE_DISPOSITIONS_INCOMPLETE", "missing": gate})
+        completed_at = datetime.now(timezone.utc) if request.work_state in {"COMPLETE", "ABANDONED"} else None
         cur.execute(
             """
             UPDATE work.initiatives
                SET work_state = %s, review_due_at = %s, blocker_summary = %s,
                    soak_started_at = %s, soak_review_at = %s,
                    soak_success_criteria = %s, soak_failure_conditions = %s,
+                   soak_monitoring_ref = %s,
                    parked_reason = %s, parked_review_at = %s,
-                   parked_indefinitely = %s, completed_at = %s,
+                   parked_indefinitely = %s,
+                   model_disposition = %s, model_disposition_note = %s,
+                   observe_disposition = %s, observe_disposition_note = %s,
+                   completed_at = %s,
                    version = version + 1, updated_at = now()
              WHERE initiative_id = %s AND version = %s
             """,
             (
                 request.work_state, request.review_due_at, request.blocker_summary,
                 request.soak_started_at, request.soak_review_at, request.soak_success_criteria,
-                request.soak_failure_conditions, request.parked_reason, request.parked_review_at,
-                request.parked_indefinitely, completed_at, str(initiative_id), request.expected_version,
+                request.soak_failure_conditions, soak_monitoring_ref,
+                request.parked_reason, request.parked_review_at,
+                request.parked_indefinitely,
+                model_disposition, model_note, observe_disposition, observe_note,
+                completed_at, str(initiative_id), request.expected_version,
             ),
         )
         if request.note:
             cur.execute("INSERT INTO work.initiative_activities (initiative_id, author_principal_id, idempotency_key, activity_type, body) VALUES (%s, %s, %s, 'NOTE', %s)", (str(initiative_id), principal.principal_id, f"transition:{key}", request.note.strip()))
+        if request.work_state == "COMPLETE":
+            # Honest deferral is allowed — and it mints a visible inbox gap.
+            for domain, disposition, deferred_note in (("model", model_disposition, model_note), ("observe", observe_disposition, observe_note)):
+                if disposition != "DEFERRED":
+                    continue
+                cur.execute(
+                    """
+                    INSERT INTO work.captures (body, kind, origin, author_principal_id, idempotency_key)
+                    VALUES (%s, 'FINDING', %s, %s, %s)
+                    ON CONFLICT (author_principal_id, idempotency_key) DO NOTHING
+                    """,
+                    (
+                        f"Deferred {domain} disposition from completed initiative '{initiative['title']}' ({initiative['initiative_key']}): {(deferred_note or '').strip()}",
+                        _json({"source": "closure-deferral", "initiative_id": str(initiative_id), "domain": domain}),
+                        principal.principal_id, f"closure-deferred:{domain}:{key}",
+                    ),
+                )
+                append_event(
+                    conn,
+                    event_type="WORK_CLOSURE_DEFERRED",
+                    channel="API",
+                    producer_id="docplane-work",
+                    idempotency_key=f"WORK_CLOSURE_DEFERRED:{domain}:{principal.principal_id}:{key}",
+                    principal=principal,
+                    workspace_key=initiative["workspace_key"],
+                    resource_type="INITIATIVE",
+                    resource_id=str(initiative_id),
+                    metadata={"domain": domain, "note": deferred_note},
+                )
         append_event(
             conn,
             event_type="INITIATIVE_TRANSITIONED",
@@ -393,6 +457,39 @@ def update_promotion(
             raise HTTPException(status_code=409, detail={"code": "INITIATIVE_VERSION_STALE", "current": initiative["version"]})
         cur = conn.cursor()
         cur.execute("UPDATE work.initiatives SET promotion_state = %s, promotion_change_id = %s, version = version + 1, updated_at = now() WHERE initiative_id = %s AND version = %s", (request.promotion_state, str(request.promotion_change_id) if request.promotion_change_id else None, str(initiative_id), request.expected_version))
+        conn.commit()
+        return _load(conn, initiative_id)
+
+
+@router.put("/api/v1/initiatives/{initiative_id}/dispositions")
+def update_dispositions(
+    initiative_id: UUID,
+    request: DispositionsUpdate,
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    with get_conn() as conn:
+        initiative = _load(conn, initiative_id, for_update=True)
+        if initiative["version"] != request.expected_version:
+            raise HTTPException(status_code=409, detail={"code": "INITIATIVE_VERSION_STALE", "current": initiative["version"]})
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE work.initiatives
+               SET model_disposition = %s, model_disposition_note = %s,
+                   observe_disposition = %s, observe_disposition_note = %s,
+                   soak_monitoring_ref = %s,
+                   version = version + 1, updated_at = now()
+             WHERE initiative_id = %s AND version = %s
+            """,
+            (
+                request.model_disposition or initiative["model_disposition"],
+                request.model_disposition_note or initiative["model_disposition_note"],
+                request.observe_disposition or initiative["observe_disposition"],
+                request.observe_disposition_note or initiative["observe_disposition_note"],
+                request.soak_monitoring_ref or initiative["soak_monitoring_ref"],
+                str(initiative_id), request.expected_version,
+            ),
+        )
         conn.commit()
         return _load(conn, initiative_id)
 

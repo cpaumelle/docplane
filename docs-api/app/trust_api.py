@@ -58,10 +58,10 @@ def _snapshot(conn, page: dict[str, Any], principal: Principal, reason: str) -> 
         INSERT INTO docs.page_metadata_history
             (page_resource_id, metadata_version, workspace_id, publication_state,
              knowledge_class, verification_state, owner_principal_id, review_due_at,
-             criticality, metadata_review_required, changed_by_principal_id, change_reason)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             criticality, metadata_review_required, provenance, changed_by_principal_id, change_reason)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
-        (page["resource_id"], page["metadata_version"], page["workspace_id"], page["publication_state"], page["knowledge_class"], page["verification_state"], page["owner_principal_id"], page["review_due_at"], page["criticality"], page["metadata_review_required"], principal.principal_id, reason),
+        (page["resource_id"], page["metadata_version"], page["workspace_id"], page["publication_state"], page["knowledge_class"], page["verification_state"], page["owner_principal_id"], page["review_due_at"], page["criticality"], page["metadata_review_required"], page.get("provenance"), principal.principal_id, reason),
     )
 
 
@@ -118,11 +118,12 @@ def classify(
             UPDATE docs.pages
                SET workspace_id = %s, publication_state = %s, knowledge_class = %s,
                    criticality = %s, owner_principal_id = %s, review_due_at = %s,
+                   provenance = coalesce(%s, provenance),
                    metadata_review_required = false, metadata_version = metadata_version + 1,
                    updated_at = now(), updated_by = %s
              WHERE resource_id = %s AND metadata_version = %s
             """,
-            (str(request.workspace_id), request.publication_state, request.knowledge_class, request.criticality, str(request.owner_principal_id) if request.owner_principal_id else None, request.review_due_at, principal.display_name, str(page_resource_id), request.expected_metadata_version),
+            (str(request.workspace_id), request.publication_state, request.knowledge_class, request.criticality, str(request.owner_principal_id) if request.owner_principal_id else None, request.review_due_at, request.provenance, principal.display_name, str(page_resource_id), request.expected_metadata_version),
         )
         if cur.rowcount != 1:
             raise HTTPException(status_code=409, detail={"code": "PAGE_METADATA_UPDATE_RACE"})

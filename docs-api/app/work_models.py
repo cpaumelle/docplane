@@ -51,15 +51,29 @@ class WorkTransition(BaseModel):
     soak_review_at: datetime | None = None
     soak_success_criteria: str | None = Field(default=None, max_length=10000)
     soak_failure_conditions: str | None = Field(default=None, max_length=10000)
+    soak_monitoring_ref: str | None = Field(default=None, max_length=2000)
     parked_reason: str | None = Field(default=None, max_length=4000)
     parked_review_at: datetime | None = None
     parked_indefinitely: bool = False
+    model_disposition: Literal["UPDATED", "NOT_REQUIRED", "DEFERRED"] | None = None
+    model_disposition_note: str | None = Field(default=None, max_length=4000)
+    observe_disposition: Literal["UPDATED", "NOT_REQUIRED", "DEFERRED"] | None = None
+    observe_disposition_note: str | None = Field(default=None, max_length=4000)
     note: str | None = Field(default=None, max_length=4000)
 
     @model_validator(mode="after")
     def state_contracts(self):
         _validate_state(self)
         return self
+
+
+class DispositionsUpdate(BaseModel):
+    expected_version: int = Field(ge=1)
+    model_disposition: Literal["UPDATED", "NOT_REQUIRED", "DEFERRED"] | None = None
+    model_disposition_note: str | None = Field(default=None, max_length=4000)
+    observe_disposition: Literal["UPDATED", "NOT_REQUIRED", "DEFERRED"] | None = None
+    observe_disposition_note: str | None = Field(default=None, max_length=4000)
+    soak_monitoring_ref: str | None = Field(default=None, max_length=2000)
 
 
 class ActivityCreate(BaseModel):
@@ -69,8 +83,15 @@ class ActivityCreate(BaseModel):
 
 
 class InitiativeLinkCreate(BaseModel):
-    relation: Literal["CONTEXT", "EVIDENCE", "DECISION", "RUNBOOK", "BLOCKED_BY", "PROMOTES_TO", "CHANGE", "CATALOG_SNAPSHOT"]
-    resource_type: Literal["PAGE", "INITIATIVE", "CHANGE", "CATALOG", "EXTERNAL"]
+    relation: Literal[
+        "CONTEXT", "EVIDENCE", "DECISION", "RUNBOOK", "BLOCKED_BY", "PROMOTES_TO",
+        "CHANGE", "CATALOG_SNAPSHOT",
+        "IMPLEMENTS", "CONCERNS", "PRODUCES", "UPDATES",
+    ]
+    resource_type: Literal[
+        "PAGE", "INITIATIVE", "CHANGE", "CATALOG", "EXTERNAL",
+        "MODEL_ENTITY", "ARTIFACT", "OBSERVATION",
+    ]
     resource_id: str = Field(min_length=1, max_length=1000)
 
 
@@ -120,6 +141,54 @@ class PromotionUpdate(BaseModel):
         if self.promotion_state == "PROMOTED" and self.promotion_change_id is None:
             raise ValueError("PROMOTED requires promotion_change_id")
         return self
+
+
+def closure_gate_errors(
+    promotion_state: str,
+    model_disposition: str | None,
+    model_note: str | None,
+    observe_disposition: str | None,
+    observe_note: str | None,
+) -> list[dict[str, str]]:
+    """The keystone gate, as a pure function: finishing an initiative must
+    answer one disposition per durable domain. Structured and machine-readable
+    so a blocked agent learns exactly what is missing."""
+    missing: list[dict[str, str]] = []
+    if promotion_state not in {"PROMOTED", "NOT_REQUIRED"}:
+        missing.append({
+            "domain": "know",
+            "code": "PROMOTION_UNRESOLVED",
+            "current": promotion_state,
+            "remedy": "PUT /api/v1/initiatives/{id}/promotion with PROMOTED (and the change id) or NOT_REQUIRED.",
+        })
+    for domain, disposition, note in (("model", model_disposition, model_note), ("observe", observe_disposition, observe_note)):
+        if disposition is None:
+            missing.append({
+                "domain": domain,
+                "code": "DISPOSITION_UNANSWERED",
+                "remedy": f"Set {domain}_disposition to UPDATED, NOT_REQUIRED or DEFERRED via PUT /api/v1/initiatives/{{id}}/dispositions or on the COMPLETE transition.",
+            })
+        elif disposition in {"NOT_REQUIRED", "DEFERRED"} and not (note or "").strip():
+            missing.append({
+                "domain": domain,
+                "code": "DISPOSITION_NOTE_REQUIRED",
+                "current": disposition,
+                "remedy": f"{disposition} requires a one-line {domain}_disposition_note; DEFERRED mints a visible inbox gap.",
+            })
+    return missing
+
+
+def soak_gate_errors(soak_monitoring_ref: str | None, has_observability_link: bool) -> list[dict[str, str]]:
+    """A thing that cannot be observed cannot be soaked: entering SOAKING
+    requires the soak criteria to reference real monitoring — a named
+    rule/dashboard reference, or a link to a model entity, artifact or
+    observation."""
+    if (soak_monitoring_ref or "").strip() or has_observability_link:
+        return []
+    return [{
+        "code": "SOAK_OBSERVABILITY_MISSING",
+        "remedy": "Provide soak_monitoring_ref (a named alert/dashboard) or add an initiative link with resource_type MODEL_ENTITY, ARTIFACT or OBSERVATION before entering SOAKING.",
+    }]
 
 
 def _validate_state(value) -> None:

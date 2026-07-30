@@ -64,7 +64,7 @@ def _load_pages(conn, *, for_update: bool = False) -> list[dict[str, Any]]:
                w.workspace_key, p.publication_state, p.knowledge_class,
                p.verification_state, p.owner_principal_id::text,
                p.review_due_at, p.criticality, p.metadata_review_required,
-               p.metadata_version, p.updated_at, p.updated_by
+               p.metadata_version, p.updated_at, p.updated_by, p.provenance
           FROM docs.pages p
           JOIN docplane.workspaces w ON w.workspace_id = p.workspace_id
          ORDER BY p.path
@@ -76,7 +76,7 @@ def _load_pages(conn, *, for_update: bool = False) -> list[dict[str, Any]]:
         "version", "status", "workspace_id", "workspace_key", "publication_state",
         "knowledge_class", "verification_state", "owner_principal_id", "review_due_at",
         "criticality", "metadata_review_required", "metadata_version", "updated_at",
-        "updated_by",
+        "updated_by", "provenance",
     )
     return [dict(zip(keys, row)) for row in cur.fetchall()]
 
@@ -199,7 +199,36 @@ def _record_operation_result(
     warnings.extend(result["warnings"])
 
 
-def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any]], *, lock: bool = False) -> dict[str, Any]:
+def generated_guard_error(provenance: str | None, declared_by: str | None, acting_principal_id: str | None) -> dict[str, Any] | None:
+    """A GENERATED page is a certified derived artifact: only the principal
+    that declared its generating artifact may publish to it while the
+    declaration stands. Remediation is regeneration; retire the declaration
+    to hand-edit. Pure so the rule is testable without a database."""
+    if provenance != "GENERATED":
+        return None
+    if declared_by is None:
+        # Declaration retired or absent: the page is hand-editable again.
+        return None
+    if acting_principal_id is not None and str(acting_principal_id) == str(declared_by):
+        return None
+    return {
+        "code": "PROVENANCE_GENERATED_PAGE_PROTECTED",
+        "message": "This page is a generated artifact; remediation is regeneration from the authoritative source.",
+        "remedy": "Run the declaring generator, or retire the artifact declaration (POST /api/v1/model/artifacts/{artifact_id}/retire) before hand-editing.",
+    }
+
+
+def _declaring_artifact_principal(conn, path: str) -> str | None:
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT declared_by::text FROM model.generated_artifacts WHERE status = 'DECLARED' AND target_page_paths ? %s LIMIT 1",
+        (path,),
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any]], *, lock: bool = False, acting_principal_id: str | None = None) -> dict[str, Any]:
     original_pages = _load_pages(conn, for_update=lock)
     pages = copy.deepcopy(original_pages)
     original_redirects = _load_redirects(conn)
@@ -253,6 +282,15 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                         "remedy": "Fetch the current page, rebase the intended edit, and resubmit with the current revision.",
                     }
                 )
+            elif page.get("provenance") == "GENERATED":
+                guard = generated_guard_error(page["provenance"], _declaring_artifact_principal(conn, page["path"]), acting_principal_id)
+                if guard is not None:
+                    if acting_principal_id is None:
+                        # Validation dry-run: surface the constraint; enforcement
+                        # binds to the actual publishing principal at publish.
+                        result["warnings"].append({**guard, "enforced_at": "publish"})
+                    else:
+                        op_errors.append(guard)
         if op_errors:
             _record_operation_result(result, results, errors, warnings)
             continue
@@ -525,7 +563,7 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
         if change["status"] == "ABANDONED":
             raise HTTPException(status_code=409, detail={"code": "CHANGE_ABANDONED"})
         operations = _load_operations(conn, change_id)
-        evaluation = evaluate_change(conn, change, operations, lock=True)
+        evaluation = evaluate_change(conn, change, operations, lock=True, acting_principal_id=str(principal.principal_id))
         if not evaluation["passed"]:
             summary = {key: evaluation[key] for key in ("passed", "errors", "warnings", "operations_checked", "operations_accepted", "base_state_identity", "candidate_identity", "validated_at", "contract_version")}
             cur.execute(

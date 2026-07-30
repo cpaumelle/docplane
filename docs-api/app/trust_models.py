@@ -26,6 +26,7 @@ class PageClassificationUpdate(BaseModel):
     )
     owner_principal_id: UUID | None = None
     review_due_at: datetime | None = None
+    provenance: Literal["AUTHORED", "GENERATED"] | None = None
     reason: str = Field(min_length=1, max_length=4000)
 
 
