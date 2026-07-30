@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import textwrap
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -154,14 +156,139 @@ def test_dashboard_uses_discovered_site_name_and_reciprocal_navigation():
     assert 'a.href = "/dashboard/"' in template
 
 
-def test_dashboard_can_bootstrap_a_private_fabric_contributor_session():
-    app_js = (ROOT / "dashboard/static/app.js").read_text(encoding="utf-8")
+def test_dashboard_authentication_state_machine_behaviour():
+    app_path = ROOT / "dashboard/static/app.js"
     dashboard = (ROOT / "dashboard/static/index.html").read_text(encoding="utf-8")
-    assert 'api("/api/v1/auth/self-issue"' in app_js
-    assert 'client_context: "DocPlane browser dashboard"' in app_js
-    assert "token = issued.token;" in app_js
-    assert 'id="display-name"' in dashboard
-    assert 'id="start-session"' in dashboard
+    harness = textwrap.dedent(
+        f"""
+        const assert = require("node:assert/strict");
+        require({str(app_path)!r});
+        const {{createAuthentication, startDashboardAuthentication, TOKEN_KEY}} = globalThis.DocPlaneAuth;
+
+        class Storage {{
+          constructor(token = "") {{ this.values = new Map(token ? [[TOKEN_KEY, token]] : []); }}
+          getItem(key) {{ return this.values.get(key) || null; }}
+          setItem(key, value) {{ this.values.set(key, value); }}
+          removeItem(key) {{ this.values.delete(key); }}
+        }}
+        const error = (status, message = "rejected") => Object.assign(new Error(message), {{status}});
+        const privateDiscovery = {{
+          authentication: {{token_acquisition: {{
+            self_service: true,
+            endpoint: "/advertised/bootstrap",
+            method: "POST",
+            access_profile: "private_fabric",
+            procedure: "automatic",
+          }}}},
+        }};
+        function makeRequest({{discovery = privateDiscovery, valid = [], issueError = null}} = {{}}) {{
+          const calls = [];
+          const request = async (path, options = {{}}) => {{
+            calls.push({{path, options}});
+            if (path === "/api/control-plane/discovery") return discovery;
+            if (path === "/advertised/bootstrap") {{
+              if (issueError) throw issueError;
+              return {{token: "issued-token", principal_kind: "AGENT", role: "CONTRIBUTOR"}};
+            }}
+            if (path === "/api/control-plane/capabilities") {{
+              const token = options.headers?.Authorization?.replace("Bearer ", "");
+              if (![...valid, "issued-token"].includes(token)) throw error(401);
+              return {{principal: {{display_name: "browser-agent", role: "CONTRIBUTOR"}}}};
+            }}
+            if (path === "/api/control-plane/overview") return {{modules: {{structure: {{data: {{summary: {{active_pages: 3}}}}}}}}}};
+            throw error(404, path);
+          }};
+          return {{request, calls}};
+        }}
+        const count = (calls, path) => calls.filter((call) => call.path === path).length;
+
+        (async () => {{
+          // Valid cached token: validate, do not mint, then load overview.
+          {{
+            const storage = new Storage("cached");
+            const {{request, calls}} = makeRequest({{valid: ["cached"]}});
+            const auth = createAuthentication({{request, storage}});
+            await startDashboardAuthentication(auth, () => request("/api/control-plane/overview"));
+            assert.equal(count(calls, "/advertised/bootstrap"), 0);
+            assert.equal(count(calls, "/api/control-plane/overview"), 1);
+          }}
+
+          // Invalid cached token: fully clear, mint exactly once, validate, store, load.
+          {{
+            const storage = new Storage("expired");
+            let clears = 0;
+            const {{request, calls}} = makeRequest();
+            const auth = createAuthentication({{request, storage, onCleared: () => clears++}});
+            await startDashboardAuthentication(auth, () => request("/api/control-plane/overview"));
+            assert.equal(clears, 1);
+            assert.equal(count(calls, "/advertised/bootstrap"), 1);
+            assert.equal(storage.getItem(TOKEN_KEY), "issued-token");
+            assert.equal(auth.state(), "connected");
+            assert.equal(count(calls, "/api/control-plane/overview"), 1);
+          }}
+
+          // No cache and concurrent initialization: discovery and advertised issuance are single-flight.
+          {{
+            const storage = new Storage();
+            const {{request, calls}} = makeRequest();
+            const auth = createAuthentication({{request, storage}});
+            await Promise.all([auth.initialize(), auth.initialize(), auth.initialize()]);
+            assert.equal(count(calls, "/api/control-plane/discovery"), 1);
+            assert.equal(count(calls, "/advertised/bootstrap"), 1);
+            assert.equal(JSON.parse(calls.find((call) => call.path === "/advertised/bootstrap").options.body).display_name, undefined);
+          }}
+
+          // Managed policy: never self-issue and expose the operator procedure.
+          {{
+            const states = [];
+            const discovery = {{authentication: {{token_acquisition: {{self_service: false, procedure: "Ask the operator for a named token."}}}}}};
+            const {{request, calls}} = makeRequest({{discovery}});
+            const auth = createAuthentication({{request, storage: new Storage(), onState: (state, detail) => states.push({{state, detail}})}});
+            assert.equal(await auth.initialize(), false);
+            assert.equal(count(calls, "/advertised/bootstrap"), 0);
+            assert.equal(states.at(-1).state, "managed-token-required");
+            assert.match(states.at(-1).detail.procedure, /operator/);
+          }}
+
+          // Generic and rate-limit failures remain bounded and truthful.
+          for (const status of [500, 429]) {{
+            const states = [];
+            const {{request, calls}} = makeRequest({{issueError: error(status)}});
+            const auth = createAuthentication({{request, storage: new Storage(), onState: (state, detail) => states.push({{state, detail}})}});
+            await Promise.all([auth.initialize(), auth.initialize()]);
+            assert.equal(count(calls, "/advertised/bootstrap"), 1);
+            assert.equal(auth.state(), "bootstrap-failed");
+            assert.match(states.at(-1).detail.message, status === 429 ? /rate limited/ : /routed DocPlane URL/);
+            assert.equal(auth.token(), "");
+          }}
+
+          // A 401 or 403 after connection gets one bounded, single-flight replacement.
+          for (const status of [401, 403]) {{
+            const storage = new Storage("cached");
+            const {{request, calls}} = makeRequest({{valid: ["cached"]}});
+            const auth = createAuthentication({{request, storage}});
+            await auth.initialize();
+            await Promise.all([
+              auth.handleRejectedStatus(status),
+              auth.handleRejectedStatus(status),
+              auth.handleRejectedStatus(status),
+            ]);
+            assert.equal(count(calls, "/advertised/bootstrap"), 1);
+            assert.equal(storage.getItem(TOKEN_KEY), "issued-token");
+            auth.clear();
+            assert.equal(auth.token(), "");
+            assert.equal(storage.getItem(TOKEN_KEY), null);
+          }}
+        }})().catch((failure) => {{ console.error(failure); process.exit(1); }});
+        """
+    )
+    subprocess.run(["node", "-e", harness], check=True, cwd=ROOT)
+    app_js = app_path.read_text(encoding="utf-8")
+    assert "localStorage" not in app_js
+    assert 'id="auth-status"' in dashboard
+    assert 'id="auth-fallback"' in dashboard
+    assert 'id="display-name"' not in dashboard
+    assert 'id="start-session"' not in dashboard
     assert "Use existing token" in dashboard
 
 

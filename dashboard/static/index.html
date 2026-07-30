@@ -18,11 +18,11 @@
       <span class="navlink navlink--active" title="Authoring dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</span>
     </nav>
     <div class="connect">
-      <input id="display-name" type="text" autocomplete="name" placeholder="Your name">
-      <button id="start-session">Start session</button>
-      <details>
+      <span id="auth-status" data-state="bootstrapping">Connecting…</span>
+      <details id="auth-fallback">
         <summary>Use existing token</summary>
         <div class="token-connect"><input id="token" type="password" placeholder="Contributor bearer token"><button id="connect">Connect</button></div>
+        <p id="auth-guidance"></p>
       </details>
     </div>
   </header>

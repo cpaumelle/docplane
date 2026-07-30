@@ -12,7 +12,12 @@
   async function api(path, options={}) {
     const response = await fetch(path, { ...options, headers:{...auth(),...(options.headers||{})} });
     const payload = await response.json().catch(() => ({raw:response.statusText}));
-    if (!response.ok) throw new Error(payload.detail?.upstream?.message || payload.detail?.code || payload.detail || payload.raw || `HTTP ${response.status}`);
+    if (!response.ok) {
+      if ([401, 403].includes(response.status)) {
+        document.dispatchEvent(new CustomEvent("docplane:authentication-rejected"));
+      }
+      throw new Error(payload.detail?.upstream?.message || payload.detail?.code || payload.detail || payload.raw || `HTTP ${response.status}`);
+    }
     return payload;
   }
   function escape(value) { const node=document.createElement("span"); node.textContent=String(value??""); return node.innerHTML; }

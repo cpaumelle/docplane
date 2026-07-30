@@ -2,7 +2,8 @@
 
 The dashboard is an HTTP client of the DocPlane API. It has no database, filesystem or release-store authority.
 
-A named contributor token is kept in browser session storage and forwarded to the API. Human authoring follows the same contract as MCP and other clients:
+A named contributor token is kept only in browser session storage and memory, then forwarded
+to the API. Human authoring follows the same contract as MCP and other clients:
 
 `SEARCH → READ EXACT REVISION → EDIT → VALIDATE → PUBLISH`
 
@@ -10,15 +11,26 @@ Review is optional and never blocks publication. The API owns revision checks, a
 
 ## Private-fabric authentication bootstrap
 
-The private-fabric deployment advertises self-service contributor-token issuance at
-`POST /api/v1/auth/self-issue`; it does not require an existing credential or human
-approval. Tokens are named, contributor-scoped and time-bounded.
+The dashboard is a client of the existing DocPlane authentication contract; it does not own
+an authentication or permission system. Discovery is authoritative for the active access
+profile, acquisition mode, endpoint, method and operator procedure.
 
-The dashboard must provide that bootstrap itself (or establish an equivalent authenticated
-browser session). Requiring a user to obtain a token out of band and paste it into the
-dashboard is not a complete sign-in flow. Until bootstrap succeeds, the dashboard must show
-an explicit authentication state and action rather than an apparently empty operational
-view.
+In `private_fabric`, routed fabric reachability is the admission boundary. The dashboard
+automatically calls the credential-acquisition endpoint advertised by discovery, accepts the
+server-generated short-lived `AGENT / CONTRIBUTOR` principal, validates it through ordinary
+capabilities, and stores its clear bearer only in memory and `sessionStorage`. No name,
+password, operator token handoff or approval is required. Cached bearers are validated before
+reuse; a rejected bearer is cleared and replaced at most once through a single-flight
+bootstrap.
+
+In managed deployments, self-service is disabled. The dashboard does not attempt issuance;
+it displays discovery's operator procedure and accepts the existing operator-issued bearer.
+Manual bearer entry is a fallback, not the primary private-fabric flow.
+
+The routed DocPlane origin is security-relevant: it supplies the trusted fabric-admission
+context for self-issue. Direct dashboard or docs-api service ports are not equivalent and
+must not inject or weaken that admission. If bootstrap fails outside the routed front, the
+dashboard directs the user to the routed URL or the manual fallback.
 
 The overview is authenticated by design because it includes contributor and change-control
 data. A blank overview is therefore not evidence that the corpus is empty. Check `/healthz`
