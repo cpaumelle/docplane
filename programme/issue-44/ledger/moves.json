@@ -905,7 +905,7 @@
     {
       "resource_id": "e0fa89f8-5258-5db6-a74a-adb6ce29f32c",
       "baseline_path": "control-plane/ccm-interface-realization-design.md",
-      "current_path": "control-plane/ccm-interface-realization-design.md",
+      "current_path": "control-plane/design/ccm-interface-realization-design.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -921,7 +921,7 @@
     {
       "resource_id": "5a7556ba-e05c-51a9-92e6-b11f9962df6a",
       "baseline_path": "control-plane/ccm-dhcp-resolver-ownership-capability.md",
-      "current_path": "control-plane/ccm-dhcp-resolver-ownership-capability.md",
+      "current_path": "control-plane/design/ccm-dhcp-resolver-ownership-capability.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -969,7 +969,7 @@
     {
       "resource_id": "58199095-56e4-579b-ab14-15731bf9693f",
       "baseline_path": "control-plane/ccm-interface-realization-step6-runbook.md",
-      "current_path": "control-plane/ccm-interface-realization-step6-runbook.md",
+      "current_path": "operations/runbooks/ccm-interface-realization-step6-runbook.md",
       "current_lifecycle": "OPERATION",
       "move_operation_count": 1,
       "publications": [
@@ -1017,7 +1017,7 @@
     {
       "resource_id": "555afaf1-fc8e-5902-9bd0-e4eabd29fb84",
       "baseline_path": "control-plane/topology-invariants/i-site-network-authority-1.md",
-      "current_path": "control-plane/topology-invariants/i-site-network-authority-1.md",
+      "current_path": "control-plane/invariants/i-site-network-authority-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1033,7 +1033,7 @@
     {
       "resource_id": "385fbd45-2529-5b2e-8119-4e3523c917ec",
       "baseline_path": "control-plane/topology-invariants/i-lan-geo-bypass-1.md",
-      "current_path": "control-plane/topology-invariants/i-lan-geo-bypass-1.md",
+      "current_path": "control-plane/invariants/i-lan-geo-bypass-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1049,7 +1049,7 @@
     {
       "resource_id": "b33771b9-ab83-5dce-8a77-e6787be6b223",
       "baseline_path": "control-plane/topology-invariants/i-locality-sibling-routes-1.md",
-      "current_path": "control-plane/topology-invariants/i-locality-sibling-routes-1.md",
+      "current_path": "control-plane/invariants/i-locality-sibling-routes-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1065,7 +1065,7 @@
     {
       "resource_id": "c765a103-415f-583f-9a7b-8d7b653801ab",
       "baseline_path": "control-plane/topology-invariants/i-staging-1.md",
-      "current_path": "control-plane/topology-invariants/i-staging-1.md",
+      "current_path": "control-plane/invariants/i-staging-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1081,7 +1081,7 @@
     {
       "resource_id": "950d3cae-e492-56da-97a3-075986e5df78",
       "baseline_path": "control-plane/topology-invariants/i-rw-geo-1.md",
-      "current_path": "control-plane/topology-invariants/i-rw-geo-1.md",
+      "current_path": "control-plane/invariants/i-rw-geo-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1129,7 +1129,7 @@
     {
       "resource_id": "8840eafe-5228-58fc-be6e-96d47ff825a0",
       "baseline_path": "control-plane/topology-invariants/i-coverage-derived-1.md",
-      "current_path": "control-plane/topology-invariants/i-coverage-derived-1.md",
+      "current_path": "control-plane/invariants/i-coverage-derived-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1145,7 +1145,7 @@
     {
       "resource_id": "f837c9e2-5a99-5ca6-a62c-fd0bb68a1cc7",
       "baseline_path": "control-plane/topology-invariants/i-wg-watchdog-1.md",
-      "current_path": "control-plane/topology-invariants/i-wg-watchdog-1.md",
+      "current_path": "control-plane/invariants/i-wg-watchdog-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1161,7 +1161,7 @@
     {
       "resource_id": "481689d6-42a8-5b17-8717-45afd461107e",
       "baseline_path": "control-plane/topology-invariants/i-ghost-row-1.md",
-      "current_path": "control-plane/topology-invariants/i-ghost-row-1.md",
+      "current_path": "control-plane/invariants/i-ghost-row-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
@@ -1177,7 +1177,7 @@
     {
       "resource_id": "7f1bccb3-68de-5ef8-8a92-a30eefdedae6",
       "baseline_path": "control-plane/topology-invariants/i-sec-fail-closed-1.md",
-      "current_path": "control-plane/topology-invariants/i-sec-fail-closed-1.md",
+      "current_path": "control-plane/invariants/i-sec-fail-closed-1.md",
       "current_lifecycle": "REFERENCE",
       "move_operation_count": 1,
       "publications": [
