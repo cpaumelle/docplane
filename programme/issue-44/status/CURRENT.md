@@ -47,36 +47,81 @@ required → deliberate non-move → correctly placed → still requires movemen
 
 | Disposition | Count | Confidence |
 |---|---|---|
-| Correctly placed | 79 | mixed — see audit |
+| Correctly placed | 56 | mixed — see audit |
 | Moved under Issue #44 | 54 | fully independently verified |
 | Archived | 42 | independently verified via fetched lifecycle field |
 | Reported by Agent 44 (hub / evidence surface / active board-project / #43-blocked / section landing — flat, non-candidate) | 39 | **not individually re-derived this pass** — see audit |
-| **Still requires movement** | **22** | fully independently verified |
+| **Still requires movement** (flat control-plane) | **22** | fully independently verified |
+| **Reorganisation candidate pending semantic clustering** (nested, legacy path) | **22** | fully independently verified — see correction below |
 | Backlog/paused | 4 | independently verified via fetched lifecycle field |
 | Evidence surface | 4 | fully independently verified (PATCH_METADATA, knowledge_class=EVIDENCE) |
 | Authoring decision required | 2 | fully independently verified |
+| Hub-style retirement candidate | 1 | fully independently verified (old `topology-invariants/index.md`) |
 | Deliberate non-move | 1 | fully independently verified |
 | Hold-blocked | 1 | fully independently verified |
 
 Sum = 248. Full per-page detail: `baseline/retrospective-baseline.json`.
+
+**Correction (2026-07-30T13:10:00Z):** 23 pages under the legacy
+`control-plane/topology-invariants/` path (22 invariants + `index.md`) were previously
+classified "correctly placed" solely because they are nested, not flat. That default was
+wrong: 18–23 sibling pages under the exact same path pattern were already moved to
+`control-plane/invariants/` by six earlier cohorts. Nesting under a path the programme has
+already retired elsewhere is not correct placement. Reclassified to "reorganisation
+candidate pending semantic clustering" (22) and "hub-style retirement candidate" (the old
+index, 1). Full body review: `audits/2026-07-30T1310-topology-invariants-body-review.json`.
 
 **This is a retrospective current-state classification, not the original programme
 baseline** — no original "pages requiring movement" denominator was ever frozen for
 Issue #44 (confirmed: zero rows in `docs.reorganisation_plans`, no inventory-snapshot
 event anywhere in 131 `docs.changes` records).
 
-## Completion percentages (numerator/denominator always named)
+## Completion percentages — withheld this pass
 
-- **Unique pages moved / confirmed movement set: 54 / 76 = 71.1%** (moved / [moved +
-  still-requires-movement] — the only receipt-backed forward-looking set)
-- No percentage is published against the 248-page combined subtree, and none should be
-  computed from it as an IA-debt completion measure — see warning above.
+The forward-looking denominator changed from 76 (54 moved + 22 still-requires-movement)
+to a provisional **45-candidate pool** (22 flat control-plane + 23 newly-corrected nested
+topology-invariants pages) that has not yet been fully classified end-to-end. **No
+percentage is published against 45, 76, or any other figure this pass** — publishing
+against an incomplete or moving denominator would mislead. Re-publish only once both the
+22 and the 23 are fully resolved to terminal dispositions.
 
-## Next executable cohort
+No percentage is published against the 248-page combined subtree either, and none should
+be computed from it as an IA-debt completion measure.
 
-**22 control-plane flat-root pages**, independently verified (live fetch: `active`,
-`PUBLISHED`, `criticality: NORMAL`, non-archived). Full list: `ledger/dispositions.json`
-(disposition = "still requires movement").
+## Next executable cohort — revised, two disjoint candidate pools
+
+**Pool A — flat control-plane, 22 pages** (unchanged from before). Full list:
+`ledger/dispositions.json` (disposition = "still requires movement").
+
+**Pool B — nested `control-plane/topology-invariants/` remainder, 23 pages, NEW.**
+Body-reviewed and split into 6 semantic sub-cohorts (not one 23-page batch):
+`audits/2026-07-30T1310-topology-invariants-body-review.json`. Recommended order:
+
+1. **Site / GEO-Fabric Edge** (5 pages) — **safest first cohort**: lowest average
+   coupling, no PROPOSED-status pages, no cross-cohort dependency.
+2. **Framework / Registry Invariants** (4 pages) — 2 of 4 pages still PROPOSED status
+   (not yet ratified content-wise; safe to move, flag as open work).
+3. **GEO Consumer Convergence — Placement & Recovery** (3 pages)
+4. **GEO Consumer Convergence — Core** (4 pages) — includes the single highest-coupling
+   page in the review (18 inbound)
+5. **Interface Domain** (4 pages)
+6. **`i-config-projection-1.md`** (1 page) — authoring decision needed first: may belong
+   in `control-plane/foundational/` rather than `control-plane/invariants/` given its
+   governance-wide (not topology-specific) scope
+7. **`i-interface-realization-1.md`** (1 page) — sequence with the CCM design-pair move
+   (below); three CCM pages hold relative links to it. One shared reference-repair pass
+   covers both, without merging the move publications.
+8. **`control-plane/topology-invariants/index.md`** — hub-style retirement (not a plain
+   move), since `control-plane/invariants/index.md` (v59) already supersedes it. Needs a
+   body diff between the two indexes before deciding archive vs. content-merge-and-archive.
+
+**Pool C — `ccm-*` cluster, unchanged, kept separate from Pool B** (per instruction — do
+not enlarge a publication by combining CCM with topology-invariants):
+`audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json`. Clean pair
+(`ccm-interface-realization-design.md`, `ccm-dhcp-resolver-ownership-capability.md`) →
+`control-plane/design/`; `ccm.md` hub prerequisite; `ccm-interface-realization-capability.md`
+authoring decision; `ccm-interface-realization-step6-runbook.md` cross-subtree to
+`operations/runbooks/`; two pages need no action (already archived / evidence surface).
 
 **Operations flat-root queue is empty.** Its 4 active/durable candidates each already
 carry an individual disposition:
@@ -86,55 +131,20 @@ carry an individual disposition:
 - `operations/invariant-roadmap.md` — authoring decision required
 - `operations/w4-1-5b-runtime-manifest-architecture.md` — hold-blocked (F11/F12 both OPEN)
 
-### Cohort status (updated 2026-07-30T12:52:07Z after body-reviewing the ccm-* cluster
-and discovering a disjoint 23-page cohort — see
-`audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json` for full detail)
+### Lane status
 
-1. **Transit/gateway cluster** — **IN PROGRESS, lane held by agent-44**:
-   `transit-convergence.md`, `gateway-runtime-responsibilities.md`,
-   `site-network-authority.md`, `transport-plane-authority.md`. Do not touch these pages.
+**Transit/gateway cluster — IN PROGRESS, lane held by `agent-44`**:
+`transit-convergence.md`, `gateway-runtime-responsibilities.md`,
+`site-network-authority.md`, `transport-plane-authority.md`. Do not touch these pages.
+(Note: `site-network-authority.md` here is the flat control-plane page in Pool A, a
+different page from `i-site-network-authority-1.md` in Pool B's Site/GEO-Fabric cluster.)
 
-2. **`control-plane/topology-invariants/` remainder — 23 pages — NEW PRIMARY RECOMMENDATION,
-   fully disjoint from (1).** 22 invariant pages + 1 index, all independently verified
-   `active`/`REFERENCE`/non-#43-blocked. These were invisible to the flat-root-only scan
-   that produced the "22" count above (they're nested, not flat) and were wrongly defaulted
-   to "correctly placed" in the retrospective baseline — nesting under a path pattern the
-   programme has already retired elsewhere (18–23 siblings already moved to
-   `control-plane/invariants/` in earlier cohorts) is not correct placement. Destination
-   `control-plane/invariants/` already exists (v59 index). Same low-risk, precedented
-   pattern as the earlier invariants-* cohorts. Full list:
-   `audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json` →
-   `disjoint_discovery_topology_invariants_remainder.full_page_list`. The old
-   `control-plane/topology-invariants/index.md` needs hub-style retirement (like the H1/H2
-   conversions), not a plain move, since `control-plane/invariants/index.md` already
-   supersedes it.
-
-3. **`ccm-*` cluster — NOT one coherent cohort; body review changed 4 of 7 pages'
-   dispositions from the earlier guess.** Full per-page detail in
-   `audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json`:
-   - **Clean move pair → `control-plane/design/`**: `ccm-interface-realization-design.md`,
-     `ccm-dhcp-resolver-ownership-capability.md` (2 pages, low coupling, safe).
-   - **Hub prerequisite, not a plain move**: `ccm.md` (16 inbound, nav_path already says
-     Foundational — needs an H1/H2-style hub-conversion publication with dedicated
-     inbound-repair, into `control-plane/foundational/ccm.md`).
-   - **Authoring decision required before moving**: `ccm-interface-realization-capability.md`
-     (11 inbound — crosses the hub threshold too; reads as an active sprint doc but its own
-     body shows the canary/soak completed 2026-05-31, two months ago — needs relabelling to
-     historical before it's moved, or it will misrepresent a finished initiative as in flight).
-   - **Cross-subtree, not part of a control-plane cohort**: `ccm-interface-realization-step6-runbook.md`
-     (OPERATION lifecycle, executed/closed — belongs in `operations/runbooks/`, lowest
-     coupling of the cluster at 1 inbound).
-   - **No action needed**: `ccm-interface-realization-implementation.md` (already ARCHIVED,
-     correctly so — flag only a stale inline status-table cell, not a move question) and
-     `ccm-interface-realization-archaeology.md` (evidence surface, deliberate non-move,
-     explicitly "feeds" the capability doc).
-
-4. **Remaining design/spec/reference** (unchanged from before, not yet body-reviewed):
-   `architecture-overview.md`, `authentication-model.md`, `bootstrap-authority-map.md`,
-   `charliehub-mcp.md`, `class-b-hosts.md`, `current-state.md`, `docplane.md`,
-   `docs-gen-1.md`, `hub2-authority-crosswalk.md`, `hub2-host-net.md`, `i-gen-no-vcs-1.md`,
-   `i-traefik-empty-tcp.md`, `lw-r1-design-notes.md`, `schema-migrations.md`,
-   `system-map.md`
+**Pool D — remaining design/spec/reference** (unchanged from before, not yet body-reviewed):
+`architecture-overview.md`, `authentication-model.md`, `bootstrap-authority-map.md`,
+`charliehub-mcp.md`, `class-b-hosts.md`, `current-state.md`, `docplane.md`,
+`docs-gen-1.md`, `hub2-authority-crosswalk.md`, `hub2-host-net.md`, `i-gen-no-vcs-1.md`,
+`i-traefik-empty-tcp.md`, `lw-r1-design-notes.md`, `schema-migrations.md`,
+`system-map.md`
 
 All groupings above remain provisional and must be regenerated from a fresh snapshot
 before any rehearsal.

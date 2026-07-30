@@ -1,5 +1,5 @@
 {
-  "snapshot_timestamp": "2026-07-30T12:40:00Z",
+  "snapshot_timestamp": "2026-07-30T13:10:00Z (baseline correction pass; corpus snapshot itself unchanged from 2026-07-30T12:40:00Z)",
   "certification_version": 104,
   "corpus_pages_active": 513,
   "corpus_pages_total": 947,
@@ -1626,8 +1626,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-24T16:31:32.803668Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "8840eafe-5228-58fc-be6e-96d47ff825a0",
@@ -1640,8 +1642,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:47.422522Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "55f774f2-f221-5bfb-8894-f3cfe7064af3",
@@ -1654,8 +1658,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-30T07:40:45.607908Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "45da5d36-dd4d-5f99-8cc5-13d1103fc143",
@@ -1668,8 +1674,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:48.932207Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "9fc60265-c669-5c8f-93d4-a42f213b7131",
@@ -1682,8 +1690,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:49.092718Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "ce3ba6db-5766-5ee1-b4da-02599921671e",
@@ -1696,8 +1706,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:49.249276Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "a3087bd0-fcd2-5a13-a73d-94b5aed67531",
@@ -1710,8 +1722,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-30T07:40:45.607908Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "edc29c28-3379-5d11-a922-7a3f0f3d92a8",
@@ -1724,8 +1738,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-30T07:40:45.607908Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "481689d6-42a8-5b17-8717-45afd461107e",
@@ -1738,8 +1754,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:49.778362Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "7f315625-c17e-5414-bbb4-36d92b809946",
@@ -1752,8 +1770,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:50.134682Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "c54951d6-ddb4-5a31-8206-96ae91448989",
@@ -1766,8 +1786,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-20T14:52:08.073685Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "d722454c-51d9-5de1-b414-c1293b308d16",
@@ -1780,8 +1802,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-30T07:40:45.607908Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "ffc31a0e-b688-55c3-b7f8-2d250fe2e2df",
@@ -1794,8 +1818,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:50.657547Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "29ae520f-f035-52ea-b0db-a4fe4feccba3",
@@ -1808,8 +1834,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-30T07:49:00.727598Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "385fbd45-2529-5b2e-8119-4e3523c917ec",
@@ -1822,8 +1850,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-10T08:54:59.973866Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "b33771b9-ab83-5dce-8a77-e6787be6b223",
@@ -1836,8 +1866,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:51.201016Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "4ba59226-cc52-5518-96f7-e7a9019444b2",
@@ -1850,8 +1882,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:51.898358Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "950d3cae-e492-56da-97a3-075986e5df78",
@@ -1864,8 +1898,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-09T22:10:39.256186Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "7f1bccb3-68de-5ef8-8a92-a30eefdedae6",
@@ -1878,8 +1914,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-24T13:23:13.083098Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "555afaf1-fc8e-5902-9bd0-e4eabd29fb84",
@@ -1892,8 +1930,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:52.432589Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "c765a103-415f-583f-9a7b-8d7b653801ab",
@@ -1906,8 +1946,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-29T18:41:28.570261Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "f837c9e2-5a99-5ca6-a62c-fd0bb68a1cc7",
@@ -1920,8 +1962,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-06-30T14:08:53.598899Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "reorganisation candidate pending semantic clustering",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "8129de66-477d-5c88-b9ba-56836c4a4b2d",
@@ -1934,8 +1978,10 @@
       "publication_state": "PUBLISHED",
       "criticality": "NORMAL",
       "updated_at": "2026-07-30T07:49:00.727598Z",
-      "disposition": "correctly placed",
-      "evidence_source": "structural inference: independently fetched lifecycle/status + path nesting only"
+      "disposition": "hub-style retirement candidate",
+      "evidence_source": "corrected: live fetch confirms active/REFERENCE/non-#43-blocked; see audits/2026-07-30T1310-topology-invariants-body-review.json for semantic cohort assignment",
+      "_previous_disposition": "correctly placed",
+      "_correction_note": "Corrected 2026-07-30T13:10:00Z: was defaulted to 'correctly placed' solely because nested. control-plane/topology-invariants/ is a deprecated namespace (18-23 siblings already moved to control-plane/invariants/ by earlier cohorts); nesting under a retired path pattern is not correct placement."
     },
     {
       "resource_id": "290db043-435a-5d53-acd8-23e3ec85285e",
