@@ -154,6 +154,17 @@ def test_dashboard_uses_discovered_site_name_and_reciprocal_navigation():
     assert 'a.href = "/dashboard/"' in template
 
 
+def test_dashboard_can_bootstrap_a_private_fabric_contributor_session():
+    app_js = (ROOT / "dashboard/static/app.js").read_text(encoding="utf-8")
+    dashboard = (ROOT / "dashboard/static/index.html").read_text(encoding="utf-8")
+    assert 'api("/api/v1/auth/self-issue"' in app_js
+    assert 'client_context: "DocPlane browser dashboard"' in app_js
+    assert "token = issued.token;" in app_js
+    assert 'id="display-name"' in dashboard
+    assert 'id="start-session"' in dashboard
+    assert "Use existing token" in dashboard
+
+
 def test_dashboard_has_no_submit_or_review_controls():
     from dashboard.combined_app import app as combined_app
 

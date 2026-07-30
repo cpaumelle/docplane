@@ -70,6 +70,32 @@ async function connect() {
   await loadOverview();
 }
 
+async function startSession() {
+  const displayName = $("display-name").value.trim();
+  if (!displayName) {
+    $("identity").textContent = "Enter your name to start a contributor session";
+    $("display-name").focus();
+    return;
+  }
+  $("start-session").disabled = true;
+  $("identity").textContent = "Starting contributor session…";
+  try {
+    const issued = await api("/api/v1/auth/self-issue", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        display_name: displayName,
+        client_context: "DocPlane browser dashboard",
+      }),
+    });
+    token = issued.token;
+    $("token").value = token;
+    await connect();
+  } finally {
+    $("start-session").disabled = false;
+  }
+}
+
 async function loadOverview() {
   if (!token) return;
   try {
@@ -135,6 +161,10 @@ async function planAction(action) {
 
 $("token").value = token;
 $("connect").addEventListener("click", () => connect().catch((error) => $("identity").textContent = error.message));
+$("start-session").addEventListener("click", () => startSession().catch((error) => $("identity").textContent = error.message));
+$("display-name").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") startSession().catch((error) => $("identity").textContent = error.message);
+});
 document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
 $("refresh-overview").addEventListener("click", loadOverview);
 $("refresh-history").addEventListener("click", loadHistory);
@@ -149,3 +179,4 @@ window.addEventListener("hashchange", () => activate(viewFromHash()));
 initialiseNavigation();
 loadProductIdentity();
 if (token) connect().catch(() => sessionStorage.removeItem("docplane-token"));
+else $("identity").textContent = "Session required · enter your name to connect";

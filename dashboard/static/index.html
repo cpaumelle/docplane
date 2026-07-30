@@ -17,7 +17,14 @@
       <a class="navlink" href="/" title="Browse documentation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v4h4"/></svg>Docs</a>
       <span class="navlink navlink--active" title="Authoring dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</span>
     </nav>
-    <div class="connect"><input id="token" type="password" placeholder="Contributor bearer token"><button id="connect">Connect</button></div>
+    <div class="connect">
+      <input id="display-name" type="text" autocomplete="name" placeholder="Your name">
+      <button id="start-session">Start session</button>
+      <details>
+        <summary>Use existing token</summary>
+        <div class="token-connect"><input id="token" type="password" placeholder="Contributor bearer token"><button id="connect">Connect</button></div>
+      </details>
+    </div>
   </header>
   <div class="shell">
     <nav class="sidebar" data-product-aria="modules" aria-label="DocPlane modules">
