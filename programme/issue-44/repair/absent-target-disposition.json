@@ -1,0 +1,91 @@
+{
+  "generated_by": "agent-45",
+  "scope": "control-plane/ and operations/ sources only (14 unique pairs)",
+  "decision": "Zero of the 14 are repaired this session. Every canonical replacement would require guessing author intent, which the repair scope explicitly forbids ('leave authoring decisions unresolved rather than guessing'). Each item below has an explicit, non-silent disposition.",
+  "items": [
+    {
+      "source_path": "control-plane/design/docs-rename-design.md", "line": 34,
+      "raw_target": "./old/path.md",
+      "disposition": "no_action_already_protected",
+      "reason": "inline_code -- deliberate code-sample illustrating a broken link in prose, not a live reference"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md", "line": 105,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "disposition": "no_action_already_protected",
+      "reason": "evidence_surface -- this page records references deliberately, not a live navigable link"
+    },
+    {
+      "source_path": "control-plane/invariants/i-gen-no-vcs-1.md", "line": 16,
+      "raw_target": "invariants.md",
+      "disposition": "no_action_already_protected",
+      "reason": "inline_code -- historical quotation inside backticks, not a live link"
+    },
+    {
+      "source_path": "operations/runbooks/pi4-gateway-bootstrap-recipe.md", "line": 57,
+      "raw_target": "../../reference/rpi-trixie-cloud-init.md",
+      "disposition": "no_action_known_baseline",
+      "reason": "docplane#78 -- accepted pre-existing defect, tracked separately, unrelated to any Issue #44 move"
+    },
+    {
+      "source_path": "control-plane/foundational/correctness-domains.md", "line": 60,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "disposition": "no_action_documentation_gap",
+      "reason": "Target page was never created under any tracked baseline path -- pre-existing gap, not caused by any of the 88 Issue #44 moves. Recorded as a documentation-gap finding, not silently dropped."
+    },
+    {
+      "source_path": "control-plane/invariants/i-coverage-derived-1.md", "line": 90,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "disposition": "no_action_documentation_gap",
+      "reason": "Same pre-existing gap as above, second occurrence."
+    },
+    {
+      "source_path": "control-plane/invariants/i-wg-watchdog-1.md", "line": 124,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "disposition": "no_action_documentation_gap",
+      "reason": "Same pre-existing gap as above, third occurrence."
+    },
+    {
+      "source_path": "control-plane/architecture-overview.md", "line": 109,
+      "raw_target": "/network/fabric-v2/architecture-authority-boundary-assessment/",
+      "disposition": "no_action_documentation_gap",
+      "reason": "Target page was never created under any tracked baseline path -- pre-existing gap, unrelated to any move."
+    },
+    {
+      "source_path": "control-plane/architecture-overview.md", "line": 64,
+      "raw_target": "/operations/monitoring/",
+      "disposition": "no_action_documentation_gap",
+      "reason": "No monitoring.md or monitoring/index.md exists under operations/ -- pre-existing gap, unrelated to any move."
+    },
+    {
+      "source_path": "control-plane/architecture/index.md", "line": 252,
+      "raw_target": "../services/trevarn/",
+      "disposition": "no_action_documentation_gap",
+      "reason": "Pre-existing gap, unrelated to any Issue #44 move."
+    },
+    {
+      "source_path": "control-plane/invariants/i-connect-auth-1.md", "line": 168,
+      "raw_target": "../../../network/fabric-v2/vpn-manager-v2/",
+      "disposition": "no_action_authoring_error",
+      "reason": "Relative-depth error: three '../' from control-plane/invariants/ overshoots the corpus root (candidate literally escapes the tree). Pre-existing authoring defect, unrelated to any move. Fixing requires guessing the intended depth -- left unresolved."
+    },
+    {
+      "source_path": "control-plane/invariants/i-connect-auth-1.md", "line": 169,
+      "raw_target": "../../../network/fabric-v2/constrained-execution-identities/",
+      "disposition": "no_action_authoring_error",
+      "reason": "Same relative-depth error, second occurrence in the same page."
+    },
+    {
+      "source_path": "control-plane/invariants/i-connect-auth-1.md", "line": 170,
+      "raw_target": "../../../network/fabric-v2/archive/c1-implementation-plan/",
+      "disposition": "no_action_authoring_error",
+      "reason": "Same relative-depth error, third occurrence in the same page."
+    },
+    {
+      "source_path": "control-plane/design/ccm-dhcp-resolver-ownership-capability.md", "line": 13,
+      "raw_target": "topology-invariants/",
+      "disposition": "no_action_authoring_error",
+      "reason": "Author wrote a relative link ('topology-invariants/') assuming the page lived directly under control-plane/, but it lives under control-plane/design/ -- the correct relative form would need '../'. Pre-existing depth error, not caused by this session's moves. The apparent intended target (a specific invariant, referenced as 'I-3 artifact ownership') cannot be determined without guessing -- left unresolved rather than guessed, per the repair scope."
+    }
+  ]
+}

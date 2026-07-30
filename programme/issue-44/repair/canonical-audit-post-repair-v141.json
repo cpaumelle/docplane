@@ -1,0 +1,1278 @@
+{
+  "active_pages": 521,
+  "ledger_moves": 88,
+  "findings": [
+    {
+      "source_path": "agent-guides/docs-structure-dashboard.md",
+      "source_resource_id": "254922ca-a9e9-5518-8d67-416669554e82",
+      "line": 7,
+      "raw_target": "/dashboard/",
+      "anchor": "",
+      "candidates": [
+        "dashboard.md",
+        "dashboard/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "archive/plans/c1-implementation-plan.md",
+      "source_resource_id": "ff64221a-f46f-5524-8b07-8147e92e505d",
+      "line": 63,
+      "raw_target": "../../control-plane/topology-invariants/i-connect-auth-1.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-connect-auth-1.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/topology-invariants/i-connect-auth-1.md",
+      "current_canonical": "control-plane/invariants/i-connect-auth-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "archive/plans/c1-implementation-plan.md",
+      "source_resource_id": "ff64221a-f46f-5524-8b07-8147e92e505d",
+      "line": 248,
+      "raw_target": "../../control-plane/topology-invariants/i-connect-auth-1.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-connect-auth-1.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/topology-invariants/i-connect-auth-1.md",
+      "current_canonical": "control-plane/invariants/i-connect-auth-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/fy2025-26-accounts.md",
+      "source_resource_id": "96409a7d-750c-5075-a3b3-e2b98f1030f6",
+      "line": 14,
+      "raw_target": "../uk-eroundit/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/uk-eroundit.md",
+        "business-finance/uk-eroundit/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/fy2025-26-accounts.md",
+      "source_resource_id": "96409a7d-750c-5075-a3b3-e2b98f1030f6",
+      "line": 86,
+      "raw_target": "../uk-eroundit/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/uk-eroundit.md",
+        "business-finance/uk-eroundit/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/fy2025-26-accounts.md",
+      "source_resource_id": "96409a7d-750c-5075-a3b3-e2b98f1030f6",
+      "line": 87,
+      "raw_target": "../xero-migration-archive/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/xero-migration-archive.md",
+        "business-finance/xero-migration-archive/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/fy2025-26-accounts.md",
+      "source_resource_id": "96409a7d-750c-5075-a3b3-e2b98f1030f6",
+      "line": 92,
+      "raw_target": "../uk-eroundit/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/uk-eroundit.md",
+        "business-finance/uk-eroundit/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 8,
+      "raw_target": "../andorra-verdegris/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-verdegris.md",
+        "business-finance/andorra-verdegris/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 8,
+      "raw_target": "../bank-operations/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/bank-operations.md",
+        "business-finance/bank-operations/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 9,
+      "raw_target": "../api-techniques/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/api-techniques.md",
+        "business-finance/api-techniques/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 18,
+      "raw_target": "../xero-migration-archive/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/xero-migration-archive.md",
+        "business-finance/xero-migration-archive/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 22,
+      "raw_target": "../bank-operations/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/bank-operations.md",
+        "business-finance/bank-operations/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 94,
+      "raw_target": "../bank-operations/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/bank-operations.md",
+        "business-finance/bank-operations/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 112,
+      "raw_target": "../fy2526-accounts/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/fy2526-accounts.md",
+        "business-finance/fy2526-accounts/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/eroundit-uk/overview.md",
+      "source_resource_id": "e4e05c29-17e6-5fb8-b1f0-a97e9c0e9352",
+      "line": 115,
+      "raw_target": "../fy2526-accounts/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/fy2526-accounts.md",
+        "business-finance/fy2526-accounts/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/shared/zoho-api-techniques.md",
+      "source_resource_id": "05d89b82-a3a4-5f77-b457-a7bc3e5f50c5",
+      "line": 7,
+      "raw_target": "/services/zoho-books-api/bank-operations/",
+      "anchor": "",
+      "candidates": [
+        "services/zoho-books-api/bank-operations.md",
+        "services/zoho-books-api/bank-operations/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/shared/zoho-books-overview.md",
+      "source_resource_id": "376ab3be-6326-56af-a722-c266e917da7b",
+      "line": 11,
+      "raw_target": "uk-eroundit/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/shared/uk-eroundit.md",
+        "business-finance/shared/uk-eroundit/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "owned-preservation-absent",
+      "preservation_reason": "blockquote"
+    },
+    {
+      "source_path": "business-finance/shared/zoho-books-overview.md",
+      "source_resource_id": "376ab3be-6326-56af-a722-c266e917da7b",
+      "line": 12,
+      "raw_target": "nl-vat-setup/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/shared/nl-vat-setup.md",
+        "business-finance/shared/nl-vat-setup/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "owned-preservation-absent",
+      "preservation_reason": "blockquote"
+    },
+    {
+      "source_path": "business-finance/shared/zoho-books-overview.md",
+      "source_resource_id": "376ab3be-6326-56af-a722-c266e917da7b",
+      "line": 104,
+      "raw_target": "api-techniques/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/shared/api-techniques.md",
+        "business-finance/shared/api-techniques/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "owned-preservation-absent",
+      "preservation_reason": "blockquote"
+    },
+    {
+      "source_path": "business-finance/shared/zoho-books-overview.md",
+      "source_resource_id": "376ab3be-6326-56af-a722-c266e917da7b",
+      "line": 108,
+      "raw_target": "xero-migration-archive/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/shared/xero-migration-archive.md",
+        "business-finance/shared/xero-migration-archive/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/fy2023.md",
+      "source_resource_id": "8d9de471-9748-5a6f-86ad-819908615898",
+      "line": 13,
+      "raw_target": "../andorra-verdegris/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-verdegris.md",
+        "business-finance/andorra-verdegris/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/fy2024.md",
+      "source_resource_id": "c4865c1d-28e3-5289-9f69-5f23620832d4",
+      "line": 36,
+      "raw_target": "../andorra-2025/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-2025.md",
+        "business-finance/andorra-2025/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/fy2024.md",
+      "source_resource_id": "c4865c1d-28e3-5289-9f69-5f23620832d4",
+      "line": 36,
+      "raw_target": "../verdegris-accounting-structure/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/verdegris-accounting-structure.md",
+        "business-finance/verdegris-accounting-structure/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/fy2025.md",
+      "source_resource_id": "693e3088-5b9b-5754-a82e-215f6629bd72",
+      "line": 13,
+      "raw_target": "../verdegris-accounting-structure/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/verdegris-accounting-structure.md",
+        "business-finance/verdegris-accounting-structure/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/fy2025.md",
+      "source_resource_id": "693e3088-5b9b-5754-a82e-215f6629bd72",
+      "line": 69,
+      "raw_target": "../verdegris-accounting-structure/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/verdegris-accounting-structure.md",
+        "business-finance/verdegris-accounting-structure/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 7,
+      "raw_target": "/services/zoho-books-api/bank-operations/",
+      "anchor": "",
+      "candidates": [
+        "services/zoho-books-api/bank-operations.md",
+        "services/zoho-books-api/bank-operations/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 8,
+      "raw_target": "/services/zoho-books-api/api-techniques/",
+      "anchor": "",
+      "candidates": [
+        "services/zoho-books-api/api-techniques.md",
+        "services/zoho-books-api/api-techniques/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 96,
+      "raw_target": "../andorra-2023/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-2023.md",
+        "business-finance/andorra-2023/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 97,
+      "raw_target": "../andorra-2024/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-2024.md",
+        "business-finance/andorra-2024/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 98,
+      "raw_target": "../andorra-2025/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-2025.md",
+        "business-finance/andorra-2025/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 100,
+      "raw_target": "../andorra-2023/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-2023.md",
+        "business-finance/andorra-2023/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 100,
+      "raw_target": "../andorra-2024/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-2024.md",
+        "business-finance/andorra-2024/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "business-finance/verdegris-andorra/overview.md",
+      "source_resource_id": "fe5eefc2-343d-579d-942c-4b1b2f617496",
+      "line": 100,
+      "raw_target": "../andorra-2025/",
+      "anchor": "",
+      "candidates": [
+        "business-finance/andorra-2025.md",
+        "business-finance/andorra-2025/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/architecture-overview.md",
+      "source_resource_id": "8b870d00-6b34-5b1d-8b46-79e4ec9f25d5",
+      "line": 64,
+      "raw_target": "/operations/monitoring/",
+      "anchor": "",
+      "candidates": [
+        "operations/monitoring.md",
+        "operations/monitoring/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/architecture-overview.md",
+      "source_resource_id": "8b870d00-6b34-5b1d-8b46-79e4ec9f25d5",
+      "line": 109,
+      "raw_target": "/network/fabric-v2/architecture-authority-boundary-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/architecture-authority-boundary-assessment.md",
+        "network/fabric-v2/architecture-authority-boundary-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/architecture-overview.md",
+      "source_resource_id": "8b870d00-6b34-5b1d-8b46-79e4ec9f25d5",
+      "line": 179,
+      "raw_target": "/network/fabric-v2/architecture-authority-boundary-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/architecture-authority-boundary-assessment.md",
+        "network/fabric-v2/architecture-authority-boundary-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/architecture/index.md",
+      "source_resource_id": "50242c9d-10da-5847-9133-ac9e241f6088",
+      "line": 252,
+      "raw_target": "../services/trevarn/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/services/trevarn.md",
+        "control-plane/services/trevarn/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/cp-net-1-history.md",
+      "source_resource_id": "dd31d522-3610-5037-add7-40e47dfbd1a2",
+      "line": 125,
+      "raw_target": "topology-invariants/i-ssh-identity-derivation-1.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-ssh-identity-derivation-1.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/topology-invariants/i-ssh-identity-derivation-1.md",
+      "current_canonical": "control-plane/invariants/i-ssh-identity-derivation-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/cp-net-1-history.md",
+      "source_resource_id": "dd31d522-3610-5037-add7-40e47dfbd1a2",
+      "line": 575,
+      "raw_target": "topology-invariants/i-dns-runtime-config-1.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-dns-runtime-config-1.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/topology-invariants/i-dns-runtime-config-1.md",
+      "current_canonical": "control-plane/invariants/i-dns-runtime-config-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/cp-net-1-history.md",
+      "source_resource_id": "dd31d522-3610-5037-add7-40e47dfbd1a2",
+      "line": 620,
+      "raw_target": "topology-invariants/i-edge-cache-writer-1.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-edge-cache-writer-1.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/topology-invariants/i-edge-cache-writer-1.md",
+      "current_canonical": "control-plane/invariants/i-edge-cache-writer-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/design/ccm-dhcp-resolver-ownership-capability.md",
+      "source_resource_id": "5a7556ba-e05c-51a9-92e6-b11f9962df6a",
+      "line": 13,
+      "raw_target": "topology-invariants/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/design/topology-invariants.md",
+        "control-plane/design/topology-invariants/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/design/docs-rename-design.md",
+      "source_resource_id": "13112323-81df-50f2-8661-e4510b05de61",
+      "line": 34,
+      "raw_target": "./old/path.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/design/old/path.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "owned-preservation-absent",
+      "preservation_reason": "inline_code"
+    },
+    {
+      "source_path": "control-plane/foundational/correctness-domains.md",
+      "source_resource_id": "1740c0d7-6118-586b-b14d-495079d590f5",
+      "line": 60,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+        "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 62,
+      "raw_target": "/control-plane/topology-invariants/i-coverage-derived-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-coverage-derived-1.md",
+        "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-coverage-derived-1.md",
+      "current_canonical": "control-plane/invariants/i-coverage-derived-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 88,
+      "raw_target": "/control-plane/topology-invariants/i-coverage-derived-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-coverage-derived-1.md",
+        "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-coverage-derived-1.md",
+      "current_canonical": "control-plane/invariants/i-coverage-derived-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 90,
+      "raw_target": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-wg-watchdog-1.md",
+        "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-wg-watchdog-1.md",
+      "current_canonical": "control-plane/invariants/i-wg-watchdog-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 92,
+      "raw_target": "/control-plane/correctness-domains/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/correctness-domains.md",
+        "control-plane/correctness-domains/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/correctness-domains.md",
+      "current_canonical": "control-plane/foundational/correctness-domains.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 102,
+      "raw_target": "/control-plane/correctness-domains/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/correctness-domains.md",
+        "control-plane/correctness-domains/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/correctness-domains.md",
+      "current_canonical": "control-plane/foundational/correctness-domains.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 103,
+      "raw_target": "/control-plane/topology-invariants/i-coverage-derived-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-coverage-derived-1.md",
+        "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-coverage-derived-1.md",
+      "current_canonical": "control-plane/invariants/i-coverage-derived-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 104,
+      "raw_target": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-wg-watchdog-1.md",
+        "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-wg-watchdog-1.md",
+      "current_canonical": "control-plane/invariants/i-wg-watchdog-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/foundational/shadow-inventory.md",
+      "source_resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "line": 105,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+        "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "owned-preservation-absent",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "control-plane/invariants/i-connect-auth-1.md",
+      "source_resource_id": "5ad1caae-ceb6-5160-b46c-6d95318f09d5",
+      "line": 168,
+      "raw_target": "../../../network/fabric-v2/vpn-manager-v2/",
+      "anchor": "",
+      "candidates": [
+        "../network/fabric-v2/vpn-manager-v2.md",
+        "../network/fabric-v2/vpn-manager-v2/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/invariants/i-connect-auth-1.md",
+      "source_resource_id": "5ad1caae-ceb6-5160-b46c-6d95318f09d5",
+      "line": 169,
+      "raw_target": "../../../network/fabric-v2/constrained-execution-identities/",
+      "anchor": "",
+      "candidates": [
+        "../network/fabric-v2/constrained-execution-identities.md",
+        "../network/fabric-v2/constrained-execution-identities/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/invariants/i-connect-auth-1.md",
+      "source_resource_id": "5ad1caae-ceb6-5160-b46c-6d95318f09d5",
+      "line": 170,
+      "raw_target": "../../../network/fabric-v2/archive/c1-implementation-plan/",
+      "anchor": "",
+      "candidates": [
+        "../network/fabric-v2/archive/c1-implementation-plan.md",
+        "../network/fabric-v2/archive/c1-implementation-plan/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/invariants/i-coverage-derived-1.md",
+      "source_resource_id": "8840eafe-5228-58fc-be6e-96d47ff825a0",
+      "line": 90,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+        "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "control-plane/invariants/i-gen-no-vcs-1.md",
+      "source_resource_id": "5c7a6db2-93c8-5a0b-af88-254d4fba3569",
+      "line": 16,
+      "raw_target": "invariants.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/invariants/invariants.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "owned-preservation-absent",
+      "preservation_reason": "inline_code"
+    },
+    {
+      "source_path": "control-plane/invariants/i-transport-hub-1.md",
+      "source_resource_id": "bf700b24-0a24-5ed9-af86-911818ba28a3",
+      "line": 48,
+      "raw_target": "/control-plane/topology-invariants/i-iface-naming-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-iface-naming-1.md",
+        "control-plane/topology-invariants/i-iface-naming-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-iface-naming-1.md",
+      "current_canonical": "control-plane/invariants/i-iface-naming-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "blockquote"
+    },
+    {
+      "source_path": "control-plane/invariants/i-wg-watchdog-1.md",
+      "source_resource_id": "f837c9e2-5a99-5ca6-a62c-fd0bb68a1cc7",
+      "line": 124,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+        "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "index.md",
+      "source_resource_id": "cde56b48-515e-58d8-b565-7190c42fec03",
+      "line": 23,
+      "raw_target": "/dashboard/",
+      "anchor": "",
+      "candidates": [
+        "dashboard.md",
+        "dashboard/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "index.md",
+      "source_resource_id": "cde56b48-515e-58d8-b565-7190c42fec03",
+      "line": 33,
+      "raw_target": "/healthz",
+      "anchor": "",
+      "candidates": [
+        "healthz.md",
+        "healthz/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "model/schema-catalogue/docplane/index.md",
+      "source_resource_id": "da34d908-e5f9-4c4b-a56f-f451a1e60b09",
+      "line": 7,
+      "raw_target": "docplane/docplane.md",
+      "anchor": "",
+      "candidates": [
+        "model/schema-catalogue/docplane/docplane/docplane.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "model/schema-catalogue/docplane/index.md",
+      "source_resource_id": "da34d908-e5f9-4c4b-a56f-f451a1e60b09",
+      "line": 8,
+      "raw_target": "docplane/docs.md",
+      "anchor": "",
+      "candidates": [
+        "model/schema-catalogue/docplane/docplane/docs.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "model/schema-catalogue/docplane/index.md",
+      "source_resource_id": "da34d908-e5f9-4c4b-a56f-f451a1e60b09",
+      "line": 9,
+      "raw_target": "docplane/model.md",
+      "anchor": "",
+      "candidates": [
+        "model/schema-catalogue/docplane/docplane/model.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "model/schema-catalogue/docplane/index.md",
+      "source_resource_id": "da34d908-e5f9-4c4b-a56f-f451a1e60b09",
+      "line": 10,
+      "raw_target": "docplane/observe.md",
+      "anchor": "",
+      "candidates": [
+        "model/schema-catalogue/docplane/docplane/observe.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "model/schema-catalogue/docplane/index.md",
+      "source_resource_id": "da34d908-e5f9-4c4b-a56f-f451a1e60b09",
+      "line": 11,
+      "raw_target": "docplane/work.md",
+      "anchor": "",
+      "candidates": [
+        "model/schema-catalogue/docplane/docplane/work.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "network/fabric-v2/monitoring-authority-assessment.md",
+      "source_resource_id": "5a4d885f-67ea-5780-b50a-e313e54d4dca",
+      "line": 13,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+        "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "network/fabric-v2/monitoring-authority-assessment.md",
+      "source_resource_id": "5a4d885f-67ea-5780-b50a-e313e54d4dca",
+      "line": 76,
+      "raw_target": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+      "anchor": "",
+      "candidates": [
+        "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+        "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "operations/incidents/2026-06-01-wg-stg-01-stuck-conntrack.md",
+      "source_resource_id": "214b8f53-8221-5018-8923-62703c479d70",
+      "line": 160,
+      "raw_target": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-wg-watchdog-1.md",
+        "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-wg-watchdog-1.md",
+      "current_canonical": "control-plane/invariants/i-wg-watchdog-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "operations/incidents/2026-06-01-wg-stg-01-stuck-conntrack.md",
+      "source_resource_id": "214b8f53-8221-5018-8923-62703c479d70",
+      "line": 161,
+      "raw_target": "/control-plane/topology-invariants/i-route-rollback-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-route-rollback-1.md",
+        "control-plane/topology-invariants/i-route-rollback-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-route-rollback-1.md",
+      "current_canonical": "control-plane/invariants/i-route-rollback-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "operations/incidents/2026-06-03-wg-rw-endpoint-split-horizon.md",
+      "source_resource_id": "e1a00a14-b311-504a-8044-33b4643b4444",
+      "line": 9,
+      "raw_target": "/control-plane/topology-invariants/i-vpn-endpoint-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+        "control-plane/topology-invariants/i-vpn-endpoint-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+      "current_canonical": "control-plane/invariants/i-vpn-endpoint-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "blockquote"
+    },
+    {
+      "source_path": "operations/incidents/2026-06-03-wg-rw-endpoint-split-horizon.md",
+      "source_resource_id": "e1a00a14-b311-504a-8044-33b4643b4444",
+      "line": 87,
+      "raw_target": "/control-plane/topology-invariants/i-vpn-endpoint-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+        "control-plane/topology-invariants/i-vpn-endpoint-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+      "current_canonical": "control-plane/invariants/i-vpn-endpoint-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "operations/incidents/2026-06-03-wg-rw-endpoint-split-horizon.md",
+      "source_resource_id": "e1a00a14-b311-504a-8044-33b4643b4444",
+      "line": 89,
+      "raw_target": "/control-plane/topology-invariants/i-vpn-endpoint-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+        "control-plane/topology-invariants/i-vpn-endpoint-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+      "current_canonical": "control-plane/invariants/i-vpn-endpoint-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "operations/incidents/transit-dispatch-zero-byte-2026-05-08.md",
+      "source_resource_id": "549185b0-a3bf-5bdd-b96e-2a9f4ce612f4",
+      "line": 220,
+      "raw_target": "../../control-plane/doctrine.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/doctrine.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/doctrine.md",
+      "current_canonical": "control-plane/foundational/doctrine.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "operations/incidents/transit-dispatch-zero-byte-2026-05-08.md",
+      "source_resource_id": "549185b0-a3bf-5bdd-b96e-2a9f4ce612f4",
+      "line": 314,
+      "raw_target": "../../control-plane/doctrine.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/doctrine.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/doctrine.md",
+      "current_canonical": "control-plane/foundational/doctrine.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "operations/pi4-gateway-appliance-v1-inventory.md",
+      "source_resource_id": "bf577899-8b28-58b1-a5eb-0b5d5504a3d0",
+      "line": 9,
+      "raw_target": "../control-plane/gateway-convergence-doctrine.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/gateway-convergence-doctrine.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/gateway-convergence-doctrine.md",
+      "current_canonical": "control-plane/foundational/gateway-convergence-doctrine.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "blockquote"
+    },
+    {
+      "source_path": "operations/pi4-gateway-appliance-v1-inventory.md",
+      "source_resource_id": "bf577899-8b28-58b1-a5eb-0b5d5504a3d0",
+      "line": 28,
+      "raw_target": "../control-plane/gateway-convergence-doctrine.md",
+      "anchor": "",
+      "candidates": [
+        "control-plane/gateway-convergence-doctrine.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/gateway-convergence-doctrine.md",
+      "current_canonical": "control-plane/foundational/gateway-convergence-doctrine.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "operations/runbooks/pi4-gateway-bootstrap-recipe.md",
+      "source_resource_id": "1a8c7778-13dd-5e04-9364-ccdf1e315be0",
+      "line": 57,
+      "raw_target": "../../reference/rpi-trixie-cloud-init.md",
+      "anchor": "",
+      "candidates": [
+        "reference/rpi-trixie-cloud-init.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "operations/w4-1-5c-g1a-evidence.md",
+      "source_resource_id": "f12d2647-a224-560e-ad75-35ca3e225fe5",
+      "line": 10,
+      "raw_target": "../control-plane/schema-migrations.md",
+      "anchor": "#database-authentication-scope-charliehub-postgres",
+      "candidates": [
+        "control-plane/schema-migrations.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": "control-plane/schema-migrations.md",
+      "current_canonical": "control-plane/specs/schema-migrations.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "evidence_surface"
+    },
+    {
+      "source_path": "reference/edge1-hardware.md",
+      "source_resource_id": "bd36b59d-9963-53e8-a5a4-135849ef1983",
+      "line": 283,
+      "raw_target": "../px1-hardware/",
+      "anchor": "",
+      "candidates": [
+        "px1-hardware.md",
+        "px1-hardware/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "reference/edge1-hardware.md",
+      "source_resource_id": "bd36b59d-9963-53e8-a5a4-135849ef1983",
+      "line": 284,
+      "raw_target": "../px2-hardware/",
+      "anchor": "",
+      "candidates": [
+        "px2-hardware.md",
+        "px2-hardware/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "reference/edge1-hardware.md",
+      "source_resource_id": "bd36b59d-9963-53e8-a5a4-135849ef1983",
+      "line": 285,
+      "raw_target": "../px3-hardware/",
+      "anchor": "",
+      "candidates": [
+        "px3-hardware.md",
+        "px3-hardware/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "reference/edge1-hardware.md",
+      "source_resource_id": "bd36b59d-9963-53e8-a5a4-135849ef1983",
+      "line": 286,
+      "raw_target": "../px5-hardware/",
+      "anchor": "",
+      "candidates": [
+        "px5-hardware.md",
+        "px5-hardware/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "reference/edge1-hardware.md",
+      "source_resource_id": "bd36b59d-9963-53e8-a5a4-135849ef1983",
+      "line": 287,
+      "raw_target": "../network-layout/",
+      "anchor": "",
+      "candidates": [
+        "network-layout.md",
+        "network-layout/index.md"
+      ],
+      "root_absolute": false,
+      "resolved_old_path": null,
+      "current_canonical": null,
+      "disposition": "absent-needs-classification"
+    },
+    {
+      "source_path": "services/transit-manager.md",
+      "source_resource_id": "c2ef5b20-3c5f-5dff-b981-484469fcd16a",
+      "line": 722,
+      "raw_target": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+      "anchor": "",
+      "candidates": [
+        "control-plane/topology-invariants/i-wg-watchdog-1.md",
+        "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+      ],
+      "root_absolute": true,
+      "resolved_old_path": "control-plane/topology-invariants/i-wg-watchdog-1.md",
+      "current_canonical": "control-plane/invariants/i-wg-watchdog-1.md",
+      "disposition": "owned-preservation",
+      "preservation_reason": "blockquote"
+    }
+  ]
+}
