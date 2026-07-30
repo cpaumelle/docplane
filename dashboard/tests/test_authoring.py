@@ -153,7 +153,14 @@ def test_dashboard_uses_discovered_site_name_and_reciprocal_navigation():
     assert "discovery.site_name" in app_js
     assert "data-product-name" in dashboard
     assert 'href="/" title="Browse documentation"' in dashboard
-    assert 'a.href = "/dashboard/"' in template
+    # The Docs | Dashboard switcher is one shared markup contract on both
+    # surfaces, styled by the single shared /assets/header.css.
+    assert 'href="/dashboard/"' in template
+    assert '"topnav"' in template
+    assert 'class="topnav"' in dashboard
+    header_css = (ROOT / "mkdocs/overrides/assets/header.css").read_text(encoding="utf-8")
+    assert ".topbar" in header_css and ".md-header__inner" in header_css
+    assert '/assets/header.css' in dashboard
 
 
 def test_dashboard_authentication_state_machine_behaviour():

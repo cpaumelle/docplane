@@ -16,6 +16,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docs-api/app ./app
+# Canonical sanitisation transform (policy issue #60): the model API imports
+# migration.redaction as its secret-shape DETECTOR (reject, never rewrite).
+COPY migration/__init__.py ./migration/__init__.py
+COPY migration/redaction.py ./migration/redaction.py
 COPY docs-api/migrate.py ./migrate.py
 COPY docs-api/entrypoint.sh ./entrypoint.sh
 COPY db/migrations ./db/migrations

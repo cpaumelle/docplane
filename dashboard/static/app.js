@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const VIEWS = new Set(["overview", "authoring", "reorganisation", "history"]);
+const VIEWS = new Set(["overview", "work", "freshness", "authoring", "reorganisation", "history"]);
 const TOKEN_KEY = "docplane-token";
 let selectedPlan = null;
 let authentication = null;
@@ -188,6 +188,8 @@ function activate(name) {
   $(`view-${view}`)?.classList.add("active");
   document.querySelector(`.nav[data-view="${view}"]`)?.classList.add("active");
   if (view === "overview") loadOverview();
+  if (view === "work") loadWork();
+  if (view === "freshness") loadFreshness();
   if (view === "reorganisation") loadReorganisation();
   if (view === "history") loadHistory();
 }
@@ -244,6 +246,83 @@ async function loadOverview() {
   }
 }
 
+async function loadWork() {
+  if (!authentication?.token()) return;
+  try {
+    const [queues, inbox, initiatives] = await Promise.all([
+      api("/api/control-plane/work/queues"),
+      api("/api/control-plane/work/captures?status=INBOX"),
+      api("/api/control-plane/initiatives?limit=200"),
+    ]);
+    const states = queues.by_state || {};
+    const wip = queues.wip_limit ?? 0;
+    const active = states.ACTIVE ?? 0;
+    $("work-cards").innerHTML = [
+      ["Inbox", queues.inbox ?? 0],
+      ["Now", wip ? `${active}/${wip}` : active],
+      ["Roadmap", states.BACKLOG ?? 0],
+      ["Blocked", states.BLOCKED ?? 0],
+      ["Soaking", states.SOAKING ?? 0],
+      ["Parked", states.PARKED ?? 0],
+      ["Decisions needed", queues.decisions_needed ?? 0],
+      ["Parked review due", queues.parked_review_due ?? 0],
+      ["Soak review due", queues.soak_review_due ?? 0],
+    ].map(([label, value]) => `<article class="card"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>`).join("");
+    if (wip && active > wip) {
+      $("work-cards").insertAdjacentHTML("beforeend", `<article class="card"><strong>⚠</strong><span>Now exceeds the WIP limit — finish or park before starting more</span></article>`);
+    }
+    const open = (initiatives.initiatives || []);
+    $("attach-target").innerHTML = `<option value="">Select an initiative…</option>` + open.map((item) => `<option value="${esc(item.initiative_id)}">${esc(item.title)} (${esc(item.work_state)})</option>`).join("");
+    $("work-inbox").innerHTML = (inbox.captures || []).length ? inbox.captures.map((item) => `<article class="panel"><strong>${esc(item.kind)}</strong><p>${esc(item.body)}</p><p class="muted">${esc(item.created_at)}</p><div class="actions"><button class="capture-promote" data-id="${esc(item.capture_id)}">Promote</button><button class="capture-attach" data-id="${esc(item.capture_id)}">Attach</button><button class="capture-discard" data-id="${esc(item.capture_id)}">Discard</button></div></article>`).join("") : `<p class="muted">Inbox zero.</p>`;
+    document.querySelectorAll(".capture-promote").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "promote").catch((error) => { $("work-inbox").textContent = error.message; })));
+    document.querySelectorAll(".capture-attach").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "attach").catch((error) => { $("work-inbox").textContent = error.message; })));
+    document.querySelectorAll(".capture-discard").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "discard").catch((error) => { $("work-inbox").textContent = error.message; })));
+    const recent = (queues.recently_completed || []).map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">completed ${esc(item.completed_at)}</p></article>`).join("");
+    $("work-initiatives").innerHTML = (open.length ? open.map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">${esc(item.initiative_key)} · ${esc(item.work_state)} · ${esc(item.priority)}</p><p>${esc(item.objective || "")}</p></article>`).join("") : `<p class="muted">No open initiatives.</p>`) + (recent ? `<h2>Recently completed</h2>${recent}` : "");
+  } catch (error) {
+    $("work-inbox").textContent = error.message;
+  }
+}
+
+async function saveCapture() {
+  const body = $("capture-body").value.trim();
+  if (!body) return;
+  await api("/api/control-plane/work/captures", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("capture") }, body: JSON.stringify({ body, kind: $("capture-kind").value, origin: { channel: "WEB", tool: "dashboard-work-view" } }) });
+  $("capture-body").value = "";
+  await loadWork();
+}
+
+async function triageCapture(id, action) {
+  const payload = {};
+  if (action === "attach") {
+    const target = $("attach-target").value;
+    if (!target) { $("work-inbox").textContent = "Select an attach target initiative first."; return; }
+    payload.initiative_id = target;
+  }
+  await api(`/api/control-plane/work/captures/${id}/${action}`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("triage") }, body: JSON.stringify(payload) });
+  await loadWork();
+}
+
+async function loadFreshness() {
+  if (!authentication?.token()) return;
+  try {
+    const [freshness, requests] = await Promise.all([
+      api("/api/control-plane/maintenance/freshness?limit=200"),
+      api("/api/control-plane/verification-requests?status=OPEN"),
+    ]);
+    $("verification-requests").innerHTML = (requests.requests || []).length ? requests.requests.map((item) => `<article class="panel"><strong>${esc(item.reason)}</strong><p>${esc(item.note || item.path_prefix || item.page_resource_id || item.entity_id)}</p><p class="muted">${esc(item.requested_at)} · ${esc((item.briefing || {}).page_count ?? "?")} page(s)</p></article>`).join("") : `<p class="muted">No open requests.</p>`;
+    $("freshness-table").innerHTML = (freshness.pages || []).length ? freshness.pages.map((page) => `<article class="panel"><strong>${esc(page.path)}</strong><p class="muted">${esc(page.section)} · ${esc(page.verification_state)} · ${esc(page.criticality)}${page.provenance === "GENERATED" ? " · GENERATED" : ""}</p><p class="muted">updated ${esc(page.updated_at)} · last verified ${esc(page.last_verified_at || "never")}</p><div class="actions"><button class="verify-page" data-id="${esc(page.resource_id)}" data-path="${esc(page.path)}">Verify against fabric</button></div></article>`).join("") : `<p class="muted">No active pages.</p>`;
+    document.querySelectorAll(".verify-page").forEach((button) => button.addEventListener("click", () => requestVerification({ page_resource_id: button.dataset.id }, button.dataset.path).catch((error) => { $("freshness-table").textContent = error.message; })));
+  } catch (error) {
+    $("freshness-table").textContent = error.message;
+  }
+}
+
+async function requestVerification(scope, label) {
+  await api("/api/control-plane/verification-requests", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("verify") }, body: JSON.stringify({ ...scope, note: `Requested from the freshness table: ${label}` }) });
+  await loadFreshness();
+}
+
 async function loadHistory() {
   if (!authentication?.token()) return;
   try {
@@ -291,6 +370,7 @@ function setAuthenticatedControls(enabled) {
     "retry-publication",
     "authoring-propose", "authoring-validate", "authoring-publish",
     "create-plan", "add-operation", "analyze-plan", "validate-plan", "publish-plan",
+    "capture-save", "verify-section",
   ].forEach((id) => {
     const node = $(id);
     if (node) node.disabled = !enabled;
@@ -303,6 +383,11 @@ function clearAuthenticatedView() {
   $("certification").textContent = "Not connected.";
   $("recent-changes").textContent = "Connect to load.";
   $("changes").textContent = "Connect to load.";
+  $("work-cards").innerHTML = "";
+  $("work-inbox").textContent = "Connect to load.";
+  $("work-initiatives").textContent = "Connect to load.";
+  $("freshness-table").textContent = "Connect to load.";
+  $("verification-requests").textContent = "Connect to load.";
   setAuthenticatedControls(false);
 }
 function showAuthenticationState(state, detail = {}) {
@@ -344,6 +429,14 @@ if (typeof document !== "undefined") {
   });
   document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
   $("refresh-overview").addEventListener("click", loadOverview);
+  $("refresh-work").addEventListener("click", loadWork);
+  $("refresh-freshness").addEventListener("click", loadFreshness);
+  $("capture-save").addEventListener("click", () => saveCapture().catch((error) => { $("work-inbox").textContent = error.message; }));
+  $("verify-section").addEventListener("click", () => {
+    const prefix = $("verify-prefix").value.trim().replace(/\/+$/, "");
+    if (!prefix) return;
+    requestVerification({ path_prefix: prefix }, prefix).catch((error) => { $("verification-requests").textContent = error.message; });
+  });
   $("refresh-history").addEventListener("click", loadHistory);
   $("refresh-reorganisation").addEventListener("click", loadReorganisation);
   $("retry-publication").addEventListener("click", async () => { $("certification").textContent = JSON.stringify(await api("/api/control-plane/publication/retry", {method:"POST",headers:{"Idempotency-Key":key("retry"),"Content-Type":"application/json"},body:"{}"}), null, 2); });

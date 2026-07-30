@@ -62,6 +62,8 @@ compose down -v --remove-orphans >/dev/null 2>&1 || true
 compose up --build -d postgres docs-api dashboard docs-web >/dev/null
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS "$API/healthz" >/dev/null || fail "docs-api never became healthy"
+# Waiting on the ROUTED dashboard health covers both nginx accepting
+# connections and the dashboard being up, so step 2 cannot race the front.
 for _ in $(seq 1 30); do curl -fsS "$FRONT/dashboard/healthz" >/dev/null 2>&1 && break; sleep 1; done
 curl -fsS "$FRONT/dashboard/healthz" >/dev/null || fail "routed dashboard never became healthy"
 

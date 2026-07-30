@@ -1,7 +1,7 @@
 # The four-domain model: work, know, model, observe
 
-Status: **PROPOSED** — architecture decision for issue #64, converged through
-owner review. Principles are in
+Status: **RATIFIED** — architecture decision for issue #64, converged through
+owner review and merged in PR #70. Principles are in
 [Guiding philosophy and objectives](GUIDING_PHILOSOPHY.md); the sprint
 sequence is in the
 [implementation plan](DOMAIN_MODEL_IMPLEMENTATION_PLAN.md).

@@ -120,6 +120,120 @@ def retry_publication(
         _raise(exc)
 
 
+@app.get("/api/control-plane/work/queues")
+def work_queues(authorization: str | None = Header(default=None)) -> Any:
+    try:
+        return client.get("/api/v1/work/queues", authorization=_auth(authorization))
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/work/captures")
+def list_work_captures(
+    status: str = "INBOX",
+    limit: int = Query(default=200, ge=1, le=1000),
+    authorization: str | None = Header(default=None),
+) -> Any:
+    try:
+        return client.get("/api/v1/work/captures", authorization=_auth(authorization), params={"status": status, "limit": limit})
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/work/captures", status_code=201)
+def create_work_capture(
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    try:
+        return client.post("/api/v1/work/captures", authorization=_auth(authorization), idempotency_key=idempotency_key, json_body=body)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/work/captures/{capture_id}/{action}")
+def triage_work_capture(
+    capture_id: UUID,
+    action: str,
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    if action not in {"promote", "attach", "discard"}:
+        raise HTTPException(status_code=404, detail={"code": "ACTION_NOT_FOUND"})
+    try:
+        return client.post(f"/api/v1/work/captures/{capture_id}/{action}", authorization=_auth(authorization), idempotency_key=idempotency_key, json_body=body)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/initiatives")
+def list_initiatives(
+    work_state: str | None = None,
+    include_closed: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    authorization: str | None = Header(default=None),
+) -> Any:
+    params: dict[str, Any] = {"limit": limit, "include_closed": include_closed}
+    if work_state:
+        params["work_state"] = work_state
+    try:
+        return client.get("/api/v1/initiatives", authorization=_auth(authorization), params=params)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/maintenance/freshness")
+def maintenance_freshness(
+    limit: int = Query(default=200, ge=1, le=1000),
+    authorization: str | None = Header(default=None),
+) -> Any:
+    try:
+        return client.get("/api/v1/maintenance/freshness", authorization=_auth(authorization), params={"limit": limit})
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/verification-requests")
+def list_verification_requests(
+    status: str = "OPEN",
+    authorization: str | None = Header(default=None),
+) -> Any:
+    try:
+        return client.get("/api/v1/verification-requests", authorization=_auth(authorization), params={"status": status})
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/verification-requests", status_code=201)
+def create_verification_request(
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    try:
+        return client.post("/api/v1/verification-requests", authorization=_auth(authorization), idempotency_key=idempotency_key, json_body=body)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/verification-requests/{request_id}/{action}")
+def verification_request_action(
+    request_id: UUID,
+    action: str,
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    if action not in {"claim", "complete", "cancel"}:
+        raise HTTPException(status_code=404, detail={"code": "ACTION_NOT_FOUND"})
+    try:
+        return client.post(f"/api/v1/verification-requests/{request_id}/{action}", authorization=_auth(authorization), idempotency_key=idempotency_key, json_body=body)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
 @app.get("/api/control-plane/reorganisation/tree")
 def reorganisation_tree(authorization: str | None = Header(default=None)) -> Any:
     try:

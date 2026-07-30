@@ -47,8 +47,10 @@ label { display:grid; gap:.3rem; margin:.7rem 0; color:var(--text-muted); font-s
 .topbar { display:flex; align-items:center; gap:1.25rem; padding:.6rem 1.2rem; background:var(--action); color:var(--on-action); }
 .brand { display:flex; align-items:center; gap:.55rem; color:var(--on-action); text-decoration:none; }
 .brand:hover { text-decoration:none; opacity:.92; }
-.brand__logo { height:1.5rem; width:auto; filter:brightness(0) invert(1); }
-.brand__name { font-weight:600; font-size:1.05rem; letter-spacing:-.01em; }
+/* Standalone-dev fallback only: /assets/header.css (the shared header source,
+ * served by the docs site through the front) overrides these when routed. */
+.brand__logo { height:1.4rem; width:auto; filter:brightness(0) invert(1); }
+.brand__name { font-weight:700; font-size:.95rem; letter-spacing:-.01em; }
 .topnav { display:flex; align-items:center; gap:.25rem; }
 .navlink { display:inline-flex; align-items:center; gap:.4rem; padding:.35rem .7rem; border-radius:var(--radius-pill); color:var(--on-action); opacity:.85; font-size:.9rem; }
 .navlink:hover { opacity:1; text-decoration:none; background:rgba(255,255,255,.14); }

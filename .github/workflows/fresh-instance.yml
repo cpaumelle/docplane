@@ -88,9 +88,17 @@ jobs:
             docs-api/tests/test_private_fabric_access.py \
             docs-api/tests/test_generated_release.py \
             docs-api/tests/test_redirect_serving.py \
+            docs-api/tests/test_work_capture_contract.py \
+            docs-api/tests/test_model_contract.py \
+            docs-api/tests/test_observe_contract.py \
+            docs-api/tests/test_closure_gates_contract.py \
+            docs-api/tests/test_verification_requests_contract.py \
             docs-api/tests/test_migrate_compat.py \
+            docs-api/tests/test_domain_e2e.py \
             mcp/tests/test_allowed_hosts.py \
-            dashboard/tests/test_authoring.py
+            mcp/tests/test_work_tools.py \
+            dashboard/tests/test_authoring.py \
+            dashboard/tests/test_work_view.py
       - name: Static legacy scan
         run: |
           ! grep -R -nE 'DOCS_API_KEY|X-API-Key|/api/agent-config|/api/docs/|workspace_memberships|change_proposals|reorganisation_reviews|Submit for review|SUBMITTED|APPROVED' \

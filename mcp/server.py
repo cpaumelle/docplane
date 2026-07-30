@@ -14,6 +14,7 @@ from starlette.routing import Route
 from allowed_hosts import default_allowed_hosts, default_allowed_origins, port_from_spec
 from common import DOCPLANE_API_URL, DOCPLANE_TOKEN
 from tools import docs as docs_tools
+from tools import work as work_tools
 
 HOST = os.environ.get("MCP_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MCP_PORT", "8049"))
@@ -46,6 +47,7 @@ mcp = FastMCP(
     ),
 )
 docs_tools.register(mcp)
+work_tools.register(mcp)
 
 
 class BearerAuth:

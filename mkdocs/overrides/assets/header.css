@@ -1,0 +1,66 @@
+/* DocPlane — the ONE shared header.
+ *
+ * Both surfaces load this file (docs via extra_css, dashboard via
+ * /assets/header.css through the routed front), so the documentation site's
+ * Material header and the dashboard's .topbar are styled from a single
+ * source: same height, same brand cluster, same Docs/Dashboard switcher.
+ * Change header styling HERE, not in the dashboard stylesheet — the
+ * dashboard's bundled copies of these rules are a standalone-dev fallback
+ * only and this file must win when both are loaded.
+ *
+ * Markup contract (identical on both surfaces):
+ *   <nav class="topnav"><a class="navlink [navlink--active]">…</a>…</nav>
+ * The docs side injects it via overrides/main.html; the dashboard ships it
+ * in index.html. Labels are "Docs" and "Dashboard" — icon + text, never
+ * icon-only, on both.
+ */
+
+/* ── Shared bar metrics ────────────────────────────────────────────────── */
+.md-header__inner,
+.topbar {
+  min-height: 3rem;
+  display: flex;
+  align-items: center;
+}
+.topbar { padding: 0 .8rem; gap: 1rem; background: var(--action); color: var(--on-action); }
+
+/* ── Brand cluster: same logo size and same name typography ────────────── */
+.brand__logo,
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg { height: 1.4rem; width: auto; filter: brightness(0) invert(1); }
+.brand__name,
+.md-header__topic:first-child { font-weight: 700; font-size: .95rem; letter-spacing: -.01em; }
+.md-header__title { font-size: .95rem; }
+
+/* ── The product switcher (Docs | Dashboard) ───────────────────────────── */
+.topnav { display: flex; align-items: center; gap: .25rem; }
+.navlink {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .35rem .7rem;
+  border-radius: 999px;
+  color: var(--on-action, var(--md-primary-bg-color));
+  opacity: .85;
+  font-size: .8rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.navlink:hover { opacity: 1; text-decoration: none; background: rgba(255, 255, 255, .14); color: inherit; }
+.navlink--active { background: rgba(255, 255, 255, .20); opacity: 1; }
+.navlink svg { width: 1.05em; height: 1.05em; }
+/* Material wraps injected content in header-button spacing — neutralise it
+ * so the switcher sits exactly like the dashboard's. */
+.md-header__inner .topnav { margin: 0 .4rem 0 auto; }
+.md-header__inner .topnav + .md-header__option,
+.md-header__inner .topnav + .md-search { margin-left: 0; }
+
+/* ── Right-side controls read as one family ────────────────────────────── */
+.md-search__form,
+.topbar .connect input {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .14);
+}
+.topbar .connect { margin-left: 0; }
+.topbar .topnav { margin-left: auto; }

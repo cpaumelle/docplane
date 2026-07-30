@@ -341,7 +341,7 @@ def publish_plan(
         plan = _plan(conn, str(plan_id), for_update=True)
         if plan["status"] == "PUBLISHED" and plan["linked_change_id"]:
             return plan
-        evaluation = evaluate_change(conn, _as_change(plan), _as_change_operations(plan), lock=True)
+        evaluation = evaluate_change(conn, _as_change(plan), _as_change_operations(plan), lock=True, acting_principal_id=str(principal.principal_id))
         if not evaluation["passed"]:
             cur = conn.cursor()
             cur.execute(
