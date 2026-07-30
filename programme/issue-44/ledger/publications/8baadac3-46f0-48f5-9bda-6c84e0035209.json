@@ -1,0 +1,141 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 89
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 88
+ },
+ "cohort": "operations-security",
+ "display_prefix": "8baadac3",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "operations-security-publication-A.json",
+  "scan": "operations-security-scan.json"
+ },
+ "move_operations": 3,
+ "nav_changes": 3,
+ "operation_type_counts": {
+  "MOVE_PAGE": 3,
+  "REPLACE_DOCUMENT": 2
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "operations/security/container-hardening.md",
+   "expected_revision": "f53ed4c0-d8a3-4024-be95-dbd9a01ff58f",
+   "from_nav_path": "Operations/Container Hardening",
+   "from_path": "operations/container-hardening.md",
+   "nav_changed": true,
+   "operation_id": "14d690db-eb14-464b-8bb3-66e096734f20",
+   "redirect_created": true,
+   "resource_id": "a4349447-7c6f-5ca4-8d34-60fa4f92bff3",
+   "to_nav_path": "Operations/Security/Container Hardening",
+   "to_path": "operations/security/container-hardening.md"
+  },
+  {
+   "current_path": "operations/security/security-maintenance.md",
+   "expected_revision": "c5ac828b-dfcc-4f25-bcca-749af7713795",
+   "from_nav_path": "Operations/Security & Access/Security Maintenance",
+   "from_path": "operations/security-maintenance.md",
+   "nav_changed": true,
+   "operation_id": "b32dcab5-a1c3-4bc8-8729-d89e87c218f3",
+   "redirect_created": true,
+   "resource_id": "2e20e57f-b1d2-58af-ab62-e0ec0b1564d2",
+   "to_nav_path": "Operations/Security/Security Maintenance",
+   "to_path": "operations/security/security-maintenance.md"
+  },
+  {
+   "current_path": "operations/security/ssh-observation-post.md",
+   "expected_revision": "92883cd6-90ea-4d7c-850d-969156d20ff5",
+   "from_nav_path": "Operations/SSH Observation Post",
+   "from_path": "operations/ssh-observation-post.md",
+   "nav_changed": true,
+   "operation_id": "e1e111b9-29a6-4b3d-b548-1dfb89fecdda",
+   "redirect_created": true,
+   "resource_id": "934916e8-43cb-537f-bbda-9e316bdef1cb",
+   "to_nav_path": "Operations/Security/SSH Observation Post",
+   "to_path": "operations/security/ssh-observation-post.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [
+   {
+    "line": 685,
+    "page": "services/authelia.md",
+    "reason": "blockquote",
+    "target": "../operations/container-hardening.md"
+   }
+  ],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 38
+ },
+ "preserved_references": null,
+ "publication_id": "8baadac3-46f0-48f5-9bda-6c84e0035209",
+ "publication_receipt": {
+  "candidate_identity": "1d72534d50d32f10751b3b1a898f217c7c17d80278ddb1572fc51b8420f08833",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 38969,
+   "deployment_cycle_id": "037a590b-4c1d-4dec-b0fd-d6255005cb75",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 39,
+   "release_id": "16d2229e-91a5-4dba-afa3-059cba9fbad6",
+   "sealed_digest": "f36df8dfd6c8ee88f6d696299714f17a550491c78055ca8d1df1403c971d9497",
+   "status": "COMPLETED",
+   "target_state_identity": "5738cffd2454addda95889358b676595f60b64b76660441c41fc50804081b28e"
+  },
+  "operations_applied": 5,
+  "operations_submitted": 5,
+  "published_at": "2026-07-30T10:09:45.643579+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T10:09:45.331757Z",
+ "redirect_count": 3,
+ "reference_repair_publication": {
+  "publication_id": "26adb057-fe51-463e-8ed2-e4a904bf0f70",
+  "published_at": "2026-07-30T10:11:21.894446Z",
+  "reference_rewrites": 6
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "8c3f5d15-a7da-4902-8ea3-690fa5742b27",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "102d6bf3c67fe311dbfa5c11309c5f14dd5f9230167322d6b4b926cf5b26f63d",
+   "candidate_identity": "1d72534d50d32f10751b3b1a898f217c7c17d80278ddb1572fc51b8420f08833",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 5,
+   "operations_checked": 5,
+   "passed": true,
+   "validated_at": "2026-07-30T10:09:01.547517+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 2,
+ "title": "Issue #44 structural cohort: operations-security",
+ "unique_resource_ids": 3,
+ "validation_summary": {
+  "base_state_identity": "102d6bf3c67fe311dbfa5c11309c5f14dd5f9230167322d6b4b926cf5b26f63d",
+  "candidate_identity": "1d72534d50d32f10751b3b1a898f217c7c17d80278ddb1572fc51b8420f08833",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 5,
+  "operations_checked": 5,
+  "passed": true,
+  "validated_at": "2026-07-30T10:09:45.632449+00:00",
+  "warnings": []
+ }
+}

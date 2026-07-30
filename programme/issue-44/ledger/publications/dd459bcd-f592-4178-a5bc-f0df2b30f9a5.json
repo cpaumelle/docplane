@@ -1,0 +1,152 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 77
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 76
+ },
+ "cohort": "invariants-auth",
+ "display_prefix": "dd459bcd",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "invariants-auth-publication-A.json",
+  "scan": "invariants-auth-scan.json"
+ },
+ "move_operations": 3,
+ "nav_changes": 3,
+ "operation_type_counts": {
+  "MOVE_PAGE": 3
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/invariants/i-auth-transport-1.md",
+   "expected_revision": "75d1491c-479a-4eab-8379-c755b4cdee3e",
+   "from_nav_path": "Control Plane/Topology Invariants/I-AUTH-TRANSPORT-1",
+   "from_path": "control-plane/topology-invariants/i-auth-transport-1.md",
+   "nav_changed": true,
+   "operation_id": "f15c57e9-310d-4e2c-b98a-9350cd9a8b53",
+   "redirect_created": true,
+   "resource_id": "41bcdc11-36e8-5e3e-a185-c45d549cc484",
+   "to_nav_path": "Control Plane/Invariants/I-AUTH-TRANSPORT-1",
+   "to_path": "control-plane/invariants/i-auth-transport-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-connect-auth-1.md",
+   "expected_revision": "64fa8009-47a5-4d8d-9901-401560cc72d6",
+   "from_nav_path": "Control Plane/Topology Invariants/I-CONNECT-AUTH-1",
+   "from_path": "control-plane/topology-invariants/i-connect-auth-1.md",
+   "nav_changed": true,
+   "operation_id": "4ed794d5-44e3-4d60-b188-781583f4b589",
+   "redirect_created": true,
+   "resource_id": "5ad1caae-ceb6-5160-b46c-6d95318f09d5",
+   "to_nav_path": "Control Plane/Invariants/I-CONNECT-AUTH-1",
+   "to_path": "control-plane/invariants/i-connect-auth-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-ssh-identity-derivation-1.md",
+   "expected_revision": "9c1216b4-ad8b-41b3-bbf7-009e15eba9fc",
+   "from_nav_path": "Control Plane/Topology Invariants/I-SSH-IDENTITY-DERIVATION-1",
+   "from_path": "control-plane/topology-invariants/i-ssh-identity-derivation-1.md",
+   "nav_changed": true,
+   "operation_id": "19b08a0e-e6e8-476b-aff7-0155a46336b7",
+   "redirect_created": true,
+   "resource_id": "0693b7f5-7dab-54ae-a02b-15423745cb7a",
+   "to_nav_path": "Control Plane/Invariants/I-SSH-IDENTITY-DERIVATION-1",
+   "to_path": "control-plane/invariants/i-ssh-identity-derivation-1.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [
+   {
+    "line": 63,
+    "page": "archive/plans/c1-implementation-plan.md",
+    "reason": "evidence_surface",
+    "target": "../../control-plane/topology-invariants/i-connect-auth-1.md"
+   },
+   {
+    "line": 248,
+    "page": "archive/plans/c1-implementation-plan.md",
+    "reason": "evidence_surface",
+    "target": "../../control-plane/topology-invariants/i-connect-auth-1.md"
+   },
+   {
+    "line": 125,
+    "page": "control-plane/cp-net-1-history.md",
+    "reason": "evidence_surface",
+    "target": "topology-invariants/i-ssh-identity-derivation-1.md"
+   }
+  ],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 36
+ },
+ "preserved_references": null,
+ "publication_id": "dd459bcd-f592-4178-a5bc-f0df2b30f9a5",
+ "publication_receipt": {
+  "candidate_identity": "444055ad50f20a7265f4c87e80272a5df1f5cdb08ca78d85567852fb9c46661b",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 36959,
+   "deployment_cycle_id": "fc8e2b9d-abbe-4218-9573-c18a6124c3e0",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 32,
+   "release_id": "452d6b20-c8aa-4ff3-80de-0521f919e3c1",
+   "sealed_digest": "bc765f6c19d1f80e04ddb4c9c6d5d37d1e745dd6a36d4950168137cb2341cee2",
+   "status": "COMPLETED",
+   "target_state_identity": "8f0e34f15961e615401eb309fd223a17706341d000eb0baf0faf9cbbf3eff0af"
+  },
+  "operations_applied": 3,
+  "operations_submitted": 3,
+  "published_at": "2026-07-30T07:51:57.798528+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T07:51:57.521753Z",
+ "redirect_count": 3,
+ "reference_repair_publication": {
+  "publication_id": "c463b7f9-5259-40e5-920f-44158af5cf93",
+  "published_at": "2026-07-30T07:53:27.685444Z",
+  "reference_rewrites": 10
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "9c95c089-8a9e-429b-b0a2-1b27ec65f24e",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "f2aa8bfe19681abc3ff28efd6ab931228b86235f013a95974caee139ccd9a56a",
+   "candidate_identity": "444055ad50f20a7265f4c87e80272a5df1f5cdb08ca78d85567852fb9c46661b",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 3,
+   "operations_checked": 3,
+   "passed": true,
+   "validated_at": "2026-07-30T07:51:13.360115+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 0,
+ "title": "Issue #44 structural cohort: invariants-auth",
+ "unique_resource_ids": 3,
+ "validation_summary": {
+  "base_state_identity": "f2aa8bfe19681abc3ff28efd6ab931228b86235f013a95974caee139ccd9a56a",
+  "candidate_identity": "444055ad50f20a7265f4c87e80272a5df1f5cdb08ca78d85567852fb9c46661b",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 3,
+  "operations_checked": 3,
+  "passed": true,
+  "validated_at": "2026-07-30T07:51:57.789017+00:00",
+  "warnings": []
+ }
+}

@@ -1,0 +1,105 @@
+{
+ "exceptions": [
+  {
+   "expected_route": "200",
+   "key": "archive/plans/c1-implementation-plan.md::control-plane/topology-invariants/i-connect-auth-1.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "../../control-plane/topology-invariants/i-connect-auth-1.md",
+   "resolved_target": "control-plane/topology-invariants/i-connect-auth-1.md",
+   "source_path": "archive/plans/c1-implementation-plan.md",
+   "source_resource_id": "ff64221a-f46f-5524-8b07-8147e92e505d"
+  },
+  {
+   "expected_route": "200",
+   "key": "archive/plans/c1-implementation-plan.md::control-plane/topology-invariants/i-connect-auth-1.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "../../control-plane/topology-invariants/i-connect-auth-1.md",
+   "resolved_target": "control-plane/topology-invariants/i-connect-auth-1.md",
+   "source_path": "archive/plans/c1-implementation-plan.md",
+   "source_resource_id": "ff64221a-f46f-5524-8b07-8147e92e505d"
+  },
+  {
+   "expected_route": "200",
+   "key": "control-plane/cp-net-1-history.md::control-plane/topology-invariants/i-ssh-identity-derivation-1.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "topology-invariants/i-ssh-identity-derivation-1.md",
+   "resolved_target": "control-plane/topology-invariants/i-ssh-identity-derivation-1.md",
+   "source_path": "control-plane/cp-net-1-history.md",
+   "source_resource_id": "dd31d522-3610-5037-add7-40e47dfbd1a2"
+  },
+  {
+   "expected_route": "200",
+   "key": "control-plane/cp-net-1-history.md::control-plane/topology-invariants/i-dns-runtime-config-1.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "topology-invariants/i-dns-runtime-config-1.md",
+   "resolved_target": "control-plane/topology-invariants/i-dns-runtime-config-1.md",
+   "source_path": "control-plane/cp-net-1-history.md",
+   "source_resource_id": "dd31d522-3610-5037-add7-40e47dfbd1a2"
+  },
+  {
+   "expected_route": "200",
+   "key": "control-plane/cp-net-1-history.md::control-plane/topology-invariants/i-edge-cache-writer-1.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "topology-invariants/i-edge-cache-writer-1.md",
+   "resolved_target": "control-plane/topology-invariants/i-edge-cache-writer-1.md",
+   "source_path": "control-plane/cp-net-1-history.md",
+   "source_resource_id": "dd31d522-3610-5037-add7-40e47dfbd1a2"
+  },
+  {
+   "expected_route": "200",
+   "key": "operations/incidents/transit-dispatch-zero-byte-2026-05-08.md::control-plane/doctrine.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "../../control-plane/doctrine.md",
+   "resolved_target": "control-plane/doctrine.md",
+   "source_path": "operations/incidents/transit-dispatch-zero-byte-2026-05-08.md",
+   "source_resource_id": "549185b0-a3bf-5bdd-b96e-2a9f4ce612f4"
+  },
+  {
+   "expected_route": "200",
+   "key": "operations/incidents/transit-dispatch-zero-byte-2026-05-08.md::control-plane/doctrine.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "../../control-plane/doctrine.md",
+   "resolved_target": "control-plane/doctrine.md",
+   "source_path": "operations/incidents/transit-dispatch-zero-byte-2026-05-08.md",
+   "source_resource_id": "549185b0-a3bf-5bdd-b96e-2a9f4ce612f4"
+  },
+  {
+   "expected_route": "200",
+   "key": "operations/pi4-gateway-appliance-v1-inventory.md::control-plane/gateway-convergence-doctrine.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "../control-plane/gateway-convergence-doctrine.md",
+   "resolved_target": "control-plane/gateway-convergence-doctrine.md",
+   "source_path": "operations/pi4-gateway-appliance-v1-inventory.md",
+   "source_resource_id": "bf577899-8b28-58b1-a5eb-0b5d5504a3d0"
+  },
+  {
+   "expected_route": "404",
+   "key": "operations/runbooks/pi4-gateway-bootstrap-recipe.md::reference/rpi-trixie-cloud-init.md",
+   "kind": "known-defect",
+   "owner": "docplane#78",
+   "raw_target": "../../reference/rpi-trixie-cloud-init.md",
+   "resolved_target": "reference/rpi-trixie-cloud-init.md",
+   "source_path": "operations/runbooks/pi4-gateway-bootstrap-recipe.md",
+   "source_resource_id": "1a8c7778-13dd-5e04-9364-ccdf1e315be0"
+  },
+  {
+   "expected_route": "200",
+   "key": "operations/w4-1-5c-g1a-evidence.md::control-plane/schema-migrations.md",
+   "kind": "historical-record",
+   "owner": "evidence-surface-preservation",
+   "raw_target": "../control-plane/schema-migrations.md#database-authentication-scope-charliehub-postgres",
+   "resolved_target": "control-plane/schema-migrations.md",
+   "source_path": "operations/w4-1-5c-g1a-evidence.md",
+   "source_resource_id": "f12d2647-a224-560e-ad75-35ca3e225fe5"
+  }
+ ],
+ "note": "Owned baseline for the existence-aware release gate. Every entry is either docplane#78 or a deliberate evidence-surface preservation whose compatibility route still serves the reader. Adding an entry here is an explicit ownership act, not a way to silence a regression."
+}

@@ -1,0 +1,110 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 106
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 104
+ },
+ "cohort": "control-plane-specs-transit-convergence",
+ "display_prefix": "7c95535a",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "control-plane-specs-transit-convergence-publication-A.json",
+  "scan": "control-plane-specs-transit-convergence-scan.json"
+ },
+ "move_operations": 1,
+ "nav_changes": 1,
+ "operation_type_counts": {
+  "MOVE_PAGE": 1,
+  "REPLACE_DOCUMENT": 1
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/specs/transit-convergence.md",
+   "expected_revision": "da059d1a-e753-405b-9de2-d8f548dc0123",
+   "from_nav_path": "Control Plane/Transit Peer Convergence",
+   "from_path": "control-plane/transit-convergence.md",
+   "nav_changed": true,
+   "operation_id": "39df061e-99bf-4a59-bafb-94ae1e593bd0",
+   "redirect_created": true,
+   "resource_id": "290db043-435a-5d53-acd8-23e3ec85285e",
+   "to_nav_path": "Control Plane/Specs/Transit Peer Convergence",
+   "to_path": "control-plane/specs/transit-convergence.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 17
+ },
+ "preserved_references": null,
+ "publication_id": "7c95535a-211e-4669-b9c3-6f86c0d1c277",
+ "publication_receipt": {
+  "candidate_identity": "295ad717bce914e36d0ba19a4ca0160dffde64bc45f01e7475cd838735c6965b",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 38225,
+   "deployment_cycle_id": "07ed8a3e-9d18-4e5d-8480-bd76b62871b3",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 52,
+   "release_id": "3624a038-a591-41f9-9ce7-cc8153f11b15",
+   "sealed_digest": "09f79c749f80a45dfd55be10210a69aa352887a47b0e1207b73e9d30591a23c4",
+   "status": "COMPLETED",
+   "target_state_identity": "15095370425df42c6b4c4411718d6d1f0bae0e86e8410d83c52ef8e90794a39a"
+  },
+  "operations_applied": 2,
+  "operations_submitted": 2,
+  "published_at": "2026-07-30T12:54:39.516540+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T12:54:39.269084Z",
+ "redirect_count": 1,
+ "reference_repair_publication": {
+  "publication_id": "be903189-1e3b-4283-a420-4d692df0dbc3",
+  "published_at": "2026-07-30T12:56:25.568944Z",
+  "reference_rewrites": 8
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "8c8c30ce-f8cd-40e1-9a4f-8b5518febc8b",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "836fdc5beb261fb07a84da620cf5f5fbd5f93f843c5bc188a6a27fe8c16071bf",
+   "candidate_identity": "295ad717bce914e36d0ba19a4ca0160dffde64bc45f01e7475cd838735c6965b",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 2,
+   "operations_checked": 2,
+   "passed": true,
+   "validated_at": "2026-07-30T12:53:57.527471+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 1,
+ "title": "Issue #44 structural cohort: control-plane-specs-transit-convergence",
+ "unique_resource_ids": 1,
+ "validation_summary": {
+  "base_state_identity": "836fdc5beb261fb07a84da620cf5f5fbd5f93f843c5bc188a6a27fe8c16071bf",
+  "candidate_identity": "295ad717bce914e36d0ba19a4ca0160dffde64bc45f01e7475cd838735c6965b",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 2,
+  "operations_checked": 2,
+  "passed": true,
+  "validated_at": "2026-07-30T12:54:39.508746+00:00",
+  "warnings": []
+ }
+}

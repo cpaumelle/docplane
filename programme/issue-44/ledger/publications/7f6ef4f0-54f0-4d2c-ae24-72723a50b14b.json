@@ -1,0 +1,110 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 82
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 81
+ },
+ "cohort": "i72-wg-mesh-relocate",
+ "display_prefix": "7f6ef4f0",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "i72-wg-mesh-relocate-publication-A.json",
+  "scan": "i72-wg-mesh-relocate-scan.json"
+ },
+ "move_operations": 1,
+ "nav_changes": 1,
+ "operation_type_counts": {
+  "MOVE_PAGE": 1,
+  "REPLACE_DOCUMENT": 1
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/specs/wg-mesh-topology-correctness.md",
+   "expected_revision": "0b763382-2c87-4d57-ba46-bd1fa4230068",
+   "from_nav_path": "Control Plane/Topology Invariants/Sprint 2.5 \u2014 WG Mesh",
+   "from_path": "control-plane/topology-invariants.md",
+   "nav_changed": true,
+   "operation_id": "6fe2cf72-e756-4b1b-8049-be139496d686",
+   "redirect_created": true,
+   "resource_id": "0d9b2f98-3bbf-5ea5-bc35-d8cb1a5dbcca",
+   "to_nav_path": "Control Plane/Specs/WG Mesh Topology Correctness",
+   "to_path": "control-plane/specs/wg-mesh-topology-correctness.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 17
+ },
+ "preserved_references": null,
+ "publication_id": "7f6ef4f0-54f0-4d2c-ae24-72723a50b14b",
+ "publication_receipt": {
+  "candidate_identity": "7677ec9a612f594183484d7be9809229977c5b9112b0dba5a65eec4e38cf4fee",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 37391,
+   "deployment_cycle_id": "cb477a60-a488-4430-b1c9-1efabffa6c9f",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 33,
+   "release_id": "65b1ea14-6b18-43ce-8a10-56ca29453621",
+   "sealed_digest": "fa7895ee6b1f33a8d83a223af3716d2c328b25e5dc6d4bfb1c0862c961799dc9",
+   "status": "COMPLETED",
+   "target_state_identity": "deb4e86d8b32542f2d8e6a43b8ab703c43d0285f874b62500e7391de63f28c83"
+  },
+  "operations_applied": 2,
+  "operations_submitted": 2,
+  "published_at": "2026-07-30T08:51:38.715929+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T08:51:38.432751Z",
+ "redirect_count": 1,
+ "reference_repair_publication": {
+  "publication_id": "73400fe9-14f2-4931-b7a6-ec587357e96e",
+  "published_at": "2026-07-30T08:53:15.298713Z",
+  "reference_rewrites": 6
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "365068f1-ff7e-4f14-b1c0-9cdd336f90d2",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "870050be78c240173ec37ffb9da3d59ac09e8957ec9f41639bb8f26091024895",
+   "candidate_identity": "7677ec9a612f594183484d7be9809229977c5b9112b0dba5a65eec4e38cf4fee",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 2,
+   "operations_checked": 2,
+   "passed": true,
+   "validated_at": "2026-07-30T08:50:53.650855+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 1,
+ "title": "Issue #44 structural cohort: i72-wg-mesh-relocate",
+ "unique_resource_ids": 1,
+ "validation_summary": {
+  "base_state_identity": "870050be78c240173ec37ffb9da3d59ac09e8957ec9f41639bb8f26091024895",
+  "candidate_identity": "7677ec9a612f594183484d7be9809229977c5b9112b0dba5a65eec4e38cf4fee",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 2,
+  "operations_checked": 2,
+  "passed": true,
+  "validated_at": "2026-07-30T08:51:38.710354+00:00",
+  "warnings": []
+ }
+}

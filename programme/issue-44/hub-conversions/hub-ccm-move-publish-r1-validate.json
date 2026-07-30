@@ -1,0 +1,68 @@
+{
+  "change_id": "e0152f48-3b68-4299-9e00-415c227e72be",
+  "workspace_key": "reference",
+  "title": "Issue #44 hub conversion: control-plane/ccm.md -> control-plane/foundational/ccm.md",
+  "purpose": "Move control-plane/ccm.md to control-plane/foundational/ccm.md, joining its established sibling category. Ordinary structural move (page-vs-section conflict checked, no collision). Content and inbound-reference fixes follow in a separate bounded change.",
+  "author_principal_id": "73a1f3b0-58fd-48b9-a0b9-efc06dabda03",
+  "idempotency_key": "i44-hub-ccm-move-publish-r1-create",
+  "status": "VALIDATED",
+  "base_state_identity": null,
+  "validation_summary": {
+    "errors": [],
+    "passed": true,
+    "warnings": [],
+    "validated_at": "2026-07-30T17:23:50.285477+00:00",
+    "contract_version": "direct-publication-v1",
+    "candidate_identity": "86cd2b9174b249c9b99175f6e48918ad7e033a585d5c853c2ad8412a4255a353",
+    "operations_checked": 1,
+    "base_state_identity": "c6ad74bb647e8ff6be3dc0e2a24662d99c1348e90eee5458bc18e5eb6871e285",
+    "operations_accepted": 1
+  },
+  "preview_receipt": {
+    "operations": [
+      {
+        "errors": [],
+        "accepted": true,
+        "sequence": 0,
+        "warnings": [],
+        "operation_id": "0002a405-571e-4f5d-a946-94d1e39fe056",
+        "operation_type": "MOVE_PAGE"
+      }
+    ],
+    "publication": {
+      "supported": true,
+      "review_required": false
+    },
+    "candidate_identity": "86cd2b9174b249c9b99175f6e48918ad7e033a585d5c853c2ad8412a4255a353"
+  },
+  "publication_receipt": null,
+  "failure_receipt": null,
+  "created_at": "2026-07-30T17:23:49.870216Z",
+  "updated_at": "2026-07-30T17:23:50.025760Z",
+  "published_at": null,
+  "operations": [
+    {
+      "operation_id": "0002a405-571e-4f5d-a946-94d1e39fe056",
+      "sequence": 0,
+      "idempotency_key": "i44-hub-ccm-move-publish-r1-op1",
+      "operation_type": "MOVE_PAGE",
+      "page_resource_id": "239bd178-ac3d-5dfd-90ab-1fd69a2f2380",
+      "expected_revision": "68e68b09-7595-4755-a0e5-ceef36c0e551",
+      "expected_section_hash": null,
+      "payload": {
+        "to_path": "control-plane/foundational/ccm.md",
+        "to_nav_path": "Control Plane/Foundational/CCM Contract",
+        "create_redirect": true
+      },
+      "validation_result": {
+        "errors": [],
+        "accepted": true,
+        "sequence": 0,
+        "warnings": [],
+        "operation_id": "0002a405-571e-4f5d-a946-94d1e39fe056",
+        "operation_type": "MOVE_PAGE"
+      },
+      "created_at": "2026-07-30T17:23:49.970246Z"
+    }
+  ]
+}

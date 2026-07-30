@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-07-30T14:56:00Z",
+  "generated_by": "agent-45",
+  "certification_version": 137,
+  "historical_execution": {
+    "unique_pages_moved_cumulative": 88,
+    "move_operations_cumulative": 88,
+    "pages_moved_more_than_once": 0,
+    "move_bearing_publications_cumulative": 33,
+    "confirmation_note": "Independently re-derived from a fresh GET /api/v1/changes pull (179 total changes, 120 Issue #44-tagged). 76 (prior) + 12 (agent-45 this session) = 88, exact arithmetic and API-derived match."
+  },
+  "this_session_agent_45": {
+    "pages_moved": 12,
+    "cohort": "topology-invariants-geo-and-interface-domain",
+    "strategy": "Published as ONE atomic component (not split into GEO-Core / GEO-Placement-Recovery / Interface-Domain subcohorts), because the sibling-link graph showed 19 of 36 same-directory links crossed those originally-planned boundaries. Splitting would have reproduced the exact partial-cluster bug already observed and repaired earlier this session.",
+    "destination": "control-plane/invariants/",
+    "move_change": "29c62fc5-0e94-43e1-876e-a5f33dbc48ee",
+    "refs_change": "1e39f2e6-9fad-43c4-81be-94b8e15d8503",
+    "refs_scope": "88 rewrites across 32 pages -- standard external-inbound repair via migration/links.py plan+apply. Notably, none of the 36 within-cohort sibling links needed any fix at all: since all 12 pages moved together to the same destination, every sibling reference between them remained valid automatically -- direct empirical validation that the atomic-component strategy solves the partial-cluster problem structurally, not just procedurally.",
+    "existence_aware_gate": "0 new unowned breaks. Full corpus-wide recheck before and after this publication found the identical 12 raw hits (11 real occurrences after excluding one confirmed false positive in agent-45's own checker -- inline code, not a live link), matching the accepted baseline exactly.",
+    "certification_transitions": "v135 (pre-move) -> v136 (after move) -> v137 (after refs)",
+    "routes_verified": "Sampled 3 of 12 moved pages: new path resolves via /api/v1/resolve, old path returns HTTP 200 via redirect on the rendered site."
+  },
+  "current_corpus": {
+    "note": "No page count change from moves alone (path changes only); 514 active pages, same as before this session's publications."
+  },
+  "remaining_actionable_agent_45_territory": {
+    "topology_invariants": {
+      "i-config-projection-1.md": "standalone, zero sibling edges, still at control-plane/topology-invariants/ -- blocked on an authoring decision (destination: control-plane/foundational/ vs control-plane/invariants/), not a link-safety question",
+      "index.md": "retirement candidate, not a move -- control-plane/invariants/index.md (v61+) already supersedes it; needs a body diff before archive-in-place with redirect. One outbound link (to i-iface-naming-1.md) already repaired in this session's reference-repair pass even though index.md itself did not move"
+    },
+    "ccm": {
+      "ccm.md": "hub prerequisite, deferred -- 16+ inbound, needs H1/H2-style hub-conversion publication with dedicated inbound-repair",
+      "ccm-interface-realization-capability.md": "authoring/lifecycle decision required before moving -- its own soak completed 2 months ago but is not relabelled from active-sounding status",
+      "ccm-interface-realization-implementation.md": "no action needed -- already correctly archived",
+      "ccm-interface-realization-archaeology.md": "no action needed -- evidence surface, deliberate non-move"
+    },
+    "note": "agent-45's territory (topology-invariants/* + ccm-*) now has exactly 6 items remaining, every one with a named blocker or explicit no-action disposition. No unowned 'still requires movement' items remain in this territory."
+  },
+  "next_actionable_territory": "None remaining in agent-45's own territory without an operator decision (i-config-projection-1.md destination, ccm.md hub-conversion scheduling, ccm-interface-realization-capability.md relabelling). Agent 44's flat-control-plane territory has its own separately-tracked remaining queue."
+}

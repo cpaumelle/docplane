@@ -1,0 +1,110 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 125
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 124
+ },
+ "cohort": "control-plane-access-and-auth-consolidation",
+ "display_prefix": "eabd256a",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "control-plane-access-and-auth-consolidation-publication-A.json",
+  "scan": "control-plane-access-and-auth-consolidation-scan.json"
+ },
+ "move_operations": 1,
+ "nav_changes": 1,
+ "operation_type_counts": {
+  "MOVE_PAGE": 1,
+  "REPLACE_DOCUMENT": 1
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/access-and-auth/authentication-model.md",
+   "expected_revision": "69a58556-8f41-4d84-8219-29515efe1038",
+   "from_nav_path": "Control Plane/Access & Auth/Authentication Model",
+   "from_path": "control-plane/authentication-model.md",
+   "nav_changed": true,
+   "operation_id": "3793ecdc-46ce-4661-b433-cae30c016653",
+   "redirect_created": true,
+   "resource_id": "82ee0406-bab9-5ceb-adbd-3e36fc2b01f4",
+   "to_nav_path": "Control Plane/Access and Auth/Authentication Model",
+   "to_path": "control-plane/access-and-auth/authentication-model.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 17
+ },
+ "preserved_references": null,
+ "publication_id": "eabd256a-582c-40ae-9a66-dc1606e7a35e",
+ "publication_receipt": {
+  "candidate_identity": "9cd543adeec3d84dae58f3314d7295d54dd4ed21954991c2b12b061e5a02b5d5",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 38181,
+   "deployment_cycle_id": "b3fc68d6-dfe1-466d-b148-0ef36ad41a41",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 73,
+   "release_id": "fee49666-38d6-4631-9682-a86395686fa0",
+   "sealed_digest": "2dbec8cfdd3ab39f66faba2ba71631d8524915b2a2203b17f40016aed84fa03e",
+   "status": "COMPLETED",
+   "target_state_identity": "8e2bf72d0dea90e11e4bef960d50b3b9f57977d40a468f9583ce876b75b74176"
+  },
+  "operations_applied": 2,
+  "operations_submitted": 2,
+  "published_at": "2026-07-30T13:42:13.595870+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T13:42:13.301875Z",
+ "redirect_count": 1,
+ "reference_repair_publication": {
+  "publication_id": "2e0e3743-818c-4ed1-8cb4-05f82ec454ba",
+  "published_at": "2026-07-30T13:45:28.799854Z",
+  "reference_rewrites": 2
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "a3708cf9-7ed2-46af-9e47-4d0c07a938ff",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "a63082958bf62c0fa167d1f1c427786292fc6aee85524aed67d13d7747a9ecee",
+   "candidate_identity": "9cd543adeec3d84dae58f3314d7295d54dd4ed21954991c2b12b061e5a02b5d5",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 2,
+   "operations_checked": 2,
+   "passed": true,
+   "validated_at": "2026-07-30T13:41:29.430291+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 1,
+ "title": "Issue #44 structural cohort: control-plane-access-and-auth-consolidation",
+ "unique_resource_ids": 1,
+ "validation_summary": {
+  "base_state_identity": "a63082958bf62c0fa167d1f1c427786292fc6aee85524aed67d13d7747a9ecee",
+  "candidate_identity": "9cd543adeec3d84dae58f3314d7295d54dd4ed21954991c2b12b061e5a02b5d5",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 2,
+  "operations_checked": 2,
+  "passed": true,
+  "validated_at": "2026-07-30T13:42:13.590446+00:00",
+  "warnings": []
+ }
+}

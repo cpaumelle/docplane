@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-07-30T14:10:00Z",
+  "generated_by": "agent-45",
+  "mode": "read-only -- no rehearsal, no publication, no corpus mutation of any kind performed to produce this audit",
+  "methodology": {
+    "tool": "custom corpus-wide link-existence checker (not migration/links.py scan, which is scoped to a move manifest and blind to this exact bug class -- confirmed by Agent 44's own commit message)",
+    "method": "Fetched full content for all 513 active pages fresh via GET /api/v1/pages/<rid> (two passes: pre-repair at 2026-07-30T13:5x, post-repair at 2026-07-30T14:04). Extracted every inline markdown link [text](target), stripped anchors, resolved relative targets against the source page's own directory, and checked existence against the live path set. External/mailto/anchor-only links excluded. Reference-style link definitions ([text][id] / [id]: url) checked separately -- none found in the pages under dispute.",
+    "known_scope_limits": [
+      "Anchor-level validity is not checked, only page-level existence (2 of the original 20 baseline protected_refs use anchors and are outside this checker's scope, consistent with them not appearing in either audit pass).",
+      "Does not verify whether a broken target actually serves an HTTP 200 via a redirect (i.e. does not distinguish 'no page at this literal path' from 'no page at this path AND no working redirect') -- a target is 'broken' here in the page-existence sense used throughout this programme's own baseline documentation, not in the HTTP sense."
+    ]
+  },
+  "pre_repair_audit": {
+    "timestamp": "2026-07-30T13:5x (before change f18538be)",
+    "certification_version": 126,
+    "total_internal_md_links_checked": 2732,
+    "total_broken_targets_raw": 40,
+    "unique_broken_target_paths": 29
+  },
+  "classification_pre_repair": {
+    "pre_existing_unchanged_baseline": {
+      "count": 18,
+      "method": "Matched by exact (source_path, line, raw_target) triple against the original pass-final-audit.json protected_refs list (20 entries) + the 1 unresolved Pi4 #78 entry, captured before any of this session's moves. 18 of these 21 known entries reproduce byte-for-byte; the other 2 use anchors outside this checker's page-existence scope (operations/platform/ceph-operations.md, operations/runbooks/deployment-checklist.md) and simply don't register as broken by this method -- not evidence they are fine or broken, just outside scope.",
+      "includes_pi4_78": true
+    },
+    "new_regressions_this_session": {
+      "count": 22,
+      "attributed_to_agent_45": {
+        "count": 19,
+        "root_cause": "Agent 45's migration/links.py-based process rewrote INBOUND references to moved pages correctly, but never corrected the MOVED pages' own outbound relative links when the moved page's own directory depth changed. Verified against raw content, not inferred:",
+        "pages": [
+          {
+            "path": "control-plane/design/ccm-interface-realization-design.md",
+            "count": 9,
+            "resource_id": "e0fa89f8-5258-5db6-a74a-adb6ce29f32c",
+            "mechanism": "moved control-plane/ (depth 1) -> control-plane/design/ (depth 2); its own sibling-style links (e.g. 'ccm-interface-realization-archaeology.md', 'topology-invariants/i-interface-realization-1.md', '../services/ccm-edge.md') were never adjusted for the +1 depth change"
+          },
+          {
+            "path": "operations/runbooks/ccm-interface-realization-step6-runbook.md",
+            "count": 6,
+            "resource_id": "58199095-56e4-579b-ab14-15731bf9693f",
+            "mechanism": "cross-subtree move control-plane/ (depth 1) -> operations/runbooks/ (depth 2); same class of bug, plus a subtree change"
+          },
+          {
+            "path": "control-plane/design/ccm-dhcp-resolver-ownership-capability.md",
+            "count": 2,
+            "resource_id": "5a7556ba-e05c-51a9-92e6-b11f9962df6a",
+            "mechanism": "same as design.md -- moved control-plane/ -> control-plane/design/"
+          },
+          {
+            "path": "control-plane/invariants/i-lan-geo-bypass-1.md",
+            "count": 2,
+            "resource_id": "385fbd45-2529-5b2e-8119-4e3523c917ec",
+            "mechanism": "DIFFERENT mechanism: same depth (topology-invariants/ -> invariants/, both depth 2), but sibling-style references to i-geo-placement-1.md and i-geo-consumer-1.md -- both still un-moved, still at topology-invariants/ -- now resolve into the new invariants/ directory where they don't exist. This is the partial-cluster-migration bug class, not the depth-change bug class."
+          }
+        ],
+        "note_on_count_discrepancy": "Agent 45's own count here (19) differs from the figure attributed to Agent 45 in Agent 44's commit message and in this task's framing (21). No reference-style links, HTML links, or other syntax explaining a further 2 were found on manual inspection of both files' raw content. This discrepancy is reported, not resolved -- it would require the other tool's raw per-link output to reconcile exactly."
+      },
+      "attributed_to_agent_44": {
+        "count": 3,
+        "pages": [
+          {
+            "path": "control-plane/invariants/i-gen-no-vcs-1.md",
+            "resource_id": "5c7a6db2-93c8-5a0b-af88-254d4fba3569",
+            "line": 16,
+            "raw_target": "invariants.md",
+            "mechanism": "SAME bug class as Agent 45's depth-change regressions: this page moved from flat control-plane/ (depth 1) to control-plane/invariants/ (depth 2) in Agent 44's 'invariants-flat-leaves' cohort. Its own body contains a same-directory reference 'invariants.md' that, before the move, resolved to control-plane/invariants.md (a known pre-existing evidence-surface-preserved target). After the move, the SAME raw text resolves to control-plane/invariants/invariants.md, which does not exist. This was NOT disclosed in Agent 44's regression commit -- their commit attributes only 1 issue to their own work.",
+            "disclosed_by_agent_44": false
+          },
+          {
+            "path": "control-plane/invariants/i-transport-hub-1.md",
+            "resource_id": "bf700b24-0a24-5ed9-af86-911818ba28a3",
+            "line": 34,
+            "raw_target": "../transport-plane-authority.md",
+            "mechanism": "A second, undisclosed instance of the exact bug Agent 44 DID disclose on i-site-transport-authority-1.md L155 (a missed second occurrence during transport-plane-authority.md's reference-repair pass). This page has TWO links to transport-plane-authority.md; only one location's worth of repair was evidently applied corpus-wide, and this second page was missed entirely.",
+            "disclosed_by_agent_44": false
+          },
+          {
+            "path": "control-plane/invariants/i-site-transport-authority-1.md",
+            "line": 155,
+            "raw_target": "../transit-convergence.md",
+            "mechanism": "Disclosed by Agent 44's own commit: a second link on this page, missed by the transit-convergence.md reference-repair pass.",
+            "disclosed_by_agent_44": true
+          }
+        ]
+      }
+    }
+  },
+  "repair_change_observed": {
+    "change_id": "f18538be-c410-4b67-b3d2-20f8d6418414",
+    "title": "Issue #44 repair: restore links broken by concurrent structural moves",
+    "published_at": "2026-07-30T14:03:52Z",
+    "purpose_quoted": "Rewrite 24 references broken when their source pages changed directory depth or subtree. All rewritten to root-absolute canonical paths, immune to future moves. Anchors preserved. Link destinations only; no moves, no new pages.",
+    "pages_touched": 5,
+    "pages_touched_resource_ids": [
+      "5a7556ba-e05c-51a9-92e6-b11f9962df6a",
+      "e0fa89f8-5258-5db6-a74a-adb6ce29f32c",
+      "385fbd45-2529-5b2e-8119-4e3523c917ec",
+      "a5f96cc3-6c72-54f7-8b1f-1d71228675a2",
+      "58199095-56e4-579b-ab14-15731bf9693f"
+    ],
+    "good_practice_noted": "Rewriting to root-absolute paths (e.g. /control-plane/foo.md) rather than relative paths is a durable fix -- immune to any future depth change. Worth adopting as standard practice for exactly this reason (see recommendations)."
+  },
+  "post_repair_audit": {
+    "timestamp": "2026-07-30T14:04:00Z, refetched all 513 active pages fresh",
+    "certification_version": 127,
+    "total_internal_md_links_checked": 2712,
+    "total_broken_targets_raw": 20,
+    "classification": {
+      "pre_existing_unchanged_baseline": 18,
+      "still_broken_new_regressions_undisclosed_and_unrepaired": {
+        "count": 2,
+        "pages": [
+          {
+            "path": "control-plane/invariants/i-gen-no-vcs-1.md",
+            "line": 16,
+            "raw_target": "invariants.md",
+            "status": "NOT repaired -- not in the touched-pages list of change f18538be"
+          },
+          {
+            "path": "control-plane/invariants/i-transport-hub-1.md",
+            "line": 34,
+            "raw_target": "../transport-plane-authority.md",
+            "status": "NOT repaired -- not in the touched-pages list of change f18538be, and never disclosed as a finding by Agent 44"
+          }
+        ]
+      }
+    },
+    "answer_to_do_only_the_accepted_baseline_remain": "NO. 20 broken targets remain, not the accepted pre-existing baseline count. 18 of the 20 are the known pre-existing baseline (unchanged, expected). The other 2 are undisclosed, unrepaired regressions from Agent 44's own concurrent work this session -- the repair change (f18538be) fixed the 4 pages caused by Agent 45's bug plus the 1 Agent-44 miss that Agent 44 itself disclosed, but did not address the 2 Agent-44-caused issues this audit independently found and that Agent 44 did not disclose."
+  },
+  "final_confirmation_after_agent44_second_commit": {
+    "commit": "17fc368335991be895e9e633695b6bd7c787d8f0",
+    "commit_claims": "34 -> 10 broken targets, 0 new unowned breaks, baseline is 10 not 9",
+    "independent_recheck_timestamp": "2026-07-30T14:10:00Z",
+    "certification_version": 128,
+    "active_pages": 514,
+    "result": "IDENTICAL to the post-f18538be-repair check: still 20 broken targets, same list. Commit 17fc368 published no additional repair -- it added ledger reconciliation prose and a new programme/issue-44/gate/ tool on top of the same f18538be publication already observed.",
+    "still_broken_and_undisclosed": [
+      "control-plane/invariants/i-gen-no-vcs-1.md L16",
+      "control-plane/invariants/i-transport-hub-1.md L34"
+    ],
+    "methodology_difference_noted": "Commit 17fc368 tests whether a raw link ever resolved to a live page (tracked by resolved-target), which can classify a link as not-a-new-regression if its OLD resolved target was already non-existent (evidence-surface/baseline). This audit tests whether the specific (source, line, raw_target) occurrence currently resolves, matched against the exact same original 20-entry protected_refs baseline. Both are legitimate tests but disagree on these 2 entries because the resolved TARGET changed even though the source page classification (already-broken-before) did not -- a reader following either link today reaches a nonexistent page regardless of the internal classification.",
+    "gate_exception_registry_gap_noted": "programme/issue-44/gate/link-baseline.json (10 entries) omits 6 of the original 20 protected_refs entries this audit independently confirms are still live in the corpus (invariant-catalogue-parity-triage.md, invariants/index.md, ch-transit-core.md, authelia.md, transit-core-break-glass.md, and i-transport-hub-1.md L48). Not flagged as an error -- their gate may classify these through different logic not visible in the committed baseline file -- but worth reconciling explicitly against the full historical baseline."
+  }
+}

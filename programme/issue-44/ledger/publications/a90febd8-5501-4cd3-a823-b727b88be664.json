@@ -1,0 +1,122 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 120
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 119
+ },
+ "cohort": "control-plane-design-drafts",
+ "display_prefix": "a90febd8",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "control-plane-design-drafts-publication-A.json",
+  "scan": "control-plane-design-drafts-scan.json"
+ },
+ "move_operations": 2,
+ "nav_changes": 2,
+ "operation_type_counts": {
+  "MOVE_PAGE": 2,
+  "REPLACE_DOCUMENT": 1
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/design/lw-r1-design-notes.md",
+   "expected_revision": "5be322a9-1e16-4cb1-80da-236b6ee8b6a2",
+   "from_nav_path": "Control Plane/LW-R1 Design Notes",
+   "from_path": "control-plane/lw-r1-design-notes.md",
+   "nav_changed": true,
+   "operation_id": "1f9ed6ed-0c8f-43f0-9d4f-116d11934922",
+   "redirect_created": true,
+   "resource_id": "2b298854-54e5-5afc-8da0-7ce4053503af",
+   "to_nav_path": "Control Plane/Design/LW-R1 Design Notes",
+   "to_path": "control-plane/design/lw-r1-design-notes.md"
+  },
+  {
+   "current_path": "control-plane/design/hub2-host-net.md",
+   "expected_revision": "e381b011-518e-4115-8770-e2991cf2bc65",
+   "from_nav_path": "Control Plane/Hub2 Host Net",
+   "from_path": "control-plane/hub2-host-net.md",
+   "nav_changed": true,
+   "operation_id": "57a82d9f-9d87-4d83-aa23-1264da7d1c12",
+   "redirect_created": true,
+   "resource_id": "3fbe4fc8-fca3-54c0-a7a7-a8e89326c5c4",
+   "to_nav_path": "Control Plane/Design/Hub2 Host Net",
+   "to_path": "control-plane/design/hub2-host-net.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 27
+ },
+ "preserved_references": null,
+ "publication_id": "a90febd8-5501-4cd3-a823-b727b88be664",
+ "publication_receipt": {
+  "candidate_identity": "346ec7e83700778ae048554ee92c04043547455bcd0b8e105c93dded82078958",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 37719,
+   "deployment_cycle_id": "d5c59e8d-eec8-4c9c-bd3b-f5d965109196",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 67,
+   "release_id": "4d211d65-3747-4d88-960e-e81cc388ed10",
+   "sealed_digest": "7a1911e1fed7788c0aa4c030a4330b866b5510bf71672244202df2b7e08ce3a1",
+   "status": "COMPLETED",
+   "target_state_identity": "a4042a4b7337f496a345c140e677cae1f97c50b81a1bca841a3988fca63c9056"
+  },
+  "operations_applied": 3,
+  "operations_submitted": 3,
+  "published_at": "2026-07-30T13:32:02.939026+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T13:32:02.631140Z",
+ "redirect_count": 2,
+ "reference_repair_publication": {
+  "publication_id": "f198d8f8-d89d-4ee8-9f69-bed50461d136",
+  "published_at": "2026-07-30T13:33:30.872159Z",
+  "reference_rewrites": 1
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "9825fcda-09f5-475a-9f13-4da7f9ddc285",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "9e6f1901a9f7b5ec8734b770189c664e78829d2432c49b2963063bad52570358",
+   "candidate_identity": "346ec7e83700778ae048554ee92c04043547455bcd0b8e105c93dded82078958",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 3,
+   "operations_checked": 3,
+   "passed": true,
+   "validated_at": "2026-07-30T13:31:16.806762+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 1,
+ "title": "Issue #44 structural cohort: control-plane-design-drafts",
+ "unique_resource_ids": 2,
+ "validation_summary": {
+  "base_state_identity": "9e6f1901a9f7b5ec8734b770189c664e78829d2432c49b2963063bad52570358",
+  "candidate_identity": "346ec7e83700778ae048554ee92c04043547455bcd0b8e105c93dded82078958",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 3,
+  "operations_checked": 3,
+  "passed": true,
+  "validated_at": "2026-07-30T13:32:02.928884+00:00",
+  "warnings": []
+ }
+}

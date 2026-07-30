@@ -1,0 +1,9 @@
+{
+  "certification_version": 146,
+  "evidence_commit": "86f41ba",
+  "holder": null,
+  "live_snapshot": "2026-07-30T18:00:00Z (active=521, open_changes=0)",
+  "notes": "Issue #44 structural reorganisation is complete (90 unique pages moved). This lane-coordination file is retired, not just released -- the programme it coordinated is closed. Concurrent publication remains disabled pending the API-native publication lease (tracked separately, issue #97); this git lane file was never a real compare-and-swap primitive and should not be reused as one for any future work.",
+  "since": "2026-07-30T14:56:00Z",
+  "state": "retired"
+}
