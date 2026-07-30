@@ -103,13 +103,36 @@ def test_presence_page_is_permanent_and_never_an_artifact_target():
     assert page["path"] not in {item["path"] for item in rendered}
 
 
-def test_idempotency_keys_are_fingerprint_bound_and_bounded():
+def test_idempotency_keys_are_fingerprint_bound_versioned_and_bounded():
     fp = "ab" * 32
     key = schema_catalogue._key(fp, "operation", "model/schema-catalogue/docplane/docplane.md")
-    assert key.startswith(f"schema-catalogue-{fp[:16]}-operation-")
+    assert key.startswith(
+        f"schema-catalogue-{schema_catalogue.GENERATOR_VERSION}-{fp[:16]}-operation-"
+    )
     assert len(key) <= 256
     assert key == schema_catalogue._key(fp, "operation", "model/schema-catalogue/docplane/docplane.md")
     assert key != schema_catalogue._key("cd" * 32, "operation", "model/schema-catalogue/docplane/docplane.md")
+    # Version-bound: a fixed generator must never replay receipts a buggy
+    # predecessor persisted for the same structure fingerprint.
+    assert schema_catalogue.GENERATOR_VERSION in key
+
+
+def test_navigation_is_collision_free_under_the_deployed_validator():
+    """Insert every rendered nav_path (plus the presence page) into the REAL
+    nav builder from app.generator — the exact validator that rejected the
+    first canary's leaf-vs-section collision on 'DocPlane PostgreSQL'."""
+    from app.generator import _insert
+
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    tree: dict = {}
+    for page in [schema_catalogue.presence_page(), *pages]:
+        _insert(tree, page["nav_path"].split(" / "), page["path"])
+    # The database node is a pure section with an Overview leaf inside it.
+    database_node = tree["Model"]["Schema catalogue"]["DocPlane PostgreSQL"]
+    assert isinstance(database_node, dict)
+    assert database_node["Overview"] == "model/schema-catalogue/docplane/index.md"
+    assert tree["Model"]["Schema catalogue"]["Overview"] == "model/schema-catalogue/index.md"
 
 
 def test_generator_payloads_validate_against_the_deployed_api_models():
