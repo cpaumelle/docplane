@@ -85,7 +85,23 @@ def test_sql_and_api_vocabularies_cannot_drift():
         assert match, column
         return {item.strip().strip("'") for item in match.group(1).replace("\n", " ").split(",")}
 
-    assert sql_enum("entity_kind") == set(CARD_CONTRACTS)
+    def effective_sql_enum(column: str) -> set[str]:
+        """Vocabularies are extended by LATER migrations re-adding the CHECK
+        (the additive contract's vocabulary-extension case, first used by
+        008 for MONITOR_RULE). The effective enum is the last definition
+        across the ordered migration sequence — genesis or ALTER alike."""
+        # Matches both the genesis column definition and a later
+        # ALTER ... ADD CONSTRAINT re-definition: the CHECK expression is
+        # the shared shape.
+        pattern = re.compile(r"CHECK \(" + column + r" IN \(([^)]+)\)", re.S)
+        values: set[str] | None = None
+        for path in sorted((ROOT / "db" / "migrations").glob("*.sql")):
+            for match in pattern.finditer(path.read_text(encoding="utf-8")):
+                values = {item.strip().strip("'") for item in match.group(1).replace("\n", " ").split(",")}
+        assert values is not None, column
+        return values
+
+    assert effective_sql_enum("entity_kind") == set(CARD_CONTRACTS)
     from app.model_models import EntityLinkCreate as Link, EntityPageLinkCreate as PageLink
     import typing
 
