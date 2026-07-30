@@ -39,6 +39,16 @@ def receipt_digest(payload: Any) -> str:
 
 def load_receipt(conn, principal: Principal, key: str, operation: str, digest: str) -> Any | None:
     cur = conn.cursor()
+    # Concurrency safety: serialize same-(principal, key) requests with a
+    # transaction-scoped advisory lock BEFORE reading the receipt. Without
+    # it, two simultaneous deliveries both read "no receipt"; the loser then
+    # hits state-based refusals (e.g. CAPTURE_ALREADY_TRIAGED) instead of
+    # replaying the winner's committed response. The lock releases at
+    # commit/rollback, at which point the waiter sees the stored receipt.
+    cur.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 74))",
+        (f"{principal.principal_id}:{key}",),
+    )
     cur.execute(
         "SELECT operation_type, request_hash, response FROM docplane.mutation_receipts WHERE principal_id = %s AND idempotency_key = %s",
         (principal.principal_id, key),

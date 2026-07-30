@@ -205,11 +205,14 @@ def apply_pending(conn, migrations: list[Migration], *, dry_run: bool = False) -
     return applied_names
 
 
-def status(conn, migrations: list[Migration]) -> list[dict]:
+def status(conn, migrations: list[Migration]) -> tuple[list[dict], list[str]]:
+    """Rows for this image's migrations, plus the tolerated-ahead entries a
+    newer image applied. Both surfaces must be reported: hiding the ahead
+    list would make an upgraded database look identical to a current one."""
     ensure_ledger(conn)
     history = applied(conn)
-    verify_history(migrations, history)
-    return [
+    ahead = verify_history(migrations, history)
+    rows = [
         {
             "ordinal": migration.ordinal,
             "filename": migration.filename,
@@ -223,6 +226,7 @@ def status(conn, migrations: list[Migration]) -> list[dict]:
         }
         for migration in migrations
     ]
+    return rows, ahead
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -243,16 +247,21 @@ def main(argv: list[str] | None = None) -> int:
             for name in apply_pending(conn, migrations, dry_run=True):
                 print(f"PENDING {name}")
         else:
-            rows = status(conn, migrations)
+            rows, ahead = status(conn, migrations)
             if args.command == "status":
                 for row in rows:
                     state = "APPLIED" if row["applied"] else "PENDING"
                     print(f"{state} {row['filename']} {row['checksum']}")
+                for name in ahead:
+                    print(f"AHEAD {name} (applied by a newer image; tolerated under the additive-schema contract)")
             else:
                 pending = [row["filename"] for row in rows if not row["applied"]]
                 if pending:
                     raise MigrationError("pending migrations: " + ", ".join(pending))
-                print(f"VERIFIED {len(rows)} migrations")
+                if ahead:
+                    print(f"VERIFIED {len(rows)} migrations ({len(ahead)} ahead, applied by a newer image)")
+                else:
+                    print(f"VERIFIED {len(rows)} migrations")
     return 0
 
 

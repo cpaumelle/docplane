@@ -103,6 +103,11 @@ def _initiative(row) -> dict[str, Any]:
         if value.get(key) is not None:
             value[key] = str(value[key])
     value["uri"] = f"docplane://initiatives/{value['initiative_id']}"
+    if value.get("soak_monitoring_ref"):
+        # Honest boundary until the meter list (Sprint 6) gives monitoring
+        # rules stable identities: a named reference admits SOAKING but is
+        # NOT verified monitoring identity and never satisfies observe=UPDATED.
+        value["soak_monitoring_ref_status"] = "UNRESOLVED_NAMED_REFERENCE"
     return value
 
 

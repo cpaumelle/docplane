@@ -61,6 +61,23 @@ def test_history_gap_stays_fatal():
         migrate.verify_history(NEW_IMAGE, history)
 
 
+@pytest.mark.skipif(not __import__("os").environ.get("DB_HOST"), reason="requires a PostgreSQL database")
+def test_status_reports_ahead_entries_against_a_real_database():
+    migrations = migrate.discover(ROOT / "db" / "migrations")
+    with migrate.connect() as conn:
+        migrate.ensure_ledger(conn)
+        history = migrate.applied(conn)
+        rows, ahead = migrate.status(conn, migrations)
+        assert len(rows) == len(migrations)
+        assert ahead == []  # the current image is never behind its own files
+        if history:
+            # The rollback view: an image knowing only the first migration
+            # must report — not hide, not reject — everything ahead of it.
+            rows, ahead = migrate.status(conn, migrations[:1])
+            assert len(rows) == 1
+            assert len(ahead) == len(history) - 1
+
+
 def test_real_migration_files_verify_against_their_own_full_history():
     migrations = migrate.discover(ROOT / "db" / "migrations")
     history = {m.ordinal: {"ordinal": m.ordinal, "filename": m.filename, "checksum": m.checksum, "applied_at": None} for m in migrations}

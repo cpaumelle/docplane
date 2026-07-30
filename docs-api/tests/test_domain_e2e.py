@@ -282,6 +282,55 @@ def test_generated_page_guard_fails_closed_at_publish_evaluation():
     assert any(item.get("code") == "PROVENANCE_GENERATED_PAGE_PROTECTED" for item in errors)
 
 
+def test_concurrent_same_key_promotions_serialize_to_one_mutation():
+    """Concurrent duplicate delivery, not just sequential replay: two
+    simultaneous same-key requests must both return the winner's response,
+    with exactly one domain mutation and one triage event."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    capture = client.post("/api/v1/work/captures", json={"body": f"concurrency-proof {RUN}", "kind": "IDEA"}, headers={**AGENT, "Idempotency-Key": _key()})
+    capture_id = capture.json()["capture_id"]
+    promote_key = _key()
+
+    def promote():
+        return client.post(f"/api/v1/work/captures/{capture_id}/promote", json={}, headers={**AGENT, "Idempotency-Key": promote_key})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, second = list(pool.map(lambda _: promote(), range(2)))
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["initiative"]["initiative_id"] == second.json()["initiative"]["initiative_id"]
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM work.initiatives WHERE idempotency_key = %s", (f"capture-promote:{promote_key}",))
+        assert cur.fetchone()[0] == 1
+        cur.execute("SELECT count(*) FROM docplane.events WHERE idempotency_key = %s", (f"CAPTURE_TRIAGED:{AGENT_ID}:{promote_key}",))
+        assert cur.fetchone()[0] == 1
+    # Altered-intent reuse of the same key still refuses.
+    misuse = client.post(f"/api/v1/work/captures/{capture_id}/promote", json={"title": "different intent"}, headers={**AGENT, "Idempotency-Key": promote_key})
+    assert misuse.status_code == 409 and misuse.json()["detail"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+
+def test_only_the_declaring_automation_can_retire_a_declaration():
+    entity = client.post("/api/v1/model/entities", json={"entity_kind": "SCHEMA", "entity_key": f"e2e-retire-{RUN}", "display_name": "E2E retire", "attributes": {}}, headers={**AGENT, "Idempotency-Key": _key()})
+    page = _seed_page(f"reference/e2e-{RUN}-retire-target.md")
+    declared = client.post("/api/v1/model/artifacts", json={"artifact_key": f"e2e-ret-{RUN}", "generator_name": "tbls", "generator_version": "1", "source_entity_id": entity.json()["entity_id"], "target_page_resource_ids": [page["resource_id"]]}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    artifact_id = declared.json()["artifact_id"]
+
+    # An ordinary contributor must not be able to dismantle provenance
+    # protection by retiring another principal's declaration.
+    hijack = client.post(f"/api/v1/model/artifacts/{artifact_id}/retire", json={"expected_version": 1}, headers={**AGENT, "Idempotency-Key": _key()})
+    assert hijack.status_code == 403 and hijack.json()["detail"]["code"] == "MODEL_ARTIFACT_RETIRE_FORBIDDEN"
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM model.artifact_targets WHERE artifact_id = %s", (artifact_id,))
+        assert cur.fetchone()[0] == 1  # targets intact, pages still protected
+
+    retired = client.post(f"/api/v1/model/artifacts/{artifact_id}/retire", json={"expected_version": 1}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert retired.status_code == 200 and retired.json()["status"] == "RETIRED"
+
+
 def test_rollback_image_tolerates_upgraded_database():
     import sys
     from pathlib import Path

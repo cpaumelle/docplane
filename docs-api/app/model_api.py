@@ -491,6 +491,17 @@ def retire_artifact(
         if row is None:
             raise HTTPException(status_code=404, detail={"code": "MODEL_ARTIFACT_NOT_FOUND"})
         artifact = _artifact(row)
+        if artifact["declared_by"] != str(principal.principal_id):
+            # Retirement dismantles generated-page protection, so it belongs
+            # to the declaring automation principal alone. Anything else is
+            # break-glass: an operator revoking/reissuing the declaring
+            # principal through the audited bootstrap authority — never an
+            # ordinary contributor silently releasing the pages.
+            raise HTTPException(status_code=403, detail={
+                "code": "MODEL_ARTIFACT_RETIRE_FORBIDDEN",
+                "declared_by": artifact["declared_by"],
+                "remedy": "Retire from the declaring automation principal, or use the operator break-glass path (bootstrap authority) if that principal is lost.",
+            })
         if artifact["version"] != request.expected_version:
             raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_VERSION_STALE", "current": artifact["version"]})
         if artifact["status"] == "RETIRED":
