@@ -27,26 +27,33 @@
     "corpus_pages_total": 947
   },
   "retrospective_classified_baseline": {
-    "correctly placed": 79,
+    "correctly placed": 56,
     "moved under Issue #44": 54,
     "archived": 42,
     "reported by Agent 44 (hub/evidence/board/#43-blocked/section-landing, flat, not individually re-derived)": 39,
     "still requires movement": 22,
+    "reorganisation candidate pending semantic clustering": 22,
     "backlog/paused": 4,
     "evidence surface": 4,
     "authoring decision required": 2,
+    "hub-style retirement candidate": 1,
     "deliberate non-move": 1,
     "hold-blocked": 1,
-    "total": 248
+    "total": 248,
+    "correction_2026-07-30T13:10:00Z": "23 pages under control-plane/topology-invariants/ were reclassified out of 'correctly placed' (was 79, now 56) into 'reorganisation candidate pending semantic clustering' (22) + 'hub-style retirement candidate' (1, the old index.md). They were wrongly defaulted to correctly-placed solely because nested; that path is a deprecated namespace with 18-23 siblings already moved to control-plane/invariants/ by earlier cohorts. See audits/2026-07-30T1310-topology-invariants-body-review.json."
+  },
+  "revised_provisional_forward_queue": {
+    "flat_root_control_plane_candidates": 22,
+    "nested_topology_invariants_candidates": 23,
+    "total_before_exclusions": 45,
+    "note": "Provisional candidate pool only, not a confirmed movement-set denominator. Body review of the 23 (see audit) splits them into 6 semantic sub-cohorts plus 1 destination-question page plus 1 index retirement -- none yet published."
   },
   "completion_percentages": {
-    "unique_pages_moved_over_confirmed_movement_set": "54 / (54 + 22) = 71.1%  -- moved / [moved + still-requires-movement], the only receipt-backed forward-looking set",
-    "resolved_over_all_actionable": "not published -- 'all actionable' is not yet a closed set (39-page bucket not individually re-derived; some of those 39 may turn out actionable)",
+    "withheld": "No percentage is published this pass. The forward-looking denominator changed from 76 (54 moved + 22 still-requires-movement) to a provisional 45-candidate pool (22 flat + 23 newly-corrected nested) that has not yet been fully classified end-to-end. Publishing a percentage against either an incomplete or a moving denominator would mislead. Re-publish only once both the 22 and the 23 are fully resolved to terminal dispositions.",
     "warning": "Do NOT compute a percentage against the 248-page combined subtree -- no original 'pages requiring movement' denominator was ever frozen for Issue #44."
   },
   "next_cohort": {
-    "denominator": 22,
-    "scope": "control-plane flat root, independently verified: active, PUBLISHED, criticality NORMAL, non-archived",
+    "note": "Two disjoint candidate pools now exist. See audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json (ccm-* cluster, 2-page clean pair) and audits/2026-07-30T1310-topology-invariants-body-review.json (23-page nested discovery, 6 sub-cohorts, recommended order in that file). The 'Site / GEO-Fabric Edge' sub-cohort (5 pages) is currently the single best-supported next publication: lowest coupling, no open-status pages, no cross-cohort dependency.",
     "operations_queue_status": "empty -- all 4 operations flat-root active-durable pages carry an individual non-move disposition (1 hold-blocked, 1 deliberate non-move, 2 authoring-decision-required)"
   }
 }
