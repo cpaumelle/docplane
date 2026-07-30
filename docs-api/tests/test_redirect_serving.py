@@ -209,3 +209,60 @@ def test_manifest_records_the_served_redirects(tmp_path, monkeypatch):
     generator.run(_canary_pages(), redirects=CANARY_REDIRECTS)
     manifest = json.loads((content_dir / ".docplane-manifest.json").read_text(encoding="utf-8"))
     assert manifest["redirects"] == dict(sorted(CANARY_REDIRECTS.items()))
+
+
+# --------------------------------------------------------------------------
+# a redirect between a page and its index form is unrepresentable
+# --------------------------------------------------------------------------
+
+def test_rendered_url_collapses_page_and_index_forms():
+    assert generator.rendered_url("a/b.md") == "/a/b/"
+    assert generator.rendered_url("a/b/index.md") == "/a/b/"
+    assert generator.rendered_url("index.md") == "/"
+    assert generator.rendered_url("a/index.md") == "/a/"
+
+
+def test_redirect_between_a_page_and_its_index_form_is_rejected():
+    """Moving `x.md` to `x/index.md` keeps the public URL, so no compatibility
+    route is needed - and one cannot exist. mkdocs-redirects would write its stub
+    at exactly the path the moved page renders to, replacing the page with a
+    document that redirects to itself. This must fail publication, not ship."""
+    pages = _canary_pages() + [_page("control-plane/invariants/index.md",
+                                     "Control Plane/Invariants/Index")]
+    with pytest.raises(generator.RedirectConflict) as excinfo:
+        generator.validate_redirects(
+            {"control-plane/invariants.md": "control-plane/invariants/index.md"}, pages)
+    assert excinfo.value.kind == "same-rendered-url"
+    assert "/control-plane/invariants/" in str(excinfo.value)
+
+
+def test_the_reverse_direction_is_rejected_too():
+    pages = _canary_pages() + [_page("a/b.md", "A/B")]
+    with pytest.raises(generator.RedirectConflict) as excinfo:
+        generator.validate_redirects({"a/b/index.md": "a/b.md"}, pages)
+    assert excinfo.value.kind == "same-rendered-url"
+
+
+def test_an_ordinary_move_redirect_is_still_accepted():
+    """Guard the guard: the new check must not reject legitimate redirects."""
+    pages = _canary_pages()
+    assert generator.validate_redirects(
+        {"control-plane/correctness-domains.md":
+         "control-plane/foundational/correctness-domains.md"}, pages)
+
+
+@pytest.mark.skipif(shutil.which("mkdocs") is None, reason="mkdocs not installed")
+def test_a_release_with_an_index_form_landing_page_builds_and_serves_once(tmp_path, monkeypatch):
+    """The move H1 performs: a section landing at <section>/index.md, no redirect."""
+    _, _, site = _split_layout(tmp_path, monkeypatch)
+    pages = _canary_pages() + [
+        _page("control-plane/invariants/index.md", "Control Plane/Invariants/Index"),
+        _page("control-plane/invariants/i-x-1.md", "Control Plane/Invariants/I-X-1"),
+    ]
+    generator.run(pages, redirects={})
+    landing = site / "control-plane/invariants/index.html"
+    assert landing.is_file()
+    # the landing is real content, not a redirect stub pointing at itself
+    html = landing.read_text(encoding="utf-8")
+    assert 'http-equiv="refresh"' not in html
+    assert (site / "control-plane/invariants/i-x-1/index.html").is_file()

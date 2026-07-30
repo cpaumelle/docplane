@@ -25,11 +25,16 @@ from migration.links import (
     expected_redirect_hop,
     find_links,
     mask_links,
+    blocking_page_for_section,
+    find_duplicate_routes,
+    find_page_section_conflicts,
     nav_leaf,
     nav_path_from_leaf,
     page_url,
     plan_corpus,
     plan_rewrites,
+    plan_source_move,
+    redirect_is_representable,
     protected_lines,
     resolve,
     resolve_identifier_prefixes,
@@ -457,3 +462,124 @@ def test_cli_accepts_a_richer_manifest_with_extra_keys(tmp_path, workspace):
          "to_path": "control-plane/foundational/doctrine.md",
          "resource_id": "x", "reason": "taxonomy", "nav_path": "A/B"}]}), encoding="utf-8")
     assert _run(["plan", "--corpus", str(corpus), "--manifest", str(manifest)]).returncode == 0
+
+
+# --- moving a page: its own outbound links -----------------------------------
+
+def test_source_move_rewrites_relative_outbound_links_to_resolve_unchanged():
+    """A page moved one level deeper silently re-points every relative link."""
+    text = "[a](sibling.md) and [b](../ops/x.md) and [c](sub/y.md)\n"
+    result = plan_source_move("control-plane/invariants.md",
+                              "control-plane/invariants/index.md", text)
+    assert [r.new_target for r in result.rewrites] == \
+        ["../sibling.md", "../../ops/x.md", "../sub/y.md"]
+    # every link still resolves to exactly what it meant before
+    for r in result.rewrites:
+        assert resolve("control-plane/invariants/index.md", r.new_target) == r.resolved_old
+
+
+def test_source_move_preserves_anchors_and_titles():
+    text = '[a](sibling.md#sec "T")\n'
+    result = plan_source_move("control-plane/invariants.md",
+                              "control-plane/invariants/index.md", text)
+    assert result.rewrites[0].new_target == "../sibling.md#sec"
+    assert '"T"' in result.content
+
+
+def test_source_move_leaves_root_absolute_and_external_links_alone():
+    text = "[a](/control-plane/x.md) [b](https://example.invalid/y.md) [c](img.png)\n"
+    result = plan_source_move("control-plane/invariants.md",
+                              "control-plane/invariants/index.md", text)
+    assert not result.rewrites and not result.changed and result.content is None
+
+
+def test_source_move_skips_links_that_already_resolve_identically():
+    """Same-depth rename: nothing to do, body must stay byte-identical."""
+    text = "[a](sibling.md)\n"
+    result = plan_source_move("control-plane/a.md", "control-plane/b.md", text)
+    assert not result.rewrites and result.content is None
+
+
+def test_source_move_preserves_fenced_and_quoted_links():
+    text = "```\n[a](sibling.md)\n```\n\n> [b](sibling.md)\n"
+    result = plan_source_move("control-plane/invariants.md",
+                              "control-plane/invariants/index.md", text)
+    assert not result.rewrites
+    assert {p.reason for p in result.preservations} == \
+        {PreservationReason.FENCED_CODE, PreservationReason.BLOCKQUOTE}
+
+
+def test_source_move_satisfies_the_masking_proof():
+    text = "# T {#t}\n\nprose  spaced [a](sibling.md) more\n"
+    result = plan_source_move("control-plane/invariants.md",
+                              "control-plane/invariants/index.md", text)
+    assert mask_links(result.content) == mask_links(text)
+    assert "# T {#t}" in result.content and "prose  spaced" in result.content
+
+
+def test_source_move_rejects_a_no_op_path_change():
+    with pytest.raises(ValueError, match="must change"):
+        plan_source_move("a.md", "a.md", "[x](y.md)\n")
+
+
+def test_source_move_handles_a_multiline_link():
+    text = "[label\nspanning](sibling.md)\n"
+    result = plan_source_move("control-plane/invariants.md",
+                              "control-plane/invariants/index.md", text)
+    assert result.rewrites[0].new_target == "../sibling.md"
+
+
+# --- page/section conflicts ---------------------------------------------------
+
+def test_page_section_conflict_is_detected():
+    navs = {"a.md": "Top/Section", "b.md": "Top/Section/Child"}
+    conflicts = find_page_section_conflicts(navs)
+    assert len(conflicts) == 1
+    assert conflicts[0]["nav_path"] == "Top/Section"
+    assert conflicts[0]["pages"] == ["a.md"] and conflicts[0]["children"] == ["b.md"]
+
+
+def test_no_conflict_when_a_section_holds_only_children():
+    navs = {"i.md": "Top/Section/Index", "b.md": "Top/Section/Child"}
+    assert find_page_section_conflicts(navs) == []
+
+
+def test_blocking_page_for_section_names_the_occupier():
+    navs = {"control-plane/invariants.md": "Control Plane/Invariants",
+            "other.md": "Control Plane/Other"}
+    assert blocking_page_for_section(navs, "Control Plane/Invariants") == \
+        "control-plane/invariants.md"
+    assert blocking_page_for_section(navs, "Control Plane/Nothing") is None
+
+
+def test_landing_page_resolves_the_conflict():
+    """Moving the occupier to <section>/index.md clears the block."""
+    before = {"control-plane/invariants.md": "Control Plane/Invariants",
+              "control-plane/invariants/i-x.md": "Control Plane/Invariants/I-X"}
+    assert find_page_section_conflicts(before)
+    after = {"control-plane/invariants/index.md": "Control Plane/Invariants/Index",
+             "control-plane/invariants/i-x.md": "Control Plane/Invariants/I-X"}
+    assert find_page_section_conflicts(after) == []
+
+
+# --- redirect representability and duplicate routes ---------------------------
+
+def test_a_redirect_between_page_and_its_index_form_is_not_representable():
+    """Both render to the same URL; a stub would overwrite the page itself."""
+    assert page_url("a/b.md") == page_url("a/b/index.md") == "/a/b/"
+    assert not redirect_is_representable("a/b.md", "a/b/index.md")
+    assert not redirect_is_representable("a/b/index.md", "a/b.md")
+
+
+def test_an_ordinary_move_redirect_is_representable():
+    assert redirect_is_representable("a/b.md", "a/c/b.md")
+
+
+def test_duplicate_routes_are_detected():
+    dupes = find_duplicate_routes(["a/b.md", "a/b/index.md", "a/c.md"])
+    assert len(dupes) == 1 and dupes[0]["url"] == "/a/b/"
+    assert dupes[0]["paths"] == ["a/b.md", "a/b/index.md"]
+
+
+def test_distinct_paths_produce_no_duplicate_routes():
+    assert find_duplicate_routes(["a/b.md", "a/c.md", "index.md"]) == []

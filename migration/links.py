@@ -60,12 +60,18 @@ __all__ = [
     "PreservationReason",
     "RewritePlan",
     "Rewrite",
+    "blocking_page_for_section",
     "expected_redirect_hop",
+    "find_duplicate_routes",
+    "find_page_section_conflicts",
     "find_links",
     "mask_links",
     "nav_leaf",
     "nav_path_from_leaf",
+    "page_url",
     "plan_rewrites",
+    "plan_source_move",
+    "redirect_is_representable",
     "protected_lines",
     "resolve",
     "resolve_identifier_prefixes",
@@ -484,3 +490,123 @@ def scan_stale_references(corpus: dict[str, str], old_paths):
                     Preservation(path, ref.line, ref.target, ref.resolved, reason)
                 )
     return unintended, preserved
+
+
+# --------------------------------------------------------------------------
+# moving a page: its own outbound links
+# --------------------------------------------------------------------------
+
+def plan_source_move(old_page_path: str, new_page_path: str, text: str) -> RewritePlan:
+    """Rewrite a page's OWN relative outbound links so they resolve unchanged.
+
+    ``plan_rewrites`` handles the other direction: links whose *target* moved.
+    This handles the page that *itself* moves. Moving ``a/b.md`` to
+    ``a/b/index.md`` changes the directory every relative link resolves against,
+    so ``[x](c.md)`` silently stops meaning ``a/c.md`` and starts meaning
+    ``a/b/c.md``. The rendered URL can be identical while every relative link
+    inside the page quietly breaks.
+
+    Root-absolute links, external links and links in protected contexts are left
+    alone; relative links that already resolve identically are left alone too, so
+    a move that needs no change produces a zero-op plan and a byte-identical body.
+
+    Returns a plan whose ``page`` is the NEW path.
+    """
+    if old_page_path == new_page_path:
+        raise ValueError("source move must change the page path")
+    protected = protected_lines(text)
+    edits: list[tuple[int, int, str]] = []
+    rewrites: list[Rewrite] = []
+    preservations: list[Preservation] = []
+
+    for ref in find_links(old_page_path, text):
+        if ref.resolved is None:
+            continue
+        base, _, _fragment = split_target(ref.target)
+        if base.startswith("/"):
+            continue  # root-absolute: unaffected by depth
+        reason = None
+        for line in range(ref.line - 1, ref.end_line):
+            if line in protected:
+                reason = protected[line]
+                break
+        if reason is not None:
+            preservations.append(
+                Preservation(new_page_path, ref.line, ref.target, ref.resolved, reason)
+            )
+            continue
+        if resolve(new_page_path, ref.target) == ref.resolved:
+            continue  # resolution-equivalent at the new depth
+        corrected = retarget(new_page_path, ref.target, ref.resolved)
+        edits.append((ref.start, ref.end, corrected))
+        rewrites.append(Rewrite(new_page_path, ref.line, ref.target, corrected,
+                                ref.resolved, ref.resolved))
+
+    if not edits:
+        return RewritePlan(page=new_page_path, original=text, content=None,
+                           rewrites=(), preservations=tuple(preservations))
+    content = text
+    for start, end, replacement in reversed(edits):
+        content = content[:start] + replacement + content[end:]
+    if mask_links(content) != mask_links(text):
+        raise RuntimeError(
+            "source-move rewrite of %s would alter more than link destinations" % old_page_path
+        )
+    return RewritePlan(page=new_page_path, original=text, content=content,
+                       rewrites=tuple(rewrites), preservations=tuple(preservations))
+
+
+# --------------------------------------------------------------------------
+# navigation and route conflicts
+# --------------------------------------------------------------------------
+
+def find_page_section_conflicts(nav_paths: dict[str, str]) -> list[dict]:
+    """Navigation paths used as BOTH a page and a section.
+
+    ``nav_paths`` maps page path -> nav path. A navigation path cannot be both a
+    leaf and a container: a page sitting at ``A/B`` prevents ``A/B/C`` from ever
+    being created. Detecting this before planning turns a late validation failure
+    into a scheduling fact - the occupying page has to move first.
+    """
+    sections: set[str] = set()
+    for nav in nav_paths.values():
+        parts = [part for part in str(nav or "").split(NAV_SEPARATOR) if part]
+        for index in range(1, len(parts)):
+            sections.add(NAV_SEPARATOR.join(parts[:index]))
+    conflicts = []
+    for nav in sorted(set(nav_paths.values())):
+        if nav in sections:
+            conflicts.append({
+                "nav_path": nav,
+                "pages": sorted(p for p, n in nav_paths.items() if n == nav),
+                "children": sorted(p for p, n in nav_paths.items()
+                                   if str(n or "").startswith(nav + NAV_SEPARATOR)),
+            })
+    return conflicts
+
+
+def blocking_page_for_section(nav_paths: dict[str, str], section: str) -> str | None:
+    """The page occupying ``section`` as a leaf, if any, else None."""
+    for path, nav in sorted(nav_paths.items()):
+        if nav == section:
+            return path
+    return None
+
+
+def redirect_is_representable(from_path: str, to_path: str) -> bool:
+    """False when a redirect between these paths cannot be rendered.
+
+    ``a/b.md`` and ``a/b/index.md`` render to the same URL, so a compatibility
+    route between them would be written exactly where the target renders -
+    replacing the page with a stub that redirects to itself.
+    """
+    return from_path != to_path and page_url(from_path) != page_url(to_path)
+
+
+def find_duplicate_routes(paths) -> list[dict]:
+    """Source paths that render to the same URL - a split canonical identity."""
+    seen: dict[str, list[str]] = {}
+    for path in sorted(paths):
+        seen.setdefault(page_url(path), []).append(path)
+    return [{"url": url, "paths": group} for url, group in sorted(seen.items())
+            if len(group) > 1]
