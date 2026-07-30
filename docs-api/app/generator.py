@@ -57,6 +57,19 @@ def rendered_html_path(md_path: str) -> str:
     return f"{path.with_suffix('')}/index.html"
 
 
+def rendered_url(md_path: str) -> str:
+    """Served URL for a Markdown path (use_directory_urls).
+
+    ``a/b.md`` and ``a/b/index.md`` render to the SAME url, which is why a
+    redirect between them cannot be represented - see validate_redirects.
+    """
+    path = PurePosixPath(md_path)
+    if path.name == "index.md":
+        parent = path.parent.as_posix()
+        return "/" if parent == "." else f"/{parent}/"
+    return f"/{path.with_suffix('')}/"
+
+
 def validate_redirects(redirects: dict[str, str], pages: list[dict]) -> dict[str, str]:
     """Check the redirect map against the active corpus; raise on anything unsound.
 
@@ -86,6 +99,18 @@ def validate_redirects(redirects: dict[str, str], pages: list[dict]) -> dict[str
             raise RedirectConflict("target-missing", source, f"redirect target {target!r} is not an active page")
         if target in redirects:
             raise RedirectConflict("chain", source, f"redirect target {target!r} is itself a redirect source")
+        if rendered_url(source) == rendered_url(target):
+            # `a/b.md` and `a/b/index.md` are different SOURCE paths that render
+            # to the same URL. A redirect between them is unrepresentable: the
+            # stub would be written exactly where the target page renders,
+            # replacing real content with a page that redirects to itself. A
+            # move between these two shapes needs create_redirect=false, because
+            # the public URL never changes and no compatibility route is needed.
+            raise RedirectConflict(
+                "same-rendered-url", source,
+                f"{source!r} and {target!r} both render to {rendered_url(source)!r}; "
+                "a redirect between them would overwrite the page with a self-redirect",
+            )
     return dict(sorted(redirects.items()))
 
 
