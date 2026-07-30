@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 from migration.redaction import redact  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.0.1"
 SECTION = "model/schema-catalogue"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
@@ -207,12 +207,15 @@ def render_pages(
         *schema_lines,
         "",
     ]
+    # The corpus nav model is strict: a node is a page OR a section, never
+    # both. The database node is a section (it parents the schema pages), so
+    # its landing page takes the corpus's explicit "Overview" leaf idiom.
     pages.insert(
         0,
         {
             "path": f"{SECTION}/{db_key}/index.md",
             "title": f"{db_display} schema catalogue",
-            "nav_path": f"Model / Schema catalogue / {db_display}",
+            "nav_path": f"Model / Schema catalogue / {db_display} / Overview",
             "content": "\n".join(overview),
         },
     )
@@ -229,7 +232,7 @@ def presence_page() -> dict[str, str]:
     return {
         "path": PRESENCE_PATH,
         "title": "Schema catalogue",
-        "nav_path": "Model / Schema catalogue",
+        "nav_path": "Model / Schema catalogue / Overview",
         "content": (
             "# Schema catalogue\n\n"
             "Generated database schema documentation. Catalogue pages under "
@@ -281,7 +284,13 @@ class Client:
 
 
 def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
-    return f"schema-catalogue-{structure_hash[:16]}-{verb}{'-' + discriminator if discriminator else ''}"[:256]
+    """Fingerprint-bound AND generator-versioned: a fixed generator must never
+    replay receipts persisted by a buggy predecessor for the same structure
+    (the stale-DRAFT-change lesson from the first canary run)."""
+    return (
+        f"schema-catalogue-{GENERATOR_VERSION}-{structure_hash[:16]}-{verb}"
+        f"{'-' + discriminator if discriminator else ''}"
+    )[:256]
 
 
 # ── The run ─────────────────────────────────────────────────────────────────
