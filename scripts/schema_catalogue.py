@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 from migration.redaction import redact  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
-GENERATOR_VERSION = "1.0.2"
+GENERATOR_VERSION = "1.0.3"
 SECTION = "model/schema-catalogue"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
