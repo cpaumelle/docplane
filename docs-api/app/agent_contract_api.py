@@ -58,7 +58,7 @@ ERROR_CATALOG: dict[str, dict[str, str]] = {
     },
     "SELF_ISSUE_RATE_LIMITED": {
         "message": "The private-fabric credential issuance ceiling was reached.",
-        "remedy": "Reuse an existing unexpired token or retry after the one-hour window.",
+        "remedy": "Reuse an existing unexpired token or wait for the Retry-After interval returned with the response.",
     },
     "IDEMPOTENCY_KEY_REQUIRED": {
         "message": "This mutation requires an Idempotency-Key header.",
@@ -195,6 +195,26 @@ def _token_acquisition_document() -> dict[str, Any]:
             "default_ttl_seconds": policy.self_issue_ttl_seconds,
             "maximum_ttl_seconds": 86400,
             "credentials_returned_by_discovery": False,
+            "rate_limit": {
+                "scope": "observed routed source fingerprint",
+                "burst": {
+                    "limit": policy.source_burst_limit,
+                    "window_seconds": policy.source_burst_window_seconds,
+                },
+                "sustained": {
+                    "limit": policy.source_limit_per_hour,
+                    "window_seconds": 3600,
+                },
+                "global_sustained": {
+                    "limit": policy.global_limit_per_hour,
+                    "window_seconds": 3600,
+                },
+                "rejection": {
+                    "status": 429,
+                    "retry_header": "Retry-After",
+                    "error_code": "SELF_ISSUE_RATE_LIMITED",
+                },
+            },
             "procedure": "POST the documented JSON body to the endpoint. The clear bearer token is returned once; no bootstrap secret or human approval is required.",
         }
     return {
