@@ -610,5 +610,41 @@
   "to_nav": "Operations/Runbooks/Hub2 Reboot",
   "redirect": true,
   "current": "operations/runbooks/hub2-reboot.md"
+ },
+ {
+  "change": "0bd16cd9-fb06-4ea2-8999-952362070e6c",
+  "at": "2026-07-30T11:31:42.121010Z",
+  "title": "Issue #44 structural cohort: control-plane-specs-deploy-state-machine",
+  "rid": "347e94af-c8f8-5360-98fb-26809f6ea979",
+  "from": "operations/transit-deploy-state-machine.md",
+  "from_nav": "Operations/transit-deploy-state-machine",
+  "to": "control-plane/specs/transit-deploy-state-machine.md",
+  "to_nav": "Control Plane/Specs/Transit Deploy State Machine",
+  "redirect": true,
+  "current": "control-plane/specs/transit-deploy-state-machine.md"
+ },
+ {
+  "change": "6f09bea9-b005-45f2-85c7-f8b9b2c70419",
+  "at": "2026-07-30T11:40:15.000663Z",
+  "title": "Issue #44 structural cohort: control-plane-design-edge-observability",
+  "rid": "a2be1507-daf8-5065-b8ec-a88e0c3679a9",
+  "from": "operations/edge-observability-pattern.md",
+  "from_nav": "Operations/Edge Observability Pattern",
+  "to": "control-plane/design/edge-observability-pattern.md",
+  "to_nav": "Control Plane/Design/Edge Observability Pattern",
+  "redirect": true,
+  "current": "control-plane/design/edge-observability-pattern.md"
+ },
+ {
+  "change": "ebb21b36-3bbf-4eb8-96f7-cf4d09a7f722",
+  "at": "2026-07-30T11:54:10.010817Z",
+  "title": "Issue #44 structural cohort: operations-security-tls-cert-strategy",
+  "rid": "eade8f27-214a-56be-9a68-29465f2bdf2f",
+  "from": "operations/tls-cert-strategy.md",
+  "from_nav": "Operations/Security & Access/TLS Certificate Strategy",
+  "to": "operations/security/tls-cert-strategy.md",
+  "to_nav": "Operations/Security/TLS Certificate Strategy",
+  "redirect": true,
+  "current": "operations/security/tls-cert-strategy.md"
  }
 ]
