@@ -1,0 +1,989 @@
+{
+  "generated_at": "2026-07-30T12:40:00Z",
+  "generated_by": "agent-45",
+  "source": "independently reconstructed from GET /api/v1/changes?limit=500 (fresh pull, 131 total changes, confirmed stable/no new activity) + GET /api/v1/pages/<rid>/history for baseline_path",
+  "unique_pages_moved": 54,
+  "move_operations_total": 54,
+  "moved_more_than_once": 0,
+  "cross_check_vs_agent44_receipt_ledger_json": {
+    "agent44_count": 51,
+    "agent45_count": 54,
+    "agent44_is_strict_subset_of_agent45": true,
+    "pages_in_agent45_not_in_agent44": 3,
+    "explanation": "Agent 44's committed ledger/agent-44-receipt-ledger.json lists 51 pages (matches handoff/publication-lane.json's evidence commit ee97ceab). Agent 45 independently derived 54 from a fresh /api/v1/changes pull + page history. The 3-page gap is exactly the three structural cohorts published in the SAME ee97ceab commit and listed by handoff/publication-lane.json itself as the reason the lane was released: transit-deploy-state-machine, edge-observability-pattern, tls-cert-strategy. Their plan/publication/scan JSON files were committed to charliehub-hub2, but agent-44-receipt-ledger.json was not regenerated to include them. Zero pages appear in Agent 44's ledger that are absent from Agent 45's -- Agent 44's 51 is a strict subset. See audits/ for the full per-page proof."
+  },
+  "moves": [
+    {
+      "resource_id": "1740c0d7-6118-586b-b14d-495079d590f5",
+      "baseline_path": "control-plane/correctness-domains.md",
+      "current_path": "control-plane/foundational/correctness-domains.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "3e991aad-2f25-45f6-b047-e2c082ce648f"
+      ],
+      "move_timestamps": [
+        "2026-07-29T16:05:40.047089Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "771d3558-9845-56f8-a2c6-05e4d15def5e",
+      "baseline_path": "control-plane/ccm-data-model.md",
+      "current_path": "control-plane/specs/ccm-data-model.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "3e991aad-2f25-45f6-b047-e2c082ce648f"
+      ],
+      "move_timestamps": [
+        "2026-07-29T16:05:40.047089Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "9b1b39f0-472e-5031-badf-4033efd2ce11",
+      "baseline_path": "control-plane/event-contract.md",
+      "current_path": "control-plane/specs/event-contract.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "3e991aad-2f25-45f6-b047-e2c082ce648f"
+      ],
+      "move_timestamps": [
+        "2026-07-29T16:05:40.047089Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "0f135f07-9793-5acf-91a3-c7ce284e6526",
+      "baseline_path": "control-plane/transit-manager-data-model.md",
+      "current_path": "control-plane/specs/transit-manager-data-model.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "3aefcf4c-3c9f-4589-92ce-6b3d77cb261e"
+      ],
+      "move_timestamps": [
+        "2026-07-29T18:36:06.783831Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "29fcd283-4a73-55ca-9445-2e1b4788e6fb",
+      "baseline_path": "control-plane/edge-convergence-contract.md",
+      "current_path": "control-plane/specs/edge-convergence-contract.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "3aefcf4c-3c9f-4589-92ce-6b3d77cb261e"
+      ],
+      "move_timestamps": [
+        "2026-07-29T18:36:06.783831Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "6f78772f-018c-5193-941b-2e35a0ad8b40",
+      "baseline_path": "control-plane/transit-edge-spec.md",
+      "current_path": "control-plane/specs/transit-edge-spec.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "3aefcf4c-3c9f-4589-92ce-6b3d77cb261e"
+      ],
+      "move_timestamps": [
+        "2026-07-29T18:36:06.783831Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "8f0b690f-d6b8-5cac-93b3-0c803a5df16a",
+      "baseline_path": "control-plane/edge-ingress.md",
+      "current_path": "control-plane/specs/edge-ingress.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "3aefcf4c-3c9f-4589-92ce-6b3d77cb261e"
+      ],
+      "move_timestamps": [
+        "2026-07-29T18:36:06.783831Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "065e0813-5103-5e24-9783-b67acc412667",
+      "baseline_path": "control-plane/rfc/cp-net-1-gap-2-edge-resolver-authority.md",
+      "current_path": "control-plane/design/cp-net-1-gap-2-edge-resolver-authority.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "a436e082-9c16-4598-9997-1c6df803d993"
+      ],
+      "move_timestamps": [
+        "2026-07-29T19:38:50.643213Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "13112323-81df-50f2-8661-e4510b05de61",
+      "baseline_path": "control-plane/specs/docs-rename-design.md",
+      "current_path": "control-plane/design/docs-rename-design.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "a436e082-9c16-4598-9997-1c6df803d993"
+      ],
+      "move_timestamps": [
+        "2026-07-29T19:38:50.643213Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+      "baseline_path": "control-plane/anti-patterns/shadow-inventory.md",
+      "current_path": "control-plane/foundational/shadow-inventory.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "a436e082-9c16-4598-9997-1c6df803d993"
+      ],
+      "move_timestamps": [
+        "2026-07-29T19:38:50.643213Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "4d1fa170-3c56-558b-bdc1-8b078d0ad34a",
+      "baseline_path": "control-plane/doctrine.md",
+      "current_path": "control-plane/foundational/doctrine.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "a436e082-9c16-4598-9997-1c6df803d993"
+      ],
+      "move_timestamps": [
+        "2026-07-29T19:38:50.643213Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "79b37173-a7d6-5e83-a9d9-1940e58eedfa",
+      "baseline_path": "control-plane/rfc/vps3-ovh-acme-cert-ownership.md",
+      "current_path": "control-plane/design/vps3-ovh-acme-cert-ownership.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "a436e082-9c16-4598-9997-1c6df803d993"
+      ],
+      "move_timestamps": [
+        "2026-07-29T19:38:50.643213Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "d16afbf7-c535-527f-b58a-2c6e25f60ba2",
+      "baseline_path": "control-plane/gateway-convergence-doctrine.md",
+      "current_path": "control-plane/foundational/gateway-convergence-doctrine.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "a436e082-9c16-4598-9997-1c6df803d993"
+      ],
+      "move_timestamps": [
+        "2026-07-29T19:38:50.643213Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "7da6c96e-7d4e-5e3e-be94-8b937d7f7b48",
+      "baseline_path": "control-plane/invariants.md",
+      "current_path": "control-plane/invariants/index.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "2cf94dd8-cec7-4681-94ac-afb58ff3abc7"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:24:40.652702Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "6d60863d-d83a-5748-974a-c1bad28016a2",
+      "baseline_path": "control-plane/topology-invariants/i-edge-parity-1.md",
+      "current_path": "control-plane/invariants/i-edge-parity-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "dc5a8c96-2537-4715-ac0b-86eaec869486"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:29:24.703299Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "acd86b8c-a5ef-5fcb-8c4a-a3398845b980",
+      "baseline_path": "control-plane/topology-invariants/i-edge-cache-writer-1.md",
+      "current_path": "control-plane/invariants/i-edge-cache-writer-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "dc5a8c96-2537-4715-ac0b-86eaec869486"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:29:24.703299Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "adb2ba52-baa1-55a0-b833-0fc6373ec327",
+      "baseline_path": "control-plane/topology-invariants/i-edge-sshd-1.md",
+      "current_path": "control-plane/invariants/i-edge-sshd-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "dc5a8c96-2537-4715-ac0b-86eaec869486"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:29:24.703299Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "b46a32c8-c0cd-5d92-9a53-1db975f5d4fb",
+      "baseline_path": "control-plane/topology-invariants/i-edge-pppoe-1.md",
+      "current_path": "control-plane/invariants/i-edge-pppoe-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "dc5a8c96-2537-4715-ac0b-86eaec869486"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:29:24.703299Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "4b1fbb26-7ca2-5e61-bf98-a008a9aeb7e1",
+      "baseline_path": "control-plane/topology-invariants/i-dns-consumer-source-1.md",
+      "current_path": "control-plane/invariants/i-dns-consumer-source-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "16c3beb2-6a38-443c-b791-2035c45455b7"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:34:48.593456Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "e6a8ac6c-d0e5-59bb-9116-740df22168af",
+      "baseline_path": "control-plane/topology-invariants/i-dnsmasq-retire-1.md",
+      "current_path": "control-plane/invariants/i-dnsmasq-retire-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "16c3beb2-6a38-443c-b791-2035c45455b7"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:34:48.593456Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "f59eea45-1361-5e42-8971-1c34e84fd2a8",
+      "baseline_path": "control-plane/topology-invariants/i-dns-runtime-config-1.md",
+      "current_path": "control-plane/invariants/i-dns-runtime-config-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "16c3beb2-6a38-443c-b791-2035c45455b7"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:34:48.593456Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "0fa6b478-8c70-596e-a78c-e16dfbcf6589",
+      "baseline_path": "control-plane/topology-invariants/i-identity-consistency-1.md",
+      "current_path": "control-plane/invariants/i-identity-consistency-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "36642116-a4ac-4503-9eeb-7b58c20c8d20"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:39:16.657742Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "8703490d-47a0-5d11-9d3c-0da062df839e",
+      "baseline_path": "control-plane/topology-invariants/i-name-ref-1.md",
+      "current_path": "control-plane/invariants/i-name-ref-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "36642116-a4ac-4503-9eeb-7b58c20c8d20"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:39:16.657742Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "ed5994a5-7064-5730-a728-915438ef912e",
+      "baseline_path": "control-plane/topology-invariants/i-name-migrate-1.md",
+      "current_path": "control-plane/invariants/i-name-migrate-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "36642116-a4ac-4503-9eeb-7b58c20c8d20"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:39:16.657742Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "17da64ec-cace-555f-b197-5eb0c372d4db",
+      "baseline_path": "control-plane/topology-invariants/i-vpn-dns-1.md",
+      "current_path": "control-plane/invariants/i-vpn-dns-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "1da25c6e-e689-4ad6-af5b-f0a947ed1a1b"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:43:50.671020Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "8ea842a8-e617-58ba-b3e6-db3efb1bf413",
+      "baseline_path": "control-plane/topology-invariants/i-route-rollback-1.md",
+      "current_path": "control-plane/invariants/i-route-rollback-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "1da25c6e-e689-4ad6-af5b-f0a947ed1a1b"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:43:50.671020Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "f5dd68ff-c40f-58b0-b78e-efdd988c0549",
+      "baseline_path": "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+      "current_path": "control-plane/invariants/i-vpn-endpoint-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "1da25c6e-e689-4ad6-af5b-f0a947ed1a1b"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:43:50.671020Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "9f7aa8c0-58c5-5d5b-8a3c-c71a3ecf8b66",
+      "baseline_path": "control-plane/topology-invariants/i-wan-mtu-1.md",
+      "current_path": "control-plane/invariants/i-wan-mtu-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "74d8e737-c3a5-4774-ba8c-5e8c96fba98a"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:47:29.493485Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "a5f96cc3-6c72-54f7-8b1f-1d71228675a2",
+      "baseline_path": "control-plane/topology-invariants/i-site-transport-authority-1.md",
+      "current_path": "control-plane/invariants/i-site-transport-authority-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "74d8e737-c3a5-4774-ba8c-5e8c96fba98a"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:47:29.493485Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "bf700b24-0a24-5ed9-af86-911818ba28a3",
+      "baseline_path": "control-plane/topology-invariants/i-transport-hub-1.md",
+      "current_path": "control-plane/invariants/i-transport-hub-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "74d8e737-c3a5-4774-ba8c-5e8c96fba98a"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:47:29.493485Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "0693b7f5-7dab-54ae-a02b-15423745cb7a",
+      "baseline_path": "control-plane/topology-invariants/i-ssh-identity-derivation-1.md",
+      "current_path": "control-plane/invariants/i-ssh-identity-derivation-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "dd459bcd-f592-4178-a5bc-f0df2b30f9a5"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:51:57.521753Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "41bcdc11-36e8-5e3e-a185-c45d549cc484",
+      "baseline_path": "control-plane/topology-invariants/i-auth-transport-1.md",
+      "current_path": "control-plane/invariants/i-auth-transport-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "dd459bcd-f592-4178-a5bc-f0df2b30f9a5"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:51:57.521753Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "5ad1caae-ceb6-5160-b46c-6d95318f09d5",
+      "baseline_path": "control-plane/topology-invariants/i-connect-auth-1.md",
+      "current_path": "control-plane/invariants/i-connect-auth-1.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": false,
+      "move_operation_count": 1,
+      "publications": [
+        "dd459bcd-f592-4178-a5bc-f0df2b30f9a5"
+      ],
+      "move_timestamps": [
+        "2026-07-30T07:51:57.521753Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "50242c9d-10da-5847-9133-ac9e241f6088",
+      "baseline_path": "control-plane/architecture.md",
+      "current_path": "control-plane/architecture/index.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "0eee6502-92d4-4bfc-bdc5-6c50ecd32874"
+      ],
+      "move_timestamps": [
+        "2026-07-30T08:21:29.298271Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "0d9b2f98-3bbf-5ea5-bc35-d8cb1a5dbcca",
+      "baseline_path": "control-plane/topology-invariants.md",
+      "current_path": "control-plane/specs/wg-mesh-topology-correctness.md",
+      "baseline_subtree": "control-plane",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "7f6ef4f0-54f0-4d2c-ae24-72723a50b14b"
+      ],
+      "move_timestamps": [
+        "2026-07-30T08:51:38.432751Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "90aa8f4e-a071-5bec-ac0e-7d4183f3fcb8",
+      "baseline_path": "operations/vm-ct-management.md",
+      "current_path": "operations/platform/vm-ct-management.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "943a84e8-4621-4e82-be6a-fac98dfd9e1f"
+      ],
+      "move_timestamps": [
+        "2026-07-30T09:45:29.966288Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "977675c2-c20c-5e07-9741-24053dc6b7af",
+      "baseline_path": "operations/daily-tasks.md",
+      "current_path": "operations/platform/daily-tasks.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "943a84e8-4621-4e82-be6a-fac98dfd9e1f"
+      ],
+      "move_timestamps": [
+        "2026-07-30T09:45:29.966288Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "a1332911-c57c-5997-add1-8ec57d13ab08",
+      "baseline_path": "operations/ceph-operations.md",
+      "current_path": "operations/platform/ceph-operations.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "943a84e8-4621-4e82-be6a-fac98dfd9e1f"
+      ],
+      "move_timestamps": [
+        "2026-07-30T09:45:29.966288Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "c70ebf54-6103-500b-a936-337020966120",
+      "baseline_path": "operations/infrastructure-reconciliation.md",
+      "current_path": "operations/platform/infrastructure-reconciliation.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "943a84e8-4621-4e82-be6a-fac98dfd9e1f"
+      ],
+      "move_timestamps": [
+        "2026-07-30T09:45:29.966288Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "2e20e57f-b1d2-58af-ab62-e0ec0b1564d2",
+      "baseline_path": "operations/security-maintenance.md",
+      "current_path": "operations/security/security-maintenance.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "8baadac3-46f0-48f5-9bda-6c84e0035209"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:09:45.331757Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "934916e8-43cb-537f-bbda-9e316bdef1cb",
+      "baseline_path": "operations/ssh-observation-post.md",
+      "current_path": "operations/security/ssh-observation-post.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "8baadac3-46f0-48f5-9bda-6c84e0035209"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:09:45.331757Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "a4349447-7c6f-5ca4-8d34-60fa4f92bff3",
+      "baseline_path": "operations/container-hardening.md",
+      "current_path": "operations/security/container-hardening.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "8baadac3-46f0-48f5-9bda-6c84e0035209"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:09:45.331757Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "42cea6be-5d54-52b6-88a5-b12ce357ee08",
+      "baseline_path": "operations/iptables-persistence.md",
+      "current_path": "operations/runbooks/iptables-persistence.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "2fcbc675-a151-4fba-885c-c2b0d5e1aa09"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:28:54.500048Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "6996fd6a-02d5-51b9-8b63-3970a40f6b88",
+      "baseline_path": "operations/mothball-reactivation.md",
+      "current_path": "operations/runbooks/mothball-reactivation.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "2fcbc675-a151-4fba-885c-c2b0d5e1aa09"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:28:54.500048Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "f4af4d99-890c-548a-8735-51e7c3001e71",
+      "baseline_path": "operations/geo-exit-provisioning.md",
+      "current_path": "operations/runbooks/geo-exit-provisioning.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "2fcbc675-a151-4fba-885c-c2b0d5e1aa09"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:28:54.500048Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "027911ed-f956-5fe7-a092-7a834d44b611",
+      "baseline_path": "operations/projection-drift.md",
+      "current_path": "operations/runbooks/projection-drift.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "80270679-d035-4bf5-932d-4e35969a2ad1"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:44:28.660169Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "3ac1cd7f-c8d2-5321-b0f5-4286da605ecb",
+      "baseline_path": "operations/deployment-checklist.md",
+      "current_path": "operations/runbooks/deployment-checklist.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "80270679-d035-4bf5-932d-4e35969a2ad1"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:44:28.660169Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "ae2cf36d-cbd1-5b75-aacb-c79b0fabe765",
+      "baseline_path": "operations/break-glass-procedure.md",
+      "current_path": "operations/runbooks/break-glass-procedure.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "80270679-d035-4bf5-932d-4e35969a2ad1"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:44:28.660169Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "00291542-81c1-552c-923c-3ffa79a672d2",
+      "baseline_path": "operations/f31-management-plane-reachability.md",
+      "current_path": "control-plane/specs/f31-management-plane-reachability.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "03d2216f-1045-438c-82a2-abf5d18e4b4a"
+      ],
+      "move_timestamps": [
+        "2026-07-30T10:52:45.855118Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "3cae2e5f-9ed6-55a2-b6b3-ac2d333a4f2c",
+      "baseline_path": "operations/hub2-reboot.md",
+      "current_path": "operations/runbooks/hub2-reboot.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "cf229abb-140c-402e-8478-bf3e90fe6e15"
+      ],
+      "move_timestamps": [
+        "2026-07-30T11:02:21.386241Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "98a23368-e4a0-5e07-af63-91828e2fa742",
+      "baseline_path": "operations/troubleshooting.md",
+      "current_path": "operations/runbooks/troubleshooting.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "cf229abb-140c-402e-8478-bf3e90fe6e15"
+      ],
+      "move_timestamps": [
+        "2026-07-30T11:02:21.386241Z"
+      ],
+      "in_agent44_receipt_ledger": true,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "347e94af-c8f8-5360-98fb-26809f6ea979",
+      "baseline_path": "operations/transit-deploy-state-machine.md",
+      "current_path": "control-plane/specs/transit-deploy-state-machine.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "0bd16cd9-fb06-4ea2-8999-952362070e6c"
+      ],
+      "move_timestamps": [
+        "2026-07-30T11:31:42.121010Z"
+      ],
+      "in_agent44_receipt_ledger": false,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "a2be1507-daf8-5065-b8ec-a88e0c3679a9",
+      "baseline_path": "operations/edge-observability-pattern.md",
+      "current_path": "control-plane/design/edge-observability-pattern.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "control-plane",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "6f09bea9-b005-45f2-85c7-f8b9b2c70419"
+      ],
+      "move_timestamps": [
+        "2026-07-30T11:40:15.000663Z"
+      ],
+      "in_agent44_receipt_ledger": false,
+      "current_lifecycle": "REFERENCE",
+      "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "eade8f27-214a-56be-9a68-29465f2bdf2f",
+      "baseline_path": "operations/tls-cert-strategy.md",
+      "current_path": "operations/security/tls-cert-strategy.md",
+      "baseline_subtree": "operations",
+      "current_subtree": "operations",
+      "baseline_flat_root": true,
+      "move_operation_count": 1,
+      "publications": [
+        "ebb21b36-3bbf-4eb8-96f7-cf4d09a7f722"
+      ],
+      "move_timestamps": [
+        "2026-07-30T11:54:10.010817Z"
+      ],
+      "in_agent44_receipt_ledger": false,
+      "current_lifecycle": "OPERATION",
+      "current_publication_state": "PUBLISHED"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "generated_at": "2026-07-30T12:40:00Z",
+  "generated_by": "agent-45",
+  "snapshot_timestamp": "2026-07-30T12:40:00Z",
+  "certification_version": 104,
+  "historical_execution": {
+    "move_operations": 54,
+    "unique_pages_moved": 54,
+    "pages_moved_more_than_once": 0,
+    "move_bearing_publications": 21,
+    "pages_resolved_without_movement": 11,
+    "pages_touched_by_issue_44": 65,
+    "rewrite_only_publications": 24,
+    "rewrite_only_operations": 217,
+    "rehearsals_excluded": 33,
+    "independently_confirmed": true,
+    "confirmation_note": "See audits/2026-07-30T1240-ledger-audit.json for the discrepancy reconciliation against Agent 44's committed ledger/agent-44-receipt-ledger.json (51 rows, a strict subset of these 54 -- not an error, see audit)."
+  },
+  "current_corpus": {
+    "operations_subtree": 120,
+    "control_plane_subtree": 128,
+    "combined_subtree": 248,
+    "flat_operations_root": 66,
+    "flat_control_plane_root": 36,
+    "combined_flat_roots": 102,
+    "corpus_pages_active": 513,
+    "corpus_pages_total": 947
+  },
+  "retrospective_classified_baseline": {
+    "correctly placed": 79,
+    "moved under Issue #44": 54,
+    "archived": 42,
+    "reported by Agent 44 (hub/evidence/board/#43-blocked/section-landing, flat, not individually re-derived)": 39,
+    "still requires movement": 22,
+    "backlog/paused": 4,
+    "evidence surface": 4,
+    "authoring decision required": 2,
+    "deliberate non-move": 1,
+    "hold-blocked": 1,
+    "total": 248
+  },
+  "completion_percentages": {
+    "unique_pages_moved_over_confirmed_movement_set": "54 / (54 + 22) = 71.1%  -- moved / [moved + still-requires-movement], the only receipt-backed forward-looking set",
+    "resolved_over_all_actionable": "not published -- 'all actionable' is not yet a closed set (39-page bucket not individually re-derived; some of those 39 may turn out actionable)",
+    "warning": "Do NOT compute a percentage against the 248-page combined subtree -- no original 'pages requiring movement' denominator was ever frozen for Issue #44."
+  },
+  "next_cohort": {
+    "denominator": 22,
+    "scope": "control-plane flat root, independently verified: active, PUBLISHED, criticality NORMAL, non-archived",
+    "operations_queue_status": "empty -- all 4 operations flat-root active-durable pages carry an individual non-move disposition (1 hold-blocked, 1 deliberate non-move, 2 authoring-decision-required)"
+  }
+}
