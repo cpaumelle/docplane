@@ -1,130 +1,188 @@
 # Domain model implementation plan
 
-Phased plan for [The four-domain model](DOMAIN_MODEL.md). Every phase is
-independently shippable, additive-only, and ends with the compatibility gate
-below passing. Issue #44's reorganisation programme continues throughout; no
-phase mutates `docs.*` structure or competes with an active #44 batch.
+Sprint sequence for [The four-domain model](DOMAIN_MODEL.md), governed by
+the [guiding philosophy](GUIDING_PHILOSOPHY.md). Every sprint is a bounded,
+independently shippable change that ends with the compatibility gate
+passing. Issue #44's reorganisation programme continues throughout; no
+sprint mutates `docs.*` structure or competes with an active #44 batch.
 
-## Compatibility gate (every phase)
+## Compatibility gate (every sprint)
 
 1. Full existing test suite green, unmodified.
-2. A migration round-trip test proves `working_state_identity` is byte-identical
-   before and after the phase's migration on a seeded corpus — certification
-   cannot drift because of a domain-model migration.
-3. OpenAPI diff contains only additions (new paths, new schemas, new optional
-   fields). CI fails on any removal or type change.
+2. A migration round-trip test proves `working_state_identity` is
+   byte-identical before and after the sprint's migration on a seeded
+   corpus — certification cannot drift because of a domain-model migration.
+3. OpenAPI diff contains only additions (new paths, new schemas, new
+   optional fields). CI fails on any removal or type change.
 4. MCP tool inventory diff contains only additions.
 5. `docplane.schema_migrations` checksum ledger extends; no prior migration
    file is edited.
 
-## Phase 0 — ratify vocabulary (this change)
+## Sprint 0 — ratify (this change)
 
-- Publish `DOMAIN_MODEL.md` and this plan.
-- No runtime change. The decision that unblocks everything else is the
-  vocabulary reconciliation: three vocabularies remain — `workspace_kind`,
-  `knowledge_class`, `work_state` — and the markdown-parsed corpus
-  "lifecycle" is marked deprecated.
+Publish the philosophy, the decision and this plan. No runtime change. The
+unblocking decisions: three vocabularies remain (`workspace_kind`,
+`knowledge_class`, `work_state`), the markdown-parsed corpus "lifecycle" is
+deprecated, GTD is adopted for work, and the meter-list scope of observe is
+fixed.
 
-## Phase 1 — work surface (no schema change)
+## Sprint 1 — work surface: capture, triage, Work view
 
-The work domain exists; it lacks surface.
+- Migration: `work.captures` — lightweight inbox rows (`capture_id`, `body`,
+  `kind` ∈ `IDEA | NEXT_ACTION | FINDING | QUESTION`, origin context jsonb,
+  `status` ∈ `INBOX | PROMOTED | ATTACHED | DISCARDED`, disposition link,
+  author, timestamps). Additive; no change to `work.initiatives`.
+- Routes: `POST /api/v1/work/captures` (zero-decision, idempotent),
+  `GET /api/v1/work/captures?status=INBOX`, triage verbs
+  (`.../promote` → mints an initiative, `.../attach` → activity on an
+  existing one, `.../discard`).
+- MCP tools: `work_capture(text, kind="IDEA")` (agent stamps origin
+  context), `work_inbox()`, `work_triage(...)`, `work_list(state?)`,
+  `work_get(...)`, `work_note(...)`, `work_transition(...)`.
+- Dashboard Work view: inbox count, GTD queues (Now with soft WIP limit,
+  Roadmap, Blocked, Soaking, Parked, Decisions needed, Recently completed),
+  weekly-review surface from the existing `/api/v1/work/queues` and
+  review-due fields.
+- Tests: capture idempotency, triage state machine, origin-context capture,
+  MCP payload contracts.
 
-- `POST /api/v1/work/capture`: one-call idea capture minting a `BACKLOG`
-  initiative in the WORK workspace with an auto-generated `initiative_key`,
-  `kind` recorded in metadata, idempotency honoured via the standard header.
-- MCP tools: `work_capture(text, kind="IDEA")`, `work_list(state?)`,
-  `work_get(initiative)`, `work_note(initiative, text, type="NOTE")`,
-  `work_transition(initiative, to_state, ...)` — thin clients of the
-  existing `work-v1` endpoints, mirroring `mcp/tools/docs.py`.
-- Dashboard Work view backed by data the overview endpoint already fetches
-  (`work` and `maintenance` modules), presenting the queues: Now, Roadmap,
-  Blocked, Soaking, Parked, Decisions needed, Ready to complete, Recently
-  completed.
-- Tests: capture contract (idempotent replay, key minting, workspace
-  enforcement), MCP tool payload contract, dashboard proxy routes.
+Exit: "save that idea in `.work`" is one call; triage is a deliberate,
+pleasant dashboard act.
 
-Exit: "save that idea in `.work`" is one agent call and one dashboard glance.
+## Sprint 2 — model genesis with harvested card types
 
-## Phase 2 — model genesis
+- On-fabric survey initiative (agent work, tracked in `work`): sweep compose
+  files, systemd units, proxy configs, DNS zones, monitoring targets and
+  corpus prose; produce candidate entity kinds with field frequency counts.
+  A kind's checklist is ratified only when several real instances fill it.
+- Migration `00X_model_genesis.sql`: `model.entities` (stable id, unique
+  `(entity_kind, entity_key)`, `version`, bounded secret-scanned
+  `attributes`), `model.entity_links` (closed relation vocabulary including
+  `WATCHES`, self-link forbidden), `model.entity_page_links`,
+  `model.generated_artifacts`.
+- Routes: `GET/POST /api/v1/model/entities`, entity detail with links,
+  link creation, artifact declaration — mutations idempotent and
+  version-bound, mirroring the work API. Per-kind attribute checklists
+  published at `GET /api/v1/model/contracts` (the operation-contracts
+  pattern), enforced on write.
+- Events: `MODEL_ENTITY_CREATED`, `MODEL_ENTITY_LINKED`,
+  `MODEL_ARTIFACT_DECLARED`.
+- Tests: identity/link contracts, checklist enforcement (fail-closed on
+  secret-shaped attributes), state-identity invariance.
 
-- Migration `001_model_genesis.sql`: schema `model` with `entities`
-  (`entity_id`, `entity_kind`, `entity_key`, `display_name`, `attributes`,
-  `owner_principal_id`, `version`, timestamps; `UNIQUE (entity_kind,
-  entity_key)`), `entity_links` (typed edges, closed relation vocabulary,
-  self-link forbidden), `entity_page_links`, `generated_artifacts`.
-- Routes: `GET/POST /api/v1/model/entities`, `GET
-  /api/v1/model/entities/{entity_id}` (with links), `POST
-  /api/v1/model/entities/{entity_id}/links`, `GET/POST
-  /api/v1/model/artifacts`. Mutations require `Idempotency-Key` and
-  `expected_version`, mirroring the work API. Events: `MODEL_ENTITY_CREATED`,
-  `MODEL_ENTITY_LINKED`, `MODEL_ARTIFACT_DECLARED`.
-- Redaction rule: `attributes` passes the canonical secret-shape scan;
-  fail closed on secret-looking values.
-- Tests: identity/link contracts, relation vocabulary closure, state-identity
-  invariance, OpenAPI-additive check.
+## Sprint 3 — observe genesis: evidence ledger and current status
 
-## Phase 3 — observe genesis
-
-- Migration `002_observe_genesis.sql`: schema `observe` with `observations`
-  (append-only, subject FK to `model.entities` or artifact, kind/outcome
-  vocabularies, `source_fingerprint`, bounded payload) and `current_status`
+- Migration `00X_observe_genesis.sql`: `observe.observations` (append-only;
+  subject FK to entity or artifact; `observation_kind` ∈ `DEPLOYED_VERSION |
+  GENERATION | CERTIFICATION | FRESHNESS_CHECK | TEST | SOAK_READING |
+  RUNBOOK_EXERCISED`; `outcome` ∈ `NOMINAL | DEGRADED | FAILED | UNKNOWN`;
+  `source_fingerprint`; bounded payload) and `observe.current_status`
   (latest per subject × kind, maintained in the ingest transaction).
-- Routes: `POST /api/v1/observations` (batch-capable, idempotent),
-  `GET /api/v1/observations` (cursor-paginated — apply the issue #56 lesson
-  from day one), `GET /api/v1/model/entities/{entity_id}/status`.
-- Freshness/drift evaluation: derived read comparing latest `GENERATION`
-  fingerprint against latest observed source fingerprint; exposed on the
-  artifact and entity status reads, never stored as authored state.
+- Routes: `POST /api/v1/observations` (push-only, batch-capable,
+  idempotent), `GET /api/v1/observations` (cursor-paginated from day one —
+  the issue #56 lesson), `GET /api/v1/model/entities/{id}/status`.
+- Freshness/drift derived on read by fingerprint comparison; never stored
+  as authored state. No pull, no scraping, no time series — enforced by
+  scope, documented as an invariant with this test suite as its
+  enforcement pointer.
 - Tests: append-only enforcement, projection correctness, derivation cases
   (fresh, stale, drifted, never-generated), pagination completeness.
 
-## Phase 4 — cross-domain links and provenance
+## Sprint 4 — closure gates, cross-domain links, provenance
 
 - Extend `work.initiative_links` CHECK constraints additively:
-  `resource_type` += `MODEL_ENTITY`, `ARTIFACT`, `OBSERVATION`; `relation`
-  += `IMPLEMENTS`, `CONCERNS`, `PRODUCES`, `UPDATES`. Existing rows and
-  clients unaffected.
-- Add `docs.pages.provenance` (`AUTHORED | GENERATED`, default `AUTHORED`,
-  additive column; excluded from revision/state-identity computation, like
-  other classification metadata under the issue #59 resolution).
-- Validation: mutating a `GENERATED` page outside its declaring artifact's
-  automation principal fails closed unless the declaration is retired first.
-- Tests: constraint extension round-trip, provenance guard, identity
-  invariance.
+  `resource_type` += `MODEL_ENTITY | ARTIFACT | OBSERVATION`; `relation` +=
+  `IMPLEMENTS | CONCERNS | PRODUCES | UPDATES`.
+- Closure dispositions: alongside the existing `promotion_state` (know),
+  add model and observe dispositions ∈ `UPDATED | NOT_REQUIRED | DEFERRED`
+  with reason/links; `COMPLETE` requires all three answered; `DEFERRED`
+  mints a coverage gap. `SOAKING` entry additionally requires soak criteria
+  referencing monitoring (validated as a link or named rule).
+- `docs.pages.provenance` (`AUTHORED | GENERATED`, additive, default
+  `AUTHORED`, excluded from state-identity computation); validation rejects
+  mutation of a `GENERATED` page outside its declaring artifact's
+  automation principal unless the declaration is retired.
+- Tests: gate refusal messages are structured and machine-readable (an
+  agent blocked at closure learns exactly which disposition is missing),
+  constraint round-trips, provenance guard, identity invariance.
 
-## Phase 5 — `tbls` exemplar end-to-end
+## Sprint 5 — exemplar A: `tbls` schema catalogue
 
-- Named `AUTOMATION` principal for the generator; runner container invoking
-  `tbls`, the canonical redaction transform, then the normal change contract.
-- One work initiative (canary database first → soak → additional databases),
-  model entities and artifact declaration, `GENERATION` observations per run,
-  catalogue pages published `provenance=GENERATED` under a `model/` section
-  created through the governed reorganisation contract after coordination
-  with #44 sequencing.
-- Acceptance: all four domains touched exactly as the decision describes;
-  killing the source schema fingerprint match surfaces `DRIFT` on the entity
-  status read; a failed generation surfaces `FAILED` without disturbing the
-  published catalogue.
+- Named `AUTOMATION` principal; runner container invoking `tbls`, the
+  canonical redaction transform (`migration.redaction.redact`), then the
+  normal change contract.
+- One work initiative (canary database → soak with monitored criteria →
+  remaining databases), database/schema entities, artifact declaration,
+  `GENERATION` observations per run.
+- Permanent thin presence page per tracked database; detailed catalogue
+  pages `provenance=GENERATED`, republished **only on source fingerprint
+  change**. The `model/` section lands through the governed reorganisation
+  contract, sequenced after #44's bounded moves.
+- Acceptance: a stable schema publishes nothing across repeated runs; a
+  changed fingerprint regenerates exactly the affected catalogue; a failed
+  generation records `FAILED` without disturbing the published catalogue;
+  closure dispositions on the initiative all answered.
 
-## Phase 6 — discovery, search and vocabulary closure
+## Sprint 6 — exemplar B: monitoring meter list and runbook discipline
 
-- Search index adds `workspace_key`, `knowledge_class`, `provenance`;
-  results carry `domain` and are grouped by domain in agent responses;
-  `domain=` filter.
-- `/.well-known/docplane.json` advertises the four domains and their entry
-  routes; `docplane://` URIs become domain-first with old forms as aliases.
-- MCP: `know_*` aliases for the six document tools; `model_*` and
-  `observe_*` read tools; `observe_report` write tool.
-- Vocabulary closure: audit `docs.pages.knowledge_class` values, backfill,
-  then add the CHECK constraint; remove the deprecated markdown-lifecycle
-  parser from `corpus_structure.py` once the backfill is complete.
+- Rules importer reads Prometheus/Grafana config from git: rule entities
+  `WATCHES`-wired to services, descriptions/`runbook_url` annotations
+  imported, fingerprint-bound plain-English explanations generated per rule
+  and queued stale on rule change.
+- Coverage view: unwatched services, rules without descriptions, paging
+  alerts without runbooks — ranked by `criticality`, feeding the work
+  inbox. The importer records gaps and is structurally incapable of
+  creating pages.
+- Runbook content contract for `OPERATION` pages (preconditions, commands,
+  expected output, success check, rollback); coverage counts only
+  contract-meeting, verified runbooks; `RUNBOOK_EXERCISED` observations
+  record real use; expiry decays unexercised runbooks back to gaps.
+- One-time cleanup: archive surviving legacy stub runbooks (governed
+  archive operations, batched, #43/#44-aware).
+- Acceptance: coverage numbers are honest (no stub counts), a rule edit
+  stales its explanation, a deferred runbook disposition appears as a gap.
+
+## Sprint 7 — freshness surface and verification-on-demand
+
+- Dashboard freshness table (last updated / last verified, by section) from
+  the existing maintenance queues; per-page and per-section "verify against
+  fabric" trigger.
+- The trigger mints a **verification request**: a work item carrying the
+  page(s) and linked entities as briefing. Agents execute; results return
+  as evidence-bearing revision-bound verifications (existing
+  `POST /api/v1/pages/{id}/verify`, notes carry commands run and values
+  seen) or drafted corrections through the normal change contract
+  (direct publication for minor fixes; pending change when `criticality`
+  demands review).
+- Graph ripple: a model-entity change flags pages linked `DESCRIBES` as
+  verification candidates. Expiry remains a prompt only; no scheduled
+  re-verification exists anywhere.
+- Tests: request minting and scoping, ripple candidate generation, evidence
+  round-trip, criticality-gated correction path.
+
+## Sprint 8 — know spine and vocabulary closure
+
+- ADR discipline for `DECISION` pages: immutable once published, `SUPERSEDES`
+  typed links, chain navigation in the dashboard.
+- Invariants register: ID-addressable entries (`INV-n`), each linking its
+  establishing ADR and its enforcement pointer (test/CI/validation);
+  entries without enforcement are visibly flagged for demotion. Existing
+  review machinery drives periodic register review.
+- Search/discovery: index `workspace_key`, `knowledge_class`, `provenance`;
+  results carry `domain` and group by domain; `domain=` filter;
+  `/.well-known/docplane.json` advertises the domains; `docplane://` URIs
+  become domain-first with old forms as aliases; `know_*` MCP aliases plus
+  `model_*`/`observe_*` read tools and `observe_report`.
+- Vocabulary closure: audit and backfill `docs.pages.knowledge_class`, add
+  the CHECK constraint, then remove the deprecated markdown-lifecycle
+  parser from `corpus_structure.py`. Backfill is ordinary `PATCH_METADATA`
+  publication work respecting #43's coordination register.
 
 ## Sequencing with issues #43 / #44
 
-- Phases 0–4 touch no corpus content and may proceed at any time.
-- Phase 5's `model/` section creation and catalogue page publication follow
+- Sprints 0–4 and 7 touch no corpus content and may proceed at any time.
+- Sprint 5's `model/` section and sprint 6's stub-archive batches follow
   the same batch-eligibility rules #44 already applies (no shared resources
-  with an active batch, certification `CURRENT` between batches).
-- Phase 6's parser removal waits for the metadata backfill, which is ordinary
-  `PATCH_METADATA` publication work and must respect #43's coordination
+  with an active batch; certification `CURRENT` between batches).
+- Sprint 8's backfill and parser removal respect #43's coordination
   register like any other metadata change.
