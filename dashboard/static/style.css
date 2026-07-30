@@ -56,10 +56,15 @@ label { display:grid; gap:.3rem; margin:.7rem 0; color:var(--text-muted); font-s
 .navlink:hover { opacity:1; text-decoration:none; background:rgba(255,255,255,.14); }
 .navlink--active { background:rgba(255,255,255,.20); opacity:1; }
 .navlink svg { width:1.05em; height:1.05em; }
-.topbar .connect { display:flex; gap:.4rem; margin-left:auto; min-width:min(30rem,46vw); }
+.topbar .connect { display:flex; align-items:center; gap:.4rem; margin-left:auto; min-width:min(30rem,46vw); }
 .topbar .connect input { background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.28); color:var(--on-action); }
 .topbar .connect input::placeholder { color:rgba(255,255,255,.7); }
 .topbar .connect button { background:var(--on-action); color:var(--action); border-color:transparent; font-weight:600; }
+.topbar #auth-status { color:var(--on-action); font-size:.85rem; white-space:nowrap; }
+.topbar .connect details { position:relative; color:var(--on-action); font-size:.85rem; white-space:nowrap; }
+.topbar .connect summary { cursor:pointer; }
+.topbar .token-connect { position:absolute; right:0; top:2rem; z-index:10; display:flex; gap:.4rem; width:min(32rem,80vw); padding:.6rem; background:var(--action); border-radius:var(--radius-input); box-shadow:var(--shadow-card); }
+.topbar #auth-guidance { position:absolute; right:0; top:4.7rem; z-index:10; width:min(32rem,80vw); margin:0; padding:.6rem; white-space:normal; background:var(--action); border-radius:var(--radius-input); box-shadow:var(--shadow-card); }
 
 /* ── Shell: sidebar + main ────────────────────────────────────────────── */
 .shell { display:grid; grid-template-columns:14rem 1fr; min-height:calc(100vh - 3.1rem); }
