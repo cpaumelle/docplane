@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
+from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.model_contracts import CARD_CONTRACTS, checklist_errors, contracts_document, secret_findings
 from app.model_models import (
     ArtifactDeclare,
@@ -91,8 +92,12 @@ def create_entity(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "entity-create", **request.model_dump(mode="json")})
     _guard_attributes(request.entity_kind, request.attributes)
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ENTITY_CREATE", digest)
+        if replayed is not None:
+            return replayed
         cur = conn.cursor()
         try:
             cur.execute(
@@ -127,6 +132,7 @@ def create_entity(
             resource_id=str(entity_id),
             metadata={"entity_kind": request.entity_kind, "entity_key": request.entity_key},
         )
+        save_receipt(conn, principal, key, "MODEL_ENTITY_CREATE", str(entity_id), digest, response)
         conn.commit()
         return response
 
@@ -204,7 +210,11 @@ def update_entity(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "entity-update", "entity_id": str(entity_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ENTITY_UPDATE", digest)
+        if replayed is not None:
+            return replayed
         entity = _load_entity(conn, entity_id, for_update=True)
         if entity["version"] != request.expected_version:
             raise HTTPException(status_code=409, detail={"code": "MODEL_ENTITY_VERSION_STALE", "current": entity["version"]})
@@ -242,8 +252,10 @@ def update_entity(
             resource_id=str(entity_id),
             metadata={"entity_kind": entity["entity_kind"], "entity_key": entity["entity_key"]},
         )
+        response = _load_entity(conn, entity_id)
+        save_receipt(conn, principal, key, "MODEL_ENTITY_UPDATE", str(entity_id), digest, response)
         conn.commit()
-        return _load_entity(conn, entity_id)
+        return response
 
 
 @router.post("/api/v1/model/entities/{entity_id}/retire")
@@ -288,9 +300,13 @@ def create_entity_link(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "entity-link", "entity_id": str(entity_id), **request.model_dump(mode="json")})
     if request.to_entity_id == entity_id:
         raise HTTPException(status_code=422, detail={"code": "MODEL_LINK_SELF"})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ENTITY_LINK", digest)
+        if replayed is not None:
+            return replayed
         _load_entity(conn, entity_id)
         _load_entity(conn, request.to_entity_id)
         cur = conn.cursor()
@@ -313,8 +329,10 @@ def create_entity_link(
             resource_id=str(entity_id),
             metadata={"relation": request.relation, "to_entity_id": str(request.to_entity_id)},
         )
+        response = {"from_entity_id": str(entity_id), **request.model_dump(mode="json")}
+        save_receipt(conn, principal, key, "MODEL_ENTITY_LINK", str(entity_id), digest, response)
         conn.commit()
-    return {"from_entity_id": str(entity_id), **request.model_dump(mode="json")}
+    return response
 
 
 @router.post("/api/v1/model/entities/{entity_id}/page-links", status_code=201)
@@ -393,9 +411,23 @@ def declare_artifact(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "artifact-declare", **request.model_dump(mode="json")})
+    if principal.principal_kind != "AUTOMATION":
+        # Generated artifacts are published by a stable automation principal;
+        # remediation is regeneration from the authoritative source.
+        raise HTTPException(status_code=422, detail={"code": "MODEL_ARTIFACT_REQUIRES_AUTOMATION", "principal_kind": principal.principal_kind})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_DECLARE", digest)
+        if replayed is not None:
+            return replayed
         _load_entity(conn, request.source_entity_id)
         cur = conn.cursor()
+        if request.target_page_resource_ids:
+            cur.execute("SELECT resource_id::text FROM docs.pages WHERE resource_id = ANY(%s::uuid[])", ([str(item) for item in request.target_page_resource_ids],))
+            found = {row[0] for row in cur.fetchall()}
+            missing = sorted({str(item) for item in request.target_page_resource_ids} - found)
+            if missing:
+                raise HTTPException(status_code=404, detail={"code": "MODEL_ARTIFACT_TARGET_PAGE_NOT_FOUND", "missing": missing})
         try:
             cur.execute(
                 """
@@ -417,6 +449,15 @@ def declare_artifact(
             conn.rollback()
             raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_KEY_EXISTS"}) from exc
         artifact_id = cur.fetchone()[0]
+        for page_id in request.target_page_resource_ids:
+            try:
+                cur.execute(
+                    "INSERT INTO model.artifact_targets (artifact_id, page_resource_id) VALUES (%s, %s) ON CONFLICT (artifact_id, page_resource_id) DO NOTHING",
+                    (str(artifact_id), str(page_id)),
+                )
+            except psycopg2.errors.UniqueViolation as exc:
+                conn.rollback()
+                raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_TARGET_CONFLICT", "page_resource_id": str(page_id), "message": "Another active declaration already owns this page."}) from exc
         cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
         response = _artifact(cur.fetchone())
         append_event(
@@ -430,6 +471,7 @@ def declare_artifact(
             resource_id=str(artifact_id),
             metadata={"artifact_key": request.artifact_key, "generator_name": request.generator_name},
         )
+        save_receipt(conn, principal, key, "MODEL_ARTIFACT_DECLARE", str(artifact_id), digest, response)
         conn.commit()
         return response
 
@@ -457,6 +499,9 @@ def retire_artifact(
             "UPDATE model.generated_artifacts SET status = 'RETIRED', retired_at = %s, version = version + 1, updated_at = now() WHERE artifact_id = %s AND version = %s",
             (datetime.now(timezone.utc), str(artifact_id), request.expected_version),
         )
+        # Targets exist only while the declaration stands; removing them
+        # releases the pages for hand-editing or a successor declaration.
+        cur.execute("DELETE FROM model.artifact_targets WHERE artifact_id = %s", (str(artifact_id),))
         append_event(
             conn,
             event_type="MODEL_ARTIFACT_RETIRED",

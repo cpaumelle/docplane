@@ -104,23 +104,30 @@ async function loadWork() {
       api("/api/control-plane/initiatives?limit=200"),
     ]);
     const states = queues.by_state || {};
+    const wip = queues.wip_limit ?? 0;
+    const active = states.ACTIVE ?? 0;
     $("work-cards").innerHTML = [
       ["Inbox", queues.inbox ?? 0],
-      ["Now", states.ACTIVE ?? 0],
+      ["Now", wip ? `${active}/${wip}` : active],
       ["Roadmap", states.BACKLOG ?? 0],
       ["Blocked", states.BLOCKED ?? 0],
       ["Soaking", states.SOAKING ?? 0],
       ["Parked", states.PARKED ?? 0],
+      ["Decisions needed", queues.decisions_needed ?? 0],
       ["Parked review due", queues.parked_review_due ?? 0],
       ["Soak review due", queues.soak_review_due ?? 0],
     ].map(([label, value]) => `<article class="card"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>`).join("");
+    if (wip && active > wip) {
+      $("work-cards").insertAdjacentHTML("beforeend", `<article class="card"><strong>⚠</strong><span>Now exceeds the WIP limit — finish or park before starting more</span></article>`);
+    }
     const open = (initiatives.initiatives || []);
     $("attach-target").innerHTML = `<option value="">Select an initiative…</option>` + open.map((item) => `<option value="${esc(item.initiative_id)}">${esc(item.title)} (${esc(item.work_state)})</option>`).join("");
     $("work-inbox").innerHTML = (inbox.captures || []).length ? inbox.captures.map((item) => `<article class="panel"><strong>${esc(item.kind)}</strong><p>${esc(item.body)}</p><p class="muted">${esc(item.created_at)}</p><div class="actions"><button class="capture-promote" data-id="${esc(item.capture_id)}">Promote</button><button class="capture-attach" data-id="${esc(item.capture_id)}">Attach</button><button class="capture-discard" data-id="${esc(item.capture_id)}">Discard</button></div></article>`).join("") : `<p class="muted">Inbox zero.</p>`;
     document.querySelectorAll(".capture-promote").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "promote").catch((error) => { $("work-inbox").textContent = error.message; })));
     document.querySelectorAll(".capture-attach").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "attach").catch((error) => { $("work-inbox").textContent = error.message; })));
     document.querySelectorAll(".capture-discard").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "discard").catch((error) => { $("work-inbox").textContent = error.message; })));
-    $("work-initiatives").innerHTML = open.length ? open.map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">${esc(item.initiative_key)} · ${esc(item.work_state)} · ${esc(item.priority)}</p><p>${esc(item.objective || "")}</p></article>`).join("") : `<p class="muted">No open initiatives.</p>`;
+    const recent = (queues.recently_completed || []).map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">completed ${esc(item.completed_at)}</p></article>`).join("");
+    $("work-initiatives").innerHTML = (open.length ? open.map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">${esc(item.initiative_key)} · ${esc(item.work_state)} · ${esc(item.priority)}</p><p>${esc(item.objective || "")}</p></article>`).join("") : `<p class="muted">No open initiatives.</p>`) + (recent ? `<h2>Recently completed</h2>${recent}` : "");
   } catch (error) {
     $("work-inbox").textContent = error.message;
   }

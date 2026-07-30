@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -13,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
+from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.work_models import (
     ActivityCreate,
     CaptureAttach,
@@ -279,7 +281,11 @@ def transition_initiative(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "initiative-transition", "initiative_id": str(initiative_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "INITIATIVE_TRANSITION", digest)
+        if replayed is not None:
+            return replayed
         initiative = _load(conn, initiative_id, for_update=True)
         if initiative["version"] != request.expected_version:
             raise HTTPException(status_code=409, detail={"code": "INITIATIVE_VERSION_STALE", "current": initiative["version"]})
@@ -302,7 +308,16 @@ def transition_initiative(
             if gate:
                 raise HTTPException(status_code=409, detail={"code": "WORK_SOAK_REQUIRES_OBSERVABILITY", "missing": gate})
         if request.work_state == "COMPLETE":
-            gate = closure_gate_errors(initiative["promotion_state"], model_disposition, model_note, observe_disposition, observe_note)
+            cur.execute(
+                "SELECT resource_type FROM work.initiative_links WHERE initiative_id = %s AND resource_type IN ('MODEL_ENTITY', 'ARTIFACT', 'OBSERVATION')",
+                (str(initiative_id),),
+            )
+            evidence_types = {row[0] for row in cur.fetchall()}
+            gate = closure_gate_errors(
+                initiative["promotion_state"], model_disposition, model_note, observe_disposition, observe_note,
+                has_model_evidence=bool(evidence_types & {"MODEL_ENTITY", "ARTIFACT"}),
+                has_observe_evidence="OBSERVATION" in evidence_types,
+            )
             if gate:
                 raise HTTPException(status_code=409, detail={"code": "WORK_CLOSURE_DISPOSITIONS_INCOMPLETE", "missing": gate})
         completed_at = datetime.now(timezone.utc) if request.work_state in {"COMPLETE", "ABANDONED"} else None
@@ -374,8 +389,10 @@ def transition_initiative(
             resource_id=str(initiative_id),
             metadata={"from": initiative["work_state"], "to": request.work_state},
         )
+        response = _load(conn, initiative_id)
+        save_receipt(conn, principal, key, "INITIATIVE_TRANSITION", str(initiative_id), digest, response)
         conn.commit()
-        return _load(conn, initiative_id)
+        return response
 
 
 @router.post("/api/v1/initiatives/{initiative_id}/activities", status_code=201)
@@ -406,6 +423,32 @@ def add_activity(
     return {"activity_id": row[0], "initiative_id": str(initiative_id), "created_at": row[1], **request.model_dump(mode="json")}
 
 
+_LINK_RESOLVERS = {
+    "PAGE": "SELECT 1 FROM docs.pages WHERE resource_id::text = %s",
+    "INITIATIVE": "SELECT 1 FROM work.initiatives WHERE initiative_id::text = %s",
+    "CHANGE": "SELECT 1 FROM docs.changes WHERE change_id::text = %s",
+    "MODEL_ENTITY": "SELECT 1 FROM model.entities WHERE entity_id::text = %s",
+    "ARTIFACT": "SELECT 1 FROM model.generated_artifacts WHERE artifact_id::text = %s",
+    "OBSERVATION": "SELECT 1 FROM observe.observations WHERE observation_id::text = %s",
+}
+
+
+def _resolve_link_resource(conn, resource_type: str, resource_id: str) -> None:
+    """Typed links are evidence, so they must resolve: every typed resource
+    is existence-checked at creation. CATALOG and EXTERNAL stay free-form."""
+    query = _LINK_RESOLVERS.get(resource_type)
+    if query is None:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute(query, (resource_id,))
+    except Exception:
+        conn.rollback()
+        raise HTTPException(status_code=422, detail={"code": "LINK_RESOURCE_ID_INVALID", "resource_type": resource_type})
+    if cur.fetchone() is None:
+        raise HTTPException(status_code=404, detail={"code": "LINK_RESOURCE_NOT_FOUND", "resource_type": resource_type, "resource_id": resource_id})
+
+
 @router.post("/api/v1/initiatives/{initiative_id}/links", status_code=201)
 def add_link(
     initiative_id: UUID,
@@ -414,6 +457,7 @@ def add_link(
 ) -> dict[str, Any]:
     with get_conn() as conn:
         _load(conn, initiative_id)
+        _resolve_link_resource(conn, request.resource_type, request.resource_id)
         cur = conn.cursor()
         cur.execute(
             """
@@ -508,7 +552,28 @@ def work_queues(principal: Principal = Depends(require_contributor)) -> dict[str
         soak_due = int(cur.fetchone()[0])
         cur.execute("SELECT count(*) FROM work.captures WHERE status = 'INBOX'")
         inbox = int(cur.fetchone()[0])
-    return {"by_state": by_state, "by_priority": by_priority, "parked_review_due": parked_due, "soak_review_due": soak_due, "inbox": inbox}
+        cur.execute(
+            """
+            SELECT count(DISTINCT a.initiative_id) FROM work.initiative_activities a
+              JOIN work.initiatives i ON i.initiative_id = a.initiative_id
+             WHERE a.activity_type = 'DECISION_REQUIRED'
+               AND i.work_state NOT IN ('COMPLETE', 'ABANDONED')
+               AND NOT EXISTS (
+                    SELECT 1 FROM work.initiative_activities r
+                     WHERE r.initiative_id = a.initiative_id
+                       AND r.activity_type = 'RESOLUTION' AND r.created_at > a.created_at)
+            """
+        )
+        decisions_needed = int(cur.fetchone()[0])
+        cur.execute("SELECT initiative_id::text, initiative_key, title, completed_at FROM work.initiatives WHERE work_state = 'COMPLETE' ORDER BY completed_at DESC NULLS LAST LIMIT 8")
+        recently_completed = [dict(zip(("initiative_id", "initiative_key", "title", "completed_at"), row)) for row in cur.fetchall()]
+    return {
+        "by_state": by_state, "by_priority": by_priority,
+        "parked_review_due": parked_due, "soak_review_due": soak_due,
+        "inbox": inbox, "decisions_needed": decisions_needed,
+        "recently_completed": recently_completed,
+        "wip_limit": int(os.environ.get("DOCPLANE_WIP_LIMIT", "5")),
+    }
 
 
 _CAPTURE_COLUMNS = (
@@ -556,7 +621,11 @@ def create_capture(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "capture-create", **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "CAPTURE_CREATE", digest)
+        if replayed is not None:
+            return replayed
         cur = conn.cursor()
         cur.execute(
             """
@@ -570,6 +639,7 @@ def create_capture(
         )
         capture_id = cur.fetchone()[0]
         response = _load_capture(conn, capture_id)
+        save_receipt(conn, principal, key, "CAPTURE_CREATE", str(capture_id), digest, response)
         append_event(
             conn,
             event_type="CAPTURE_CREATED",
@@ -615,7 +685,11 @@ def promote_capture(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "capture-promote", "capture_id": str(capture_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "CAPTURE_PROMOTE", digest)
+        if replayed is not None:
+            return replayed
         capture = _load_capture(conn, capture_id, for_update=True)
         _require_inbox(capture)
         cur = conn.cursor()
@@ -663,8 +737,10 @@ def promote_capture(
             resource_id=str(capture_id),
             metadata={"disposition": "PROMOTED", "initiative_id": str(initiative_id)},
         )
+        response = {"capture": _load_capture(conn, capture_id), "initiative": _load(conn, initiative_id)}
+        save_receipt(conn, principal, key, "CAPTURE_PROMOTE", str(capture_id), digest, response)
         conn.commit()
-        return {"capture": _load_capture(conn, capture_id), "initiative": _load(conn, initiative_id)}
+        return response
 
 
 @router.post("/api/v1/work/captures/{capture_id}/attach")
@@ -675,7 +751,11 @@ def attach_capture(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "capture-attach", "capture_id": str(capture_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "CAPTURE_ATTACH", digest)
+        if replayed is not None:
+            return replayed
         capture = _load_capture(conn, capture_id, for_update=True)
         _require_inbox(capture)
         initiative = _load(conn, request.initiative_id)
@@ -708,8 +788,10 @@ def attach_capture(
             resource_id=str(capture_id),
             metadata={"disposition": "ATTACHED", "initiative_id": str(request.initiative_id)},
         )
+        response = {"capture": _load_capture(conn, capture_id), "activity_id": str(activity_id)}
+        save_receipt(conn, principal, key, "CAPTURE_ATTACH", str(capture_id), digest, response)
         conn.commit()
-        return {"capture": _load_capture(conn, capture_id), "activity_id": str(activity_id)}
+        return response
 
 
 @router.post("/api/v1/work/captures/{capture_id}/discard")
@@ -720,7 +802,11 @@ def discard_capture(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "capture-discard", "capture_id": str(capture_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "CAPTURE_DISCARD", digest)
+        if replayed is not None:
+            return replayed
         capture = _load_capture(conn, capture_id, for_update=True)
         _require_inbox(capture)
         cur = conn.cursor()
@@ -740,5 +826,7 @@ def discard_capture(
             resource_id=str(capture_id),
             metadata={"disposition": "DISCARDED"},
         )
+        response = {"capture": _load_capture(conn, capture_id)}
+        save_receipt(conn, principal, key, "CAPTURE_DISCARD", str(capture_id), digest, response)
         conn.commit()
-        return {"capture": _load_capture(conn, capture_id)}
+        return response

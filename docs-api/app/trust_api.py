@@ -70,8 +70,8 @@ def _view(conn, page_id: str) -> dict[str, Any]:
     cur = conn.cursor()
     cur.execute("SELECT verification_id::text, page_revision, verifier_principal_id::text, verification_state, verified_at, expires_at, notes FROM docs.page_verifications WHERE page_resource_id = %s ORDER BY verified_at DESC LIMIT 50", (page_id,))
     verifications = [dict(zip(("verification_id", "page_revision", "verifier_principal_id", "verification_state", "verified_at", "expires_at", "notes"), row)) for row in cur.fetchall()]
-    cur.execute("SELECT metadata_version, workspace_id::text, publication_state, knowledge_class, verification_state, owner_principal_id::text, review_due_at, criticality, metadata_review_required, changed_by_principal_id::text, change_reason, recorded_at FROM docs.page_metadata_history WHERE page_resource_id = %s ORDER BY metadata_version DESC, recorded_at DESC LIMIT 50", (page_id,))
-    history = [dict(zip(("metadata_version", "workspace_id", "publication_state", "knowledge_class", "verification_state", "owner_principal_id", "review_due_at", "criticality", "metadata_review_required", "changed_by_principal_id", "change_reason", "recorded_at"), row)) for row in cur.fetchall()]
+    cur.execute("SELECT metadata_version, workspace_id::text, publication_state, knowledge_class, verification_state, owner_principal_id::text, review_due_at, criticality, metadata_review_required, provenance, changed_by_principal_id::text, change_reason, recorded_at FROM docs.page_metadata_history WHERE page_resource_id = %s ORDER BY metadata_version DESC, recorded_at DESC LIMIT 50", (page_id,))
+    history = [dict(zip(("metadata_version", "workspace_id", "publication_state", "knowledge_class", "verification_state", "owner_principal_id", "review_due_at", "criticality", "metadata_review_required", "provenance", "changed_by_principal_id", "change_reason", "recorded_at"), row)) for row in cur.fetchall()]
     return {**page, "verifications": verifications, "metadata_history": history}
 
 

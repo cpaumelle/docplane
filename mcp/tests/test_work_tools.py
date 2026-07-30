@@ -37,7 +37,19 @@ def test_work_tools_register_with_domain_prefix():
         "work_get",
         "work_note",
         "work_transition",
+        "work_promote",
+        "work_dispositions",
+        "work_link",
     }
+
+
+def test_mcp_callers_can_supply_replayable_idempotency_keys():
+    mcp = RecordingMCP()
+    work_tools.register(mcp)
+    import inspect
+
+    for tool in ("work_capture", "work_transition"):
+        assert "idempotency_key" in inspect.signature(mcp.tools[tool]).parameters
 
 
 def test_document_tool_names_survive_unchanged():

@@ -218,11 +218,19 @@ def generated_guard_error(provenance: str | None, declared_by: str | None, actin
     }
 
 
-def _declaring_artifact_principal(conn, path: str) -> str | None:
+def _declaring_artifact_principal(conn, page_resource_id: str) -> str | None:
+    """Ownership binds to the stable page identity: at most one active
+    declaration can target a page (UNIQUE on model.artifact_targets), so
+    this is deterministic and survives page moves."""
     cur = conn.cursor()
     cur.execute(
-        "SELECT declared_by::text FROM model.generated_artifacts WHERE status = 'DECLARED' AND target_page_paths ? %s LIMIT 1",
-        (path,),
+        """
+        SELECT a.declared_by::text
+          FROM model.artifact_targets t
+          JOIN model.generated_artifacts a ON a.artifact_id = t.artifact_id
+         WHERE t.page_resource_id = %s AND a.status = 'DECLARED'
+        """,
+        (page_resource_id,),
     )
     row = cur.fetchone()
     return row[0] if row else None
@@ -283,7 +291,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     }
                 )
             elif page.get("provenance") == "GENERATED":
-                guard = generated_guard_error(page["provenance"], _declaring_artifact_principal(conn, page["path"]), acting_principal_id)
+                guard = generated_guard_error(page["provenance"], _declaring_artifact_principal(conn, page["resource_id"]), acting_principal_id)
                 if guard is not None:
                     if acting_principal_id is None:
                         # Validation dry-run: surface the constraint; enforcement

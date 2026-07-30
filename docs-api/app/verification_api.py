@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
+from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 
 router = APIRouter(tags=["verification-v1", "maintenance-v1"])
 
@@ -58,11 +59,17 @@ class VerificationRequestCreate(BaseModel):
         return self
 
 
+class PageOutcome(BaseModel):
+    resource_id: UUID
+    outcome: Literal["VERIFIED", "CORRECTED", "INCONCLUSIVE"]
+
+
 class VerificationRequestComplete(BaseModel):
     outcome: Literal["VERIFIED", "CORRECTED", "MIXED", "INCONCLUSIVE"]
     summary: str = Field(min_length=1, max_length=4000)
     verification_ids: list[UUID] = Field(default_factory=list, max_length=200)
     change_ids: list[UUID] = Field(default_factory=list, max_length=200)
+    per_page: list[PageOutcome] = Field(default_factory=list, max_length=200)
 
 
 _BRIEFING_PAGE_KEYS = ("resource_id", "path", "title", "revision", "verification_state", "criticality", "provenance")
@@ -91,9 +98,16 @@ def _briefing(conn, request: VerificationRequestCreate) -> dict[str, Any]:
     rows = cur.fetchall()
     if not rows:
         raise HTTPException(status_code=404, detail={"code": "VERIFICATION_SCOPE_EMPTY"})
-    truncated = len(rows) > 200
+    if len(rows) > 200:
+        # Never silently truncate a verification scope: an incomplete
+        # briefing would let completion claim coverage it does not have.
+        raise HTTPException(status_code=422, detail={
+            "code": "VERIFICATION_SCOPE_TOO_LARGE",
+            "limit": 200,
+            "remedy": "Split the scope into narrower path prefixes and mint one request per slice.",
+        })
     pages = []
-    for row in rows[:200]:
+    for row in rows:
         page = dict(zip(_BRIEFING_PAGE_KEYS, row))
         page["correction_policy"] = correction_policy(page["criticality"])
         cur.execute(
@@ -109,7 +123,6 @@ def _briefing(conn, request: VerificationRequestCreate) -> dict[str, Any]:
     return {
         "pages": pages,
         "page_count": len(pages),
-        "truncated": truncated,
         "result_contract": {
             "verify": "POST /api/v1/pages/{resource_id}/verify with the exact revision checked and evidence (commands run, values seen) in notes",
             "correct": "normal change contract; delivery per each page's correction_policy",
@@ -169,7 +182,7 @@ def mint_ripple_request(conn, entity: dict[str, Any], principal: Principal) -> s
         INSERT INTO docs.verification_requests
             (entity_id, reason, note, briefing, requested_by, idempotency_key)
         VALUES (%s, 'RIPPLE', %s, %s, %s, %s)
-        ON CONFLICT (entity_id) WHERE status = 'OPEN' AND reason = 'RIPPLE' DO NOTHING
+        ON CONFLICT (entity_id) WHERE status IN ('OPEN', 'CLAIMED') AND reason = 'RIPPLE' DO NOTHING
         RETURNING request_id::text
         """,
         (entity["entity_id"], create.note, _json(briefing), principal.principal_id, f"ripple:{entity['entity_id']}:{entity['version']}"),
@@ -185,7 +198,11 @@ def create_verification_request(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "verification-request-create", **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "VERIFICATION_REQUEST_CREATE", digest)
+        if replayed is not None:
+            return replayed
         briefing = _briefing(conn, request)
         cur = conn.cursor()
         cur.execute(
@@ -216,6 +233,7 @@ def create_verification_request(
             resource_id=str(request_id),
             metadata={"reason": "MANUAL", "page_count": briefing["page_count"]},
         )
+        save_receipt(conn, principal, key, "VERIFICATION_REQUEST_CREATE", str(request_id), digest, response)
         conn.commit()
         return response
 
@@ -266,6 +284,72 @@ def claim_verification_request(
         return _load_request(conn, request_id)
 
 
+def _reconcile_completion(conn, briefing: dict[str, Any], request: VerificationRequestComplete) -> list[dict[str, Any]]:
+    """Completion must reconcile every briefing page against real evidence.
+
+    VERIFIED   — each page has a supplied verification receipt bound to the
+                 EXACT revision captured in the briefing, in state VERIFIED.
+    CORRECTED  — supplied changes are PUBLISHED, and each page is either
+                 verified as above or targeted by one of those changes.
+    MIXED      — a per-page outcome covers every page; VERIFIED/CORRECTED
+                 entries reconcile under their respective rules.
+    INCONCLUSIVE — closes with an explanation; implies no verification and
+                 leaves every page's verification state untouched.
+    """
+    pages = briefing.get("pages", [])
+    if request.outcome == "INCONCLUSIVE":
+        return []
+    cur = conn.cursor()
+    verified_pages: dict[str, str] = {}
+    if request.verification_ids:
+        cur.execute(
+            """
+            SELECT page_resource_id::text, page_revision FROM docs.page_verifications
+             WHERE verification_id = ANY(%s::uuid[]) AND verification_state = 'VERIFIED'
+            """,
+            ([str(item) for item in request.verification_ids],),
+        )
+        verified_pages = {row[0]: row[1] for row in cur.fetchall()}
+    corrected_pages: set[str] = set()
+    if request.change_ids:
+        cur.execute(
+            "SELECT change_id::text, status FROM docs.changes WHERE change_id = ANY(%s::uuid[])",
+            ([str(item) for item in request.change_ids],),
+        )
+        statuses = {row[0]: row[1] for row in cur.fetchall()}
+        unpublished = sorted(str(item) for item in request.change_ids if statuses.get(str(item)) != "PUBLISHED")
+        if unpublished:
+            return [{"code": "CHANGE_NOT_PUBLISHED", "change_ids": unpublished}]
+        cur.execute(
+            "SELECT DISTINCT page_resource_id::text FROM docs.change_operations WHERE change_id = ANY(%s::uuid[]) AND page_resource_id IS NOT NULL",
+            ([str(item) for item in request.change_ids],),
+        )
+        corrected_pages = {row[0] for row in cur.fetchall()}
+
+    def verified_ok(page: dict[str, Any]) -> bool:
+        return verified_pages.get(page["resource_id"]) == page["revision"]
+
+    per_page = {str(item.resource_id): item.outcome for item in request.per_page}
+    unresolved: list[dict[str, Any]] = []
+    for page in pages:
+        rid = page["resource_id"]
+        if request.outcome == "VERIFIED":
+            if not verified_ok(page):
+                unresolved.append({"resource_id": rid, "path": page["path"], "code": "VERIFICATION_RECEIPT_MISSING_OR_STALE", "expected_revision": page["revision"]})
+        elif request.outcome == "CORRECTED":
+            if not verified_ok(page) and rid not in corrected_pages:
+                unresolved.append({"resource_id": rid, "path": page["path"], "code": "CORRECTION_COVERAGE_MISSING"})
+        else:  # MIXED
+            outcome = per_page.get(rid)
+            if outcome is None:
+                unresolved.append({"resource_id": rid, "path": page["path"], "code": "PER_PAGE_OUTCOME_MISSING"})
+            elif outcome == "VERIFIED" and not verified_ok(page):
+                unresolved.append({"resource_id": rid, "path": page["path"], "code": "VERIFICATION_RECEIPT_MISSING_OR_STALE", "expected_revision": page["revision"]})
+            elif outcome == "CORRECTED" and rid not in corrected_pages:
+                unresolved.append({"resource_id": rid, "path": page["path"], "code": "CORRECTION_COVERAGE_MISSING"})
+    return unresolved
+
+
 @router.post("/api/v1/verification-requests/{request_id}/complete")
 def complete_verification_request(
     request_id: UUID,
@@ -274,17 +358,31 @@ def complete_verification_request(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "verification-request-complete", "request_id": str(request_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "VERIFICATION_REQUEST_COMPLETE", digest)
+        if replayed is not None:
+            return replayed
         value = _load_request(conn, request_id, for_update=True)
         if value["status"] == "COMPLETED":
             return value
         if value["status"] not in {"OPEN", "CLAIMED"}:
             raise HTTPException(status_code=409, detail={"code": "VERIFICATION_REQUEST_NOT_OPEN", "status": value["status"]})
+        if value["status"] == "CLAIMED" and value["claimed_by"] != str(principal.principal_id):
+            raise HTTPException(status_code=409, detail={"code": "VERIFICATION_REQUEST_CLAIMED_BY_OTHER", "claimed_by": value["claimed_by"]})
+        unresolved = _reconcile_completion(conn, value["briefing"], request)
+        if unresolved:
+            raise HTTPException(status_code=422, detail={
+                "code": "VERIFICATION_COMPLETION_UNRECONCILED",
+                "unresolved": unresolved,
+                "remedy": "Every briefing page needs revision-exact verification receipts (VERIFIED), applicable published changes (CORRECTED), or a per-page outcome (MIXED). INCONCLUSIVE closes with an explanation and implies no verification.",
+            })
         resolution = {
             "outcome": request.outcome,
             "summary": request.summary,
             "verification_ids": [str(item) for item in request.verification_ids],
             "change_ids": [str(item) for item in request.change_ids],
+            "per_page": [item.model_dump(mode="json") for item in request.per_page],
             "completed_by": str(principal.principal_id),
         }
         cur = conn.cursor()
@@ -303,8 +401,10 @@ def complete_verification_request(
             resource_id=str(request_id),
             metadata={"outcome": request.outcome, "verifications": len(request.verification_ids), "changes": len(request.change_ids)},
         )
+        response = _load_request(conn, request_id)
+        save_receipt(conn, principal, key, "VERIFICATION_REQUEST_COMPLETE", str(request_id), digest, response)
         conn.commit()
-        return _load_request(conn, request_id)
+        return response
 
 
 @router.post("/api/v1/verification-requests/{request_id}/cancel")

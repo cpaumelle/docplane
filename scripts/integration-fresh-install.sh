@@ -62,6 +62,10 @@ compose down -v --remove-orphans >/dev/null 2>&1 || true
 compose up --build -d postgres docs-api dashboard docs-web >/dev/null
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS "$API/healthz" >/dev/null || fail "docs-api never became healthy"
+# docs-web reports "Started" before nginx accepts connections; wait for the
+# routed front the same way the API is waited for, or step 2 races it.
+for _ in $(seq 1 30); do curl -fsSI "$FRONT/healthz" >/dev/null 2>&1 && break; sleep 1; done
+curl -fsSI "$FRONT/healthz" >/dev/null || fail "routed front never became reachable"
 
 log "2. routed HEAD and Link discovery work before any credential exists"
 HEADERS=$(mktemp)

@@ -149,10 +149,16 @@ def closure_gate_errors(
     model_note: str | None,
     observe_disposition: str | None,
     observe_note: str | None,
+    *,
+    has_model_evidence: bool = False,
+    has_observe_evidence: bool = False,
 ) -> list[dict[str, str]]:
     """The keystone gate, as a pure function: finishing an initiative must
-    answer one disposition per durable domain. Structured and machine-readable
-    so a blocked agent learns exactly what is missing."""
+    answer one disposition per durable domain — and UPDATED is evidence-bound,
+    not honor-system: it requires a resolvable typed link to what changed.
+    (know=UPDATED is evidence-bound already: PROMOTED carries a real change id
+    enforced by foreign key.) Structured and machine-readable so a blocked
+    agent learns exactly what is missing."""
     missing: list[dict[str, str]] = []
     if promotion_state not in {"PROMOTED", "NOT_REQUIRED"}:
         missing.append({
@@ -161,12 +167,24 @@ def closure_gate_errors(
             "current": promotion_state,
             "remedy": "PUT /api/v1/initiatives/{id}/promotion with PROMOTED (and the change id) or NOT_REQUIRED.",
         })
+    evidence = {"model": has_model_evidence, "observe": has_observe_evidence}
+    evidence_remedy = {
+        "model": "Add an initiative link with resource_type MODEL_ENTITY or ARTIFACT referencing what changed (links are existence-checked).",
+        "observe": "Add an initiative link with resource_type OBSERVATION referencing the recorded evidence (links are existence-checked).",
+    }
     for domain, disposition, note in (("model", model_disposition, model_note), ("observe", observe_disposition, observe_note)):
         if disposition is None:
             missing.append({
                 "domain": domain,
                 "code": "DISPOSITION_UNANSWERED",
                 "remedy": f"Set {domain}_disposition to UPDATED, NOT_REQUIRED or DEFERRED via PUT /api/v1/initiatives/{{id}}/dispositions or on the COMPLETE transition.",
+            })
+        elif disposition == "UPDATED" and not evidence[domain]:
+            missing.append({
+                "domain": domain,
+                "code": "DISPOSITION_EVIDENCE_REQUIRED",
+                "current": disposition,
+                "remedy": evidence_remedy[domain],
             })
         elif disposition in {"NOT_REQUIRED", "DEFERRED"} and not (note or "").strip():
             missing.append({

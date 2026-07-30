@@ -50,13 +50,20 @@ def test_dispositions_route_exists_and_prior_surfaces_survive():
 
 
 def test_closure_gate_requires_one_disposition_per_durable_domain():
-    # Fully answered: promoted knowledge, both dispositions with valid shapes.
-    assert closure_gate_errors("PROMOTED", "UPDATED", None, "NOT_REQUIRED", "no runtime surface") == []
-    assert closure_gate_errors("NOT_REQUIRED", "DEFERRED", "cards next sprint", "UPDATED", None) == []
+    # Fully answered: promoted knowledge, UPDATED carries resolvable evidence,
+    # opt-outs carry notes.
+    assert closure_gate_errors("PROMOTED", "UPDATED", None, "NOT_REQUIRED", "no runtime surface", has_model_evidence=True) == []
+    assert closure_gate_errors("NOT_REQUIRED", "DEFERRED", "cards next sprint", "UPDATED", None, has_observe_evidence=True) == []
     # Nothing answered: one structured refusal per domain, machine-readable.
     missing = closure_gate_errors("NOT_READY", None, None, None, None)
     assert {item["domain"] for item in missing} == {"know", "model", "observe"}
     assert all("remedy" in item for item in missing)
+    # UPDATED is evidence-bound, never honor-system.
+    hollow = closure_gate_errors("PROMOTED", "UPDATED", None, "UPDATED", None)
+    assert {(item["domain"], item["code"]) for item in hollow} == {
+        ("model", "DISPOSITION_EVIDENCE_REQUIRED"),
+        ("observe", "DISPOSITION_EVIDENCE_REQUIRED"),
+    }
     # NOT_REQUIRED and DEFERRED demand a note — honest opt-outs carry reasons.
     noteless = closure_gate_errors("PROMOTED", "NOT_REQUIRED", "  ", "DEFERRED", None)
     assert {(item["domain"], item["code"]) for item in noteless} == {

@@ -15,10 +15,19 @@ from uuid import UUID
 import psycopg2.extras
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
+from datetime import datetime, timedelta, timezone
+
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
+from app.model_contracts import secret_findings
+from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.observe_models import ObservationBatch
+
+# Evidence payloads (command output, config fragments) are exactly where
+# secrets leak; the same fail-closed policy as model attributes applies.
+# Clock skew: a future-dated observation must not dominate the projection.
+_MAX_FUTURE_SKEW = timedelta(minutes=5)
 
 router = APIRouter(tags=["observe-v1"])
 
@@ -87,7 +96,21 @@ def record_observations(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "observations-record", "observations": [item.model_dump(mode="json") for item in request.observations]})
+    horizon = datetime.now(timezone.utc) + _MAX_FUTURE_SKEW
+    item_errors: list[dict[str, Any]] = []
+    for index, item in enumerate(request.observations):
+        if item.observed_at is not None and item.observed_at > horizon:
+            item_errors.append({"index": index, "code": "OBSERVATION_FROM_THE_FUTURE", "observed_at": item.observed_at.isoformat()})
+        findings = secret_findings(item.payload)
+        if findings:
+            item_errors.append({"index": index, "code": "OBSERVATION_PAYLOAD_SECRET_SHAPED", "findings": findings})
+    if item_errors:
+        raise HTTPException(status_code=422, detail={"code": "OBSERVATION_BATCH_REJECTED", "errors": item_errors})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "OBSERVATIONS_RECORD", digest)
+        if replayed is not None:
+            return replayed
         cur = conn.cursor()
         entity_ids = {str(item.subject_entity_id) for item in request.observations if item.subject_entity_id}
         artifact_ids = {str(item.subject_artifact_id) for item in request.observations if item.subject_artifact_id}
@@ -163,8 +186,10 @@ def record_observations(
             resource_id=key,
             metadata={"count": len(recorded)},
         )
+        response = {"recorded": recorded, "count": len(recorded)}
+        save_receipt(conn, principal, key, "OBSERVATIONS_RECORD", key, digest, response)
         conn.commit()
-    return {"recorded": recorded, "count": len(recorded)}
+    return response
 
 
 @router.get("/api/v1/observations")
@@ -220,10 +245,14 @@ def _current_status(cur, *, entity_id: str | None = None, artifact_id: str | Non
 
 
 def _latest_source_fingerprint(cur, entity_id: str) -> str | None:
+    """FRESHNESS_CHECK is the ONE authoritative kind for source state: a
+    TEST or SOAK_READING carrying an incidental fingerprint must never
+    redefine whether generated artifacts appear fresh."""
     cur.execute(
         """
         SELECT source_fingerprint FROM observe.observations
-         WHERE subject_entity_id = %s AND source_fingerprint IS NOT NULL
+         WHERE subject_entity_id = %s AND observation_kind = 'FRESHNESS_CHECK'
+           AND source_fingerprint IS NOT NULL
          ORDER BY observed_at DESC, seq DESC LIMIT 1
         """,
         (entity_id,),
