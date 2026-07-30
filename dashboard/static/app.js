@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const VIEWS = new Set(["overview", "work", "authoring", "reorganisation", "history"]);
+const VIEWS = new Set(["overview", "work", "freshness", "authoring", "reorganisation", "history"]);
 let token = sessionStorage.getItem("docplane-token") || "";
 let selectedPlan = null;
 
@@ -25,6 +25,7 @@ function activate(name) {
   document.querySelector(`.nav[data-view="${view}"]`)?.classList.add("active");
   if (view === "overview") loadOverview();
   if (view === "work") loadWork();
+  if (view === "freshness") loadFreshness();
   if (view === "reorganisation") loadReorganisation();
   if (view === "history") loadHistory();
 }
@@ -68,6 +69,7 @@ async function connect() {
   $("identity").textContent = `${capability.principal.display_name} · ${capability.principal.role}`;
   $("retry-publication").disabled = false;
   $("capture-save").disabled = false;
+  $("verify-section").disabled = false;
   document.dispatchEvent(new CustomEvent("docplane:connected"));
   await loadOverview();
 }
@@ -143,6 +145,26 @@ async function triageCapture(id, action) {
   await loadWork();
 }
 
+async function loadFreshness() {
+  if (!token) return;
+  try {
+    const [freshness, requests] = await Promise.all([
+      api("/api/control-plane/maintenance/freshness?limit=200"),
+      api("/api/control-plane/verification-requests?status=OPEN"),
+    ]);
+    $("verification-requests").innerHTML = (requests.requests || []).length ? requests.requests.map((item) => `<article class="panel"><strong>${esc(item.reason)}</strong><p>${esc(item.note || item.path_prefix || item.page_resource_id || item.entity_id)}</p><p class="muted">${esc(item.requested_at)} · ${esc((item.briefing || {}).page_count ?? "?")} page(s)</p></article>`).join("") : `<p class="muted">No open requests.</p>`;
+    $("freshness-table").innerHTML = (freshness.pages || []).length ? freshness.pages.map((page) => `<article class="panel"><strong>${esc(page.path)}</strong><p class="muted">${esc(page.section)} · ${esc(page.verification_state)} · ${esc(page.criticality)}${page.provenance === "GENERATED" ? " · GENERATED" : ""}</p><p class="muted">updated ${esc(page.updated_at)} · last verified ${esc(page.last_verified_at || "never")}</p><div class="actions"><button class="verify-page" data-id="${esc(page.resource_id)}" data-path="${esc(page.path)}">Verify against fabric</button></div></article>`).join("") : `<p class="muted">No active pages.</p>`;
+    document.querySelectorAll(".verify-page").forEach((button) => button.addEventListener("click", () => requestVerification({ page_resource_id: button.dataset.id }, button.dataset.path).catch((error) => { $("freshness-table").textContent = error.message; })));
+  } catch (error) {
+    $("freshness-table").textContent = error.message;
+  }
+}
+
+async function requestVerification(scope, label) {
+  await api("/api/control-plane/verification-requests", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("verify") }, body: JSON.stringify({ ...scope, note: `Requested from the freshness table: ${label}` }) });
+  await loadFreshness();
+}
+
 async function loadHistory() {
   if (!token) return;
   try {
@@ -190,6 +212,12 @@ $("connect").addEventListener("click", () => connect().catch((error) => $("ident
 document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
 $("refresh-overview").addEventListener("click", loadOverview);
 $("refresh-work").addEventListener("click", loadWork);
+$("refresh-freshness").addEventListener("click", loadFreshness);
+$("verify-section").addEventListener("click", () => {
+  const prefix = $("verify-prefix").value.trim().replace(/\/+$/, "");
+  if (!prefix) return;
+  requestVerification({ path_prefix: prefix }, prefix).catch((error) => { $("verification-requests").textContent = error.message; });
+});
 $("capture-save").addEventListener("click", () => saveCapture().catch((error) => { $("work-inbox").textContent = error.message; }));
 $("refresh-history").addEventListener("click", loadHistory);
 $("refresh-reorganisation").addEventListener("click", loadReorganisation);

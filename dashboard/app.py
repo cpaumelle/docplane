@@ -184,6 +184,56 @@ def list_initiatives(
         _raise(exc)
 
 
+@app.get("/api/control-plane/maintenance/freshness")
+def maintenance_freshness(
+    limit: int = Query(default=200, ge=1, le=1000),
+    authorization: str | None = Header(default=None),
+) -> Any:
+    try:
+        return client.get("/api/v1/maintenance/freshness", authorization=_auth(authorization), params={"limit": limit})
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/verification-requests")
+def list_verification_requests(
+    status: str = "OPEN",
+    authorization: str | None = Header(default=None),
+) -> Any:
+    try:
+        return client.get("/api/v1/verification-requests", authorization=_auth(authorization), params={"status": status})
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/verification-requests", status_code=201)
+def create_verification_request(
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    try:
+        return client.post("/api/v1/verification-requests", authorization=_auth(authorization), idempotency_key=idempotency_key, json_body=body)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/verification-requests/{request_id}/{action}")
+def verification_request_action(
+    request_id: UUID,
+    action: str,
+    body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    if action not in {"claim", "complete", "cancel"}:
+        raise HTTPException(status_code=404, detail={"code": "ACTION_NOT_FOUND"})
+    try:
+        return client.post(f"/api/v1/verification-requests/{request_id}/{action}", authorization=_auth(authorization), idempotency_key=idempotency_key, json_body=body)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
 @app.get("/api/control-plane/reorganisation/tree")
 def reorganisation_tree(authorization: str | None = Header(default=None)) -> Any:
     try:

@@ -24,6 +24,7 @@
     <nav class="sidebar" data-product-aria="modules" aria-label="DocPlane modules">
       <button class="nav active" data-view="overview">Overview</button>
       <button class="nav" data-view="work">Work</button>
+      <button class="nav" data-view="freshness">Freshness</button>
       <button class="nav" data-view="authoring">Authoring</button>
       <button class="nav" data-view="reorganisation">Reorganisation</button>
       <button class="nav" data-view="history">Changes & versions</button>
@@ -55,6 +56,19 @@
           </article>
         </div>
         <article class="panel"><h2>Initiatives</h2><div id="work-initiatives" class="list muted">Connect to load.</div></article>
+      </section>
+
+      <section id="view-freshness" class="view">
+        <div class="heading"><div><h1>Freshness</h1><p>Least-recently-verified pages first. Verification is on demand — no cron re-checks facts that rarely change.</p></div><button id="refresh-freshness">Refresh</button></div>
+        <div class="grid two">
+          <article class="panel">
+            <h2>Verify a section</h2>
+            <label>Path prefix<input id="verify-prefix" placeholder="operations/proxmox"></label>
+            <button id="verify-section" disabled>Request fabric verification</button>
+          </article>
+          <article class="panel"><h2>Open verification requests</h2><div id="verification-requests" class="list muted">Connect to load.</div></article>
+        </div>
+        <article class="panel"><h2>Pages by staleness</h2><div id="freshness-table" class="list muted">Connect to load.</div></article>
       </section>
 
       <section id="view-authoring" class="view">

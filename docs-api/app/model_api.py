@@ -225,6 +225,12 @@ def update_entity(
                 str(entity_id), request.expected_version,
             ),
         )
+        if request.attributes is not None and request.attributes != entity["attributes"]:
+            # Graph ripple: reality moved, so prose describing this entity
+            # becomes a verification candidate (deduplicated per entity).
+            from app.verification_api import mint_ripple_request
+
+            mint_ripple_request(conn, {**entity, "version": entity["version"] + 1}, principal)
         append_event(
             conn,
             event_type="MODEL_ENTITY_UPDATED",
