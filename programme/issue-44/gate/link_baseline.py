@@ -45,8 +45,15 @@ def route_status(path):
         capture_output=True, text=True).stdout.strip()
 
 
-def audit(active, bodies):
-    """Every broken internal link. Broken == resolved target is not an active page."""
+def audit(active, bodies, include_protected=True):
+    """Every broken internal link. Broken == resolved target is not an active page.
+
+    include_protected=True is the CURRENT-VALIDITY reading and the default: a
+    link inside a blockquote is still a link a reader can follow, and it still
+    404s. The previous gate defaulted to skipping them, which hid live breaks.
+    Pass include_protected=False only to ask the narrower authoring question of
+    whether a historical quotation was rewritten.
+    """
     out = []
     for src in sorted(bodies):
         md = bodies[src]
@@ -55,12 +62,20 @@ def audit(active, bodies):
         for r in find_links(src, md):
             if not r.resolved or r.resolved in active:
                 continue
-            if any(l in prot for l in range(r.line - 1, r.end_line)):
+            in_prot = any(l in prot for l in range(r.line - 1, r.end_line))
+            in_code = any(s <= r.start and r.end <= e for s, e in spans)
+            # code_is_never_a_link: inline/fenced code does not render as a
+            # hyperlink, so it cannot 404 for a reader and must never be
+            # retargeted -- doing so rewrites the meaning of the prose.
+            if in_code:
                 continue
-            if any(s <= r.start and r.end <= e for s, e in spans):
+            # A blockquote DOES render as a link. Skip it only when explicitly
+            # asked the narrower authoring question.
+            if not include_protected and in_prot:
                 continue
             out.append({"source_path": src, "line": r.line,
-                        "raw_target": r.target, "resolved_target": r.resolved})
+                        "raw_target": r.target, "resolved_target": r.resolved,
+                        "protected": in_prot, "inline_code": in_code})
     return out
 
 
@@ -75,6 +90,20 @@ def check(findings, baseline):
     return new, sorted(stale)
 
 
+def classify(findings, baseline):
+    """Split findings into the categories the release report must keep separate."""
+    by_key = {e["key"]: e for e in baseline["exceptions"]}
+    out = {"owned_baseline": [], "current_broken_unowned": []}
+    for f in findings:
+        e = by_key.get(key(f))
+        if e:
+            out["owned_baseline"].append((f, e))
+        else:
+            out["current_broken_unowned"].append(f)
+    out["stale_exceptions"] = sorted(set(by_key) - {key(f) for f in findings})
+    return out
+
+
 def main():
     token = open(os.path.join(HOME, "i44/move-token")).read().strip()
     c, pg = get(token, "/api/v1/pages?status=all&limit=2000")
@@ -86,26 +115,34 @@ def main():
         c, f = get(token, "/api/v1/pages/%s" % p["resource_id"])
         bodies[path] = f.get("content_markdown") or f.get("content") or ""
 
-    findings = audit(active, bodies)
+    # Concept A: current-corpus validity, protected contexts INCLUDED
+    findings = audit(active, bodies, include_protected=True)
     baseline = json.load(open(BASELINE))
-    new, stale = check(findings, baseline)
+    cls = classify(findings, baseline)
+    new = cls["current_broken_unowned"]
+    stale = cls["stale_exceptions"]
 
-    print("active pages        : %d" % len(active))
-    print("broken targets      : %d" % len(findings))
-    print("owned exceptions    : %d" % len(baseline["exceptions"]))
-    print("NEW unowned breaks  : %d" % len(new))
-    if stale:
-        print("baseline entries no longer breaking (safe to retire): %d" % len(stale))
-        for s in stale:
-            print("   %s" % s)
+    print("active pages                      : %d" % len(active))
+    print("A. current broken targets (all)   : %d" % len(findings))
+    print("   accepted owned baseline        : %d" % len(cls["owned_baseline"]))
+    print("   CURRENT BROKEN, UNOWNED        : %d" % len(new))
+    print("   stale exceptions (now repaired): %d" % len(stale))
+    hidden = [f for f in findings if f["protected"] or f["inline_code"]]
+    print("   of all breaks, in blockquotes  : %d  (counted: they render as links)"
+          % len(hidden))
+    print("   inline/fenced code             : excluded by construction "
+          "(never renders as a link)")
+    for s_ in stale:
+        print("      stale: %s" % s_)
     for f in new:
-        print("  FAIL %s L%d %r -> %s (route %s)"
+        print("   FAIL %s L%d %r -> %s (route %s)"
               % (f["source_path"], f["line"], f["raw_target"],
                  f["resolved_target"], route_status(f["resolved_target"])))
     if new:
-        print("\nGATE FAILED: %d newly introduced broken target(s). Not releasable." % len(new))
+        print("\nGATE FAILED: %d currently broken unowned internal target(s). "
+              "Not releasable." % len(new))
         return 1
-    print("\nGATE PASSED: every broken target is an owned baseline exception.")
+    print("\nGATE PASSED: zero currently broken unowned internal targets; every remaining break is an owned exception.")
     return 0
 
 

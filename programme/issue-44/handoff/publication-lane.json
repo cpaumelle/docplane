@@ -1,9 +1,9 @@
 {
- "certification_version": 127,
+ "certification_version": 132,
  "evidence_commit": "ee97ceab",
  "holder": null,
- "live_snapshot": "2026-07-30T14:08:31Z (pages total=947 active=513, open_changes=0)",
- "notes": "Repair session COMPLETE. 24 references repaired across 5 pages in one bounded publication f18538be (root-absolute, anchors preserved, masking equality proven). Broken targets 34 -> 10. Gate PASSES: 0 new unowned breaks. Baseline is now 10 owned exceptions, not 9: the 10th is a NEW evidence-surface preservation created by the schema-migrations move (operations/w4-1-5c-g1a-evidence.md, compat route 200) - registered as owned rather than repaired, because rewriting an evidence surface falsifies a historical record. Ledger reconciled: 76 moves / 76 unique ids / 32 move-bearing publications. Ordinary moves NOT resumed - API-native publication lease still outstanding.",
- "since": "2026-07-30T14:08:31Z",
+ "live_snapshot": "2026-07-30T14:36:52Z (pages total=948 active=514, open_changes=0)",
+ "notes": "Repair-2 COMPLETE. Gate PASSES: 0 currently broken unowned internal targets. Agent 45 findings resolved: i-transport-hub-1 repaired (both occurrences, plus a third unreported sibling break); i-gen-no-vcs-1 is inline code, not a live hyperlink - my retarget of it falsified a historical quotation and has been reverted. Gate semantics corrected: blockquotes COUNT (they render as links), inline/fenced code NEVER counts. 18 tests. Agent 45 may begin its prepared 13-page topology-invariants publication.",
+ "since": "2026-07-30T14:36:52Z",
  "state": "released"
 }
