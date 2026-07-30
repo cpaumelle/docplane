@@ -101,15 +101,20 @@ def observatory_pages(
     limit: int = Query(default=100, ge=1, le=200),
     after: str | None = None,
     q: str | None = None,
+    path_prefix: str | None = None,
+    depth: str = Query(default="all", pattern="^(direct|all)$"),
     knowledge_class: str | None = None,
     identifier_family: str | None = None,
     archive_state: str | None = Query(default=None, pattern="^(active|archived)$"),
     dated_only: bool = False,
     authorization: str | None = Header(default=None),
 ) -> Any:
-    params: dict[str, Any] = {"limit": limit, "dated_only": dated_only}
+    params: dict[str, Any] = {"limit": limit, "dated_only": dated_only, "depth": depth}
     if after:
         params["after"] = after
+    # path_prefix="" is the corpus root — a meaningful scope, not an omission.
+    if path_prefix is not None:
+        params["path_prefix"] = path_prefix
     for name, value in (
         ("q", q),
         ("knowledge_class", knowledge_class),

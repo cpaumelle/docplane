@@ -104,8 +104,12 @@ document.addEventListener("DOMContentLoaded", function() {
   nav.innerHTML =
     '<span class="navlink navlink--active" title="Browse documentation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v4h4"/></svg>Docs</span>' +
     '<a class="navlink" href="/dashboard/" title="Open the authoring dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</a>';
-  var search = inner.querySelector(".md-header__option, .md-search");
-  if (search) inner.insertBefore(nav, search); else inner.appendChild(nav);
+  // Left cluster, immediately after the brand/title — the SAME position the
+  // dashboard gives it. Surface-specific controls (search here, connection
+  // state there) live on the right, so toggling surfaces never moves the
+  // switcher under the pointer.
+  var title = inner.querySelector(".md-header__title");
+  if (title) title.insertAdjacentElement("afterend", nav); else inner.appendChild(nav);
 });
 </script>
 {% endblock %}

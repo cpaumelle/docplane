@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.agent_api import (
     OBSERVATORY_EXPORT_MAX_BYTES,
     OBSERVATORY_EXPORT_MAX_RESOURCES,
+    _filter_observatory_pages,
     _page,
 )
 from app.corpus_structure import build
@@ -128,3 +129,44 @@ def test_named_after_pagination_is_explicit_and_invalid_cursors_fail_loud():
 def test_export_envelope_is_fixed_and_documented():
     assert OBSERVATORY_EXPORT_MAX_RESOURCES == 5000
     assert OBSERVATORY_EXPORT_MAX_BYTES == 10 * 1024 * 1024
+
+
+def test_path_prefix_drill_down_is_server_authoritative():
+    pages = [
+        page("index.md"),
+        page("operations/index.md"),
+        page("operations/proxmox/runbook.md"),
+        page("operations/proxmox/history.md"),
+        page("operations-security/tls.md"),
+        page("reference/api.md"),
+    ]
+
+    # A prefix scopes to the directory, never to sibling directories that
+    # merely share a string prefix (operations vs operations-security).
+    under = _filter_observatory_pages(pages, path_prefix="operations")
+    assert [item["path"] for item in under] == [
+        "operations/index.md",
+        "operations/proxmox/runbook.md",
+        "operations/proxmox/history.md",
+    ]
+
+    # depth=direct keeps only pages immediately inside the directory — the
+    # dashboard drill-down contract.
+    direct = _filter_observatory_pages(pages, path_prefix="operations", depth="direct")
+    assert [item["path"] for item in direct] == ["operations/index.md"]
+
+    # The corpus root is a meaningful scope: "" + direct is the top level.
+    root_direct = _filter_observatory_pages(pages, path_prefix="", depth="direct")
+    assert [item["path"] for item in root_direct] == ["index.md"]
+    assert len(_filter_observatory_pages(pages, path_prefix="")) == len(pages)
+
+    # Trailing slashes are normalised, and prefix composes with the
+    # governed-metadata filters rather than replacing them.
+    assert _filter_observatory_pages(pages, path_prefix="operations/proxmox/") == \
+        _filter_observatory_pages(pages, path_prefix="operations/proxmox")
+    archived = _filter_observatory_pages(
+        [page("operations/old.md", status="archived"), *pages],
+        path_prefix="operations",
+        archive_state="archived",
+    )
+    assert [item["path"] for item in archived] == ["operations/old.md"]

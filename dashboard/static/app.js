@@ -5,7 +5,9 @@ let selectedPlan = null;
 let authentication = null;
 let observatory = null;
 let exploredPages = [];
+let explorePath = "";
 let pageCursor = null;
+let pageTotal = null;
 let candidateCursor = null;
 let exploreFilterTimer = null;
 
@@ -337,49 +339,91 @@ async function triageCapture(id, action) {
   await loadWork();
 }
 
+function exploreSearchActive() {
+  return Boolean($("explore-query").value.trim());
+}
+
+function renderBreadcrumbs() {
+  const element = $("explore-breadcrumbs");
+  if (exploreSearchActive()) {
+    element.innerHTML = `<span class="crumb crumb--current">Search results</span><button class="crumb-clear" id="explore-clear-search">Clear search</button>`;
+    $("explore-clear-search").addEventListener("click", () => { $("explore-query").value = ""; refreshExploreListing(); });
+    return;
+  }
+  const segments = explorePath ? explorePath.split("/") : [];
+  element.innerHTML = [
+    `<button class="crumb${segments.length ? "" : " crumb--current"}" data-path="">Corpus</button>`,
+    ...segments.map((segment, index) => {
+      const path = segments.slice(0, index + 1).join("/");
+      const last = index === segments.length - 1;
+      return `<span class="crumb-sep">/</span>` + (last
+        ? `<span class="crumb crumb--current">${esc(segment)}</span>`
+        : `<button class="crumb" data-path="${esc(path)}">${esc(segment)}</button>`);
+    }),
+  ].join("");
+  element.querySelectorAll("button.crumb").forEach((button) => button.addEventListener("click", () => {
+    explorePath = button.dataset.path;
+    refreshExploreListing();
+  }));
+}
+
 function renderDirectories() {
-  const rows = observatory?.directories || [];
-  $("explore-directories").innerHTML = rows.length ? rows.map((row) => `
+  if (exploreSearchActive()) {
+    $("explore-directories").innerHTML = `<p class="muted">Search is corpus-wide. Clear it to browse by directory.</p>`;
+    return;
+  }
+  const prefix = explorePath ? `${explorePath}/` : "";
+  const children = (observatory?.directories || []).filter((row) =>
+    row.path.startsWith(prefix) && row.path !== explorePath && !row.path.slice(prefix.length).includes("/"));
+  $("explore-directories").innerHTML = children.length ? children.map((row) => {
+    const pages = row.direct_pages + row.descendant_pages;
+    return `
     <button class="directory" data-path="${esc(row.path)}">
-      <strong>${esc(row.path)}</strong>
-      <span>${esc(row.direct_pages)} direct · ${esc(row.descendant_pages)} descendants · ${esc(row.archived_pages)} archived</span>
-      <span>depth ${esc(row.max_depth)} · ${esc(row.size_bytes)} bytes${row.protected ? " · protected" : ""}</span>
-    </button>`).join("") : `<p class="muted">No directories in this snapshot.</p>`;
-  document.querySelectorAll(".directory").forEach((button) => button.addEventListener("click", () => {
-    $("explore-query").value = button.dataset.path;
-    loadPageBatch(true);
+      <span class="directory__name">${esc(row.path.slice(prefix.length))}</span>
+      <span class="directory__meta">${esc(pages)} page${pages === 1 ? "" : "s"}${row.archived_pages ? ` · ${esc(row.archived_pages)} archived` : ""}${row.protected ? ` · <span class="chip chip--warn">protected</span>` : ""}</span>
+    </button>`;
+  }).join("") : `<p class="muted">No subdirectories here.</p>`;
+  $("explore-directories").querySelectorAll(".directory").forEach((button) => button.addEventListener("click", () => {
+    explorePath = button.dataset.path;
+    refreshExploreListing();
   }));
 }
 
 function renderPages() {
-  const query = $("explore-query").value.trim().toLowerCase();
-  const knowledge = $("explore-class").value;
-  const family = $("explore-family").value;
-  const archive = $("explore-archive").value;
-  const dated = $("explore-dated").checked;
-  const rows = exploredPages.filter((page) =>
-    (!query || `${page.path} ${page.title || ""}`.toLowerCase().includes(query))
-    && (!knowledge || page.knowledge_class === knowledge)
-    && (!family || page.identifier_family === family)
-    && (!archive || page.status === archive)
-    && (!dated || /\d{4}-\d{2}-\d{2}/.test(page.path))
-  );
-  $("explore-pages").innerHTML = rows.length ? rows.map((page) => `
-    <article class="page-row">
-      <strong>${esc(page.title || page.path)}</strong>
-      <code>${esc(page.path)}</code>
-      <span>${esc(page.knowledge_class || "unclassified")} · ${esc(page.verification_state || "unknown")} · revision ${esc(page.revision)}</span>
-      <div class="actions"><a href="/?view=authoring&edit=${encodeURIComponent(page.path)}#authoring">Inspect / edit</a><button class="page-history" data-path="${esc(page.path)}">History</button><button class="page-verify" data-id="${esc(page.resource_id)}" data-path="${esc(page.path)}">Verify</button></div>
-    </article>`).join("") : `<p class="muted">No loaded pages match these filters.</p>`;
-  document.querySelectorAll(".page-history").forEach((button) => button.addEventListener("click", () => navigate("history")));
-  document.querySelectorAll(".page-verify").forEach((button) => button.addEventListener("click", () => requestVerification({page_resource_id: button.dataset.id}, button.dataset.path)));
+  const rows = exploredPages;
+  $("explore-pages-title").textContent = exploreSearchActive()
+    ? "Search results"
+    : (explorePath ? explorePath.split("/").pop() : "Top-level pages");
+  $("explore-count").textContent = pageTotal === null ? "" : `${rows.length} of ${pageTotal}`;
+  $("explore-pages").innerHTML = rows.length ? rows.map((page) => {
+    const verification = (page.verification_state || "UNVERIFIED").toUpperCase();
+    const chips = [
+      page.knowledge_class ? `<span class="chip">${esc(page.knowledge_class)}</span>` : "",
+      `<span class="chip chip--${verification === "VERIFIED" ? "ok" : "quiet"}">${esc(verification.toLowerCase())}</span>`,
+      page.status === "archived" ? `<span class="chip chip--warn">archived</span>` : "",
+    ].join("");
+    return `
+    <div class="page-line">
+      <div class="page-line__id" title="${esc(page.path)} · revision ${esc(page.revision)}"><strong>${esc(page.title || page.path)}</strong><code>${esc(page.path)}</code></div>
+      <div class="page-line__chips">${chips}</div>
+      <div class="page-line__actions"><a href="/?view=authoring&edit=${encodeURIComponent(page.path)}#authoring">Edit</a><button class="page-history" data-path="${esc(page.path)}">History</button><button class="page-verify" data-id="${esc(page.resource_id)}" data-path="${esc(page.path)}">Verify</button></div>
+    </div>`;
+  }).join("") : `<p class="muted">${exploreSearchActive() ? "No pages match this search." : "No pages directly in this directory."}</p>`;
+  $("explore-pages").querySelectorAll(".page-history").forEach((button) => button.addEventListener("click", () => navigate("history")));
+  $("explore-pages").querySelectorAll(".page-verify").forEach((button) => button.addEventListener("click", () => requestVerification({page_resource_id: button.dataset.id}, button.dataset.path)));
 }
 
 async function loadPageBatch(reset = false) {
-  if (reset) { exploredPages = []; pageCursor = null; }
+  if (reset) { exploredPages = []; pageCursor = null; pageTotal = null; }
   const params = new URLSearchParams({limit: "100"});
   if (pageCursor) params.set("after", pageCursor);
-  if ($("explore-query").value.trim()) params.set("q", $("explore-query").value.trim());
+  if (exploreSearchActive()) {
+    params.set("q", $("explore-query").value.trim());
+  } else {
+    // Browsing mode is a server-scoped drill-down, never a client-side sieve.
+    params.set("path_prefix", explorePath);
+    if (!$("explore-descendants").checked) params.set("depth", "direct");
+  }
   if ($("explore-class").value) params.set("knowledge_class", $("explore-class").value);
   if ($("explore-family").value) params.set("identifier_family", $("explore-family").value);
   if ($("explore-archive").value) params.set("archive_state", $("explore-archive").value);
@@ -387,8 +431,15 @@ async function loadPageBatch(reset = false) {
   const data = await api(`/api/control-plane/observatory/pages?${params}`);
   exploredPages.push(...(data.pages?.items || []));
   pageCursor = data.pages?.next_after || null;
+  pageTotal = data.pages?.total ?? null;
   $("explore-more").hidden = !data.pages?.has_more;
   renderPages();
+}
+
+function refreshExploreListing() {
+  renderBreadcrumbs();
+  renderDirectories();
+  return loadPageBatch(true).catch((error) => { $("explore-pages").textContent = error.message; });
 }
 
 async function loadExplore() {
@@ -398,8 +449,7 @@ async function loadExplore() {
     candidateCursor = observatory.review_candidates?.next_after || null;
     $("explore-class").innerHTML = `<option value="">All</option>` + (observatory.facets?.knowledge_class || []).map((value) => `<option>${esc(value)}</option>`).join("");
     $("explore-family").innerHTML = `<option value="">All</option>` + (observatory.facets?.identifier_family || []).map((value) => `<option>${esc(value)}</option>`).join("");
-    renderDirectories();
-    await loadPageBatch(true);
+    await refreshExploreListing();
   } catch (error) {
     $("explore-directories").textContent = error.message;
   }
@@ -415,9 +465,10 @@ function renderCandidates(values, append = false) {
   if (append) $("review-candidates").insertAdjacentHTML("beforeend", html);
   else $("review-candidates").innerHTML = html;
   document.querySelectorAll(".candidate-inspect").forEach((button) => button.onclick = () => {
+    // Candidates are directory scopes: drill the browser straight there.
+    explorePath = button.dataset.path;
+    $("explore-query").value = "";
     navigate("explore");
-    $("explore-query").value = button.dataset.path;
-    renderPages();
   });
   document.querySelectorAll(".candidate-verify").forEach((button) => button.onclick = () => requestVerification({path_prefix: button.dataset.path}, button.dataset.path));
   document.querySelectorAll(".candidate-capture").forEach((button) => button.onclick = () => captureCandidate(button.dataset.path, button.dataset.reasons));
@@ -534,6 +585,9 @@ function clearAuthenticatedView() {
   $("work-initiatives").textContent = "Connect to load.";
   $("explore-directories").textContent = "Connect to load.";
   $("explore-pages").textContent = "Connect to load.";
+  $("explore-breadcrumbs").innerHTML = "";
+  $("explore-count").textContent = "";
+  explorePath = "";
   $("review-candidates").textContent = "Connect to load.";
   $("verification-requests").textContent = "Connect to load.";
   setAuthenticatedControls(false);
@@ -581,9 +635,11 @@ if (typeof document !== "undefined") {
   $("refresh-work").addEventListener("click", loadWork);
   $("refresh-explore").addEventListener("click", loadExplore);
   $("refresh-review").addEventListener("click", loadReview);
-  ["explore-query", "explore-class", "explore-family", "explore-archive", "explore-dated"].forEach((id) => $(id).addEventListener("input", () => {
+  ["explore-query", "explore-class", "explore-family", "explore-archive", "explore-dated", "explore-descendants"].forEach((id) => $(id).addEventListener("input", () => {
     clearTimeout(exploreFilterTimer);
-    exploreFilterTimer = setTimeout(() => loadPageBatch(true).catch((error) => { $("explore-pages").textContent = error.message; }), 180);
+    // The query toggles between browse and search modes, so refresh the whole
+    // listing (breadcrumbs and directories included), not just the page batch.
+    exploreFilterTimer = setTimeout(refreshExploreListing, 180);
   }));
   $("explore-more").addEventListener("click", () => loadPageBatch(false).catch((error) => { $("explore-pages").textContent = error.message; }));
   $("review-more").addEventListener("click", async () => {

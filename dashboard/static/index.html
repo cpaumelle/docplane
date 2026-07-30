@@ -66,19 +66,25 @@
       </section>
 
       <section id="view-explore" class="view">
-        <div class="heading"><div><h1>Explore the corpus</h1><p>Navigate the authoritative corpus snapshot by structure and governed metadata.</p></div><div class="actions"><button id="export-observatory">Export manifest</button><button id="refresh-explore">Refresh</button></div></div>
-        <article class="panel">
+        <div class="heading"><div><h1>Explore the corpus</h1><p>Browse directory by directory; search flat only when you ask to.</p></div><div class="actions"><button id="export-observatory">Export manifest</button><button id="refresh-explore">Refresh</button></div></div>
+        <article class="panel explore-controls">
           <div class="filters">
-            <label>Path or title<input id="explore-query" placeholder="operations/proxmox"></label>
+            <label>Search everywhere<input id="explore-query" placeholder="Path or title — replaces browsing while active"></label>
             <label>Classification<select id="explore-class"><option value="">All</option></select></label>
             <label>Identifier family<select id="explore-family"><option value="">All</option></select></label>
             <label>Archive state<select id="explore-archive"><option value="">All</option><option value="active">Active</option><option value="archived">Archived</option></select></label>
-            <label><input id="explore-dated" type="checkbox"> Dated files only</label>
+            <label class="check"><input id="explore-dated" type="checkbox"> Dated files only</label>
           </div>
         </article>
-        <div class="grid two">
-          <article class="panel"><h2>Sections and directories</h2><div id="explore-directories" class="list muted">Connect to load.</div></article>
-          <article class="panel"><h2>Pages</h2><div id="explore-pages" class="list muted">Connect to load.</div><button id="explore-more" hidden>Load more</button></article>
+        <nav id="explore-breadcrumbs" class="breadcrumbs" aria-label="Corpus location"></nav>
+        <div class="grid explore-layout">
+          <article class="panel"><h2>Directories</h2><div id="explore-directories" class="list muted">Connect to load.</div></article>
+          <article class="panel">
+            <div class="panel-heading"><h2 id="explore-pages-title">Pages</h2><span id="explore-count" class="muted"></span></div>
+            <label class="check subtle"><input id="explore-descendants" type="checkbox"> Include pages in subdirectories</label>
+            <div id="explore-pages" class="list muted">Connect to load.</div>
+            <button id="explore-more" hidden>Load more</button>
+          </article>
         </div>
         <p class="signal-note"><strong>Legacy lifecycle signal:</strong> parsed lifecycle labels remain visible for audit and migration only; governed metadata is authoritative.</p>
       </section>

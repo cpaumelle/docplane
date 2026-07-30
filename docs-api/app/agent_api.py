@@ -796,25 +796,36 @@ def dashboard_observatory(
     }
 
 
-@router.get("/api/v1/dashboard/observatory/pages")
-def dashboard_observatory_pages(
-    limit: int = Query(default=100, ge=1, le=200),
-    after: str | None = Query(default=None),
-    q: str | None = Query(default=None, max_length=300),
-    knowledge_class: str | None = Query(default=None, max_length=100),
-    identifier_family: str | None = Query(default=None, max_length=100),
-    archive_state: str | None = Query(default=None, pattern="^(active|archived)$"),
-    dated_only: bool = Query(default=False),
-    principal: Principal = Depends(require_contributor),
-) -> dict[str, Any]:
-    snapshot = _observatory_snapshot()
-    pages = snapshot["pages"]
+def _filter_observatory_pages(
+    pages: list[dict[str, Any]],
+    *,
+    q: str | None = None,
+    path_prefix: str | None = None,
+    depth: str = "all",
+    knowledge_class: str | None = None,
+    identifier_family: str | None = None,
+    archive_state: str | None = None,
+    dated_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Server-authoritative page filtering for the Observatory.
+
+    path_prefix scopes to a directory: "" is the corpus root, "a/b" covers
+    every page under a/b/. depth="direct" then keeps only pages immediately
+    inside that directory — the drill-down contract the dashboard browses
+    with, computed here so the UI never re-derives structure client-side.
+    """
     if q:
         needle = q.casefold()
         pages = [
             page for page in pages
             if needle in f"{page['path']} {page.get('title') or ''}".casefold()
         ]
+    if path_prefix is not None:
+        prefix = path_prefix.strip("/")
+        base = f"{prefix}/" if prefix else ""
+        pages = [page for page in pages if page["path"].startswith(base)]
+        if depth == "direct":
+            pages = [page for page in pages if "/" not in page["path"][len(base):]]
     if knowledge_class:
         pages = [page for page in pages if page.get("knowledge_class") == knowledge_class]
     if identifier_family:
@@ -823,6 +834,33 @@ def dashboard_observatory_pages(
         pages = [page for page in pages if page.get("status") == archive_state]
     if dated_only:
         pages = [page for page in pages if _DATED_PATH.search(page["path"])]
+    return pages
+
+
+@router.get("/api/v1/dashboard/observatory/pages")
+def dashboard_observatory_pages(
+    limit: int = Query(default=100, ge=1, le=200),
+    after: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=300),
+    path_prefix: str | None = Query(default=None, max_length=300),
+    depth: str = Query(default="all", pattern="^(direct|all)$"),
+    knowledge_class: str | None = Query(default=None, max_length=100),
+    identifier_family: str | None = Query(default=None, max_length=100),
+    archive_state: str | None = Query(default=None, pattern="^(active|archived)$"),
+    dated_only: bool = Query(default=False),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    snapshot = _observatory_snapshot()
+    pages = _filter_observatory_pages(
+        snapshot["pages"],
+        q=q,
+        path_prefix=path_prefix,
+        depth=depth,
+        knowledge_class=knowledge_class,
+        identifier_family=identifier_family,
+        archive_state=archive_state,
+        dated_only=dated_only,
+    )
     return {
         "fingerprint": snapshot["fingerprint"],
         "pages": _page(pages, after, limit),
