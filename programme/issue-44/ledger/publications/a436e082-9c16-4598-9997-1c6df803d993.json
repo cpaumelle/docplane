@@ -1,0 +1,144 @@
+{
+ "_unavailable": [
+  "rehearsal: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "certification_before: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "certification_after: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "post_publication_checks: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "post_publication_audit: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed."
+ ],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": null,
+ "certification_before": null,
+ "cohort": "control-plane foundational + design",
+ "display_prefix": "a436e082",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": null,
+  "scan": null
+ },
+ "move_operations": 6,
+ "nav_changes": 5,
+ "operation_type_counts": {
+  "MOVE_PAGE": 6
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/foundational/shadow-inventory.md",
+   "expected_revision": "89c823a9-31f2-4c82-9103-ee125f00981c",
+   "from_nav_path": "Control Plane/Anti-Patterns/Shadow Inventory",
+   "from_path": "control-plane/anti-patterns/shadow-inventory.md",
+   "nav_changed": true,
+   "operation_id": "fe59b536-6181-47b6-960f-54f502ad7c74",
+   "redirect_created": true,
+   "resource_id": "1d39a048-0c33-52b4-9a49-34baa0f73626",
+   "to_nav_path": "Control Plane/Foundational/Shadow Inventory",
+   "to_path": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "current_path": "control-plane/foundational/doctrine.md",
+   "expected_revision": "af7ae01c-af7d-443a-8bfa-6bd587ca4798",
+   "from_nav_path": "Control Plane/Doctrine",
+   "from_path": "control-plane/doctrine.md",
+   "nav_changed": true,
+   "operation_id": "34b93a94-853d-42e9-9654-82d8f8753f82",
+   "redirect_created": true,
+   "resource_id": "4d1fa170-3c56-558b-bdc1-8b078d0ad34a",
+   "to_nav_path": "Control Plane/Foundational/Doctrine",
+   "to_path": "control-plane/foundational/doctrine.md"
+  },
+  {
+   "current_path": "control-plane/foundational/gateway-convergence-doctrine.md",
+   "expected_revision": "8933f2d3-57e1-4d2e-877b-278a6ff13f10",
+   "from_nav_path": "Control Plane/Foundational/Gateway Convergence Doctrine v1",
+   "from_path": "control-plane/gateway-convergence-doctrine.md",
+   "nav_changed": false,
+   "operation_id": "aa95dcce-fbd6-40ce-9d86-b2c2ebce56d3",
+   "redirect_created": true,
+   "resource_id": "d16afbf7-c535-527f-b58a-2c6e25f60ba2",
+   "to_nav_path": "Control Plane/Foundational/Gateway Convergence Doctrine v1",
+   "to_path": "control-plane/foundational/gateway-convergence-doctrine.md"
+  },
+  {
+   "current_path": "control-plane/design/cp-net-1-gap-2-edge-resolver-authority.md",
+   "expected_revision": "17180b90-17ea-4352-97be-7ad54fb2f4f6",
+   "from_nav_path": "Control Plane/RFC/CP-NET-1-GAP-2 Edge Resolver Authority",
+   "from_path": "control-plane/rfc/cp-net-1-gap-2-edge-resolver-authority.md",
+   "nav_changed": true,
+   "operation_id": "55397647-68a2-443c-ab6c-ad765546ce0b",
+   "redirect_created": true,
+   "resource_id": "065e0813-5103-5e24-9783-b67acc412667",
+   "to_nav_path": "Control Plane/Design/CP-NET-1-GAP-2 Edge Resolver Authority",
+   "to_path": "control-plane/design/cp-net-1-gap-2-edge-resolver-authority.md"
+  },
+  {
+   "current_path": "control-plane/design/vps3-ovh-acme-cert-ownership.md",
+   "expected_revision": "9ad9949b-6a5b-43ae-99d2-e7283e663aab",
+   "from_nav_path": "Control Plane/RFCs/vps3 Client-Service Cert Ownership",
+   "from_path": "control-plane/rfc/vps3-ovh-acme-cert-ownership.md",
+   "nav_changed": true,
+   "operation_id": "0984b544-204b-46f5-b403-6d863aab097c",
+   "redirect_created": true,
+   "resource_id": "79b37173-a7d6-5e83-a9d9-1940e58eedfa",
+   "to_nav_path": "Control Plane/Design/vps3 Client-Service Cert Ownership",
+   "to_path": "control-plane/design/vps3-ovh-acme-cert-ownership.md"
+  },
+  {
+   "current_path": "control-plane/design/docs-rename-design.md",
+   "expected_revision": "82fd5883-0f31-4f30-8497-ab2af24356b6",
+   "from_nav_path": "Control Plane/Specs/Docs Rename (Design)",
+   "from_path": "control-plane/specs/docs-rename-design.md",
+   "nav_changed": true,
+   "operation_id": "3a4bf07c-bf1c-4571-b81a-38bdef692d66",
+   "redirect_created": true,
+   "resource_id": "13112323-81df-50f2-8661-e4510b05de61",
+   "to_nav_path": "Control Plane/Design/Docs Rename (Design)",
+   "to_path": "control-plane/design/docs-rename-design.md"
+  }
+ ],
+ "post_publication_audit": null,
+ "post_publication_checks": null,
+ "preserved_references": null,
+ "publication_id": "a436e082-9c16-4598-9997-1c6df803d993",
+ "publication_receipt": {
+  "candidate_identity": "1cb6946a7c433306ce8df6bfed00794c6497f3b116201d015036bddbd989015c",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 37804,
+   "deployment_cycle_id": "ae770da9-5d54-44de-b0a3-9f7eff696d57",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 13,
+   "release_id": "71429be1-295e-4620-8fee-ecce417a14c2",
+   "sealed_digest": "e85b73d2e099f820b22d034ecd485e3707df2ddbea8a3b30e6d75911897fa042",
+   "status": "COMPLETED",
+   "target_state_identity": "7c68eab100e149d9df6729e98b24ef23337a173059a8b8a39dcc87b70ac540da"
+  },
+  "operations_applied": 6,
+  "operations_submitted": 6,
+  "published_at": "2026-07-29T19:38:50.896849+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-29T19:38:50.643213Z",
+ "redirect_count": 6,
+ "reference_repair_publication": null,
+ "rehearsal": null,
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 0,
+ "title": "Issue #44 structural cohort: control-plane foundational + design",
+ "unique_resource_ids": 6,
+ "validation_summary": {
+  "base_state_identity": "97d5e786b6db0da38e35f9a85f1babb12ee2e9682e8b1550307033cab40d25e7",
+  "candidate_identity": "1cb6946a7c433306ce8df6bfed00794c6497f3b116201d015036bddbd989015c",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 6,
+  "operations_checked": 6,
+  "passed": true,
+  "validated_at": "2026-07-29T19:38:50.880897+00:00",
+  "warnings": []
+ }
+}

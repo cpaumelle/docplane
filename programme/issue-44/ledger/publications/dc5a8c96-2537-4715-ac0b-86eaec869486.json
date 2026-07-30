@@ -1,0 +1,152 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 68
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 67
+ },
+ "cohort": "invariants-edge",
+ "display_prefix": "dc5a8c96",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "invariants-edge-publication-A.json",
+  "scan": "invariants-edge-scan.json"
+ },
+ "move_operations": 4,
+ "nav_changes": 4,
+ "operation_type_counts": {
+  "MOVE_PAGE": 4
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/invariants/i-edge-cache-writer-1.md",
+   "expected_revision": "5d70b5d7-c7f0-4a03-a556-73d72be8638f",
+   "from_nav_path": "Control Plane/Topology Invariants/I-EDGE-CACHE-WRITER-1",
+   "from_path": "control-plane/topology-invariants/i-edge-cache-writer-1.md",
+   "nav_changed": true,
+   "operation_id": "af4757fc-17dd-4698-bd45-1706c32aa620",
+   "redirect_created": true,
+   "resource_id": "acd86b8c-a5ef-5fcb-8c4a-a3398845b980",
+   "to_nav_path": "Control Plane/Invariants/I-EDGE-CACHE-WRITER-1",
+   "to_path": "control-plane/invariants/i-edge-cache-writer-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-edge-parity-1.md",
+   "expected_revision": "a8ec0561-0453-457a-b0e2-187ac6c35cfc",
+   "from_nav_path": "Control Plane/Topology Invariants/I-EDGE-PARITY-1",
+   "from_path": "control-plane/topology-invariants/i-edge-parity-1.md",
+   "nav_changed": true,
+   "operation_id": "819287cd-d98c-4a93-94bf-dea97fcc8471",
+   "redirect_created": true,
+   "resource_id": "6d60863d-d83a-5748-974a-c1bad28016a2",
+   "to_nav_path": "Control Plane/Invariants/I-EDGE-PARITY-1",
+   "to_path": "control-plane/invariants/i-edge-parity-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-edge-pppoe-1.md",
+   "expected_revision": "11e6d0e8-fa1c-4fc8-b3be-3fd6172ab0d4",
+   "from_nav_path": "Control Plane/Topology Invariants/I-EDGE-PPPOE-1",
+   "from_path": "control-plane/topology-invariants/i-edge-pppoe-1.md",
+   "nav_changed": true,
+   "operation_id": "ab263e16-daa5-412b-b7b4-2cea324b7d1d",
+   "redirect_created": true,
+   "resource_id": "b46a32c8-c0cd-5d92-9a53-1db975f5d4fb",
+   "to_nav_path": "Control Plane/Invariants/I-EDGE-PPPOE-1",
+   "to_path": "control-plane/invariants/i-edge-pppoe-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-edge-sshd-1.md",
+   "expected_revision": "874ee4b7-81ca-47da-addd-f944a184606b",
+   "from_nav_path": "Control Plane/Topology Invariants/I-EDGE-SSHD-1",
+   "from_path": "control-plane/topology-invariants/i-edge-sshd-1.md",
+   "nav_changed": true,
+   "operation_id": "44a2d49a-39d6-4b42-883f-9ce70acfd282",
+   "redirect_created": true,
+   "resource_id": "adb2ba52-baa1-55a0-b833-0fc6373ec327",
+   "to_nav_path": "Control Plane/Invariants/I-EDGE-SSHD-1",
+   "to_path": "control-plane/invariants/i-edge-sshd-1.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [
+   {
+    "line": 620,
+    "page": "control-plane/cp-net-1-history.md",
+    "reason": "evidence_surface",
+    "target": "topology-invariants/i-edge-cache-writer-1.md"
+   }
+  ],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 46
+ },
+ "preserved_references": null,
+ "publication_id": "dc5a8c96-2537-4715-ac0b-86eaec869486",
+ "publication_receipt": {
+  "candidate_identity": "0d93c2d18aa1d4738eee92962f2daf3c6287c583118e0fdb8594533950079541",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 37121,
+   "deployment_cycle_id": "d2ac3281-0f9d-48dc-baf6-d044ab309b93",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 17,
+   "release_id": "a248e702-eac6-4218-b8e6-1688b0849c6d",
+   "sealed_digest": "22e03120141f5d5bbab0042f6717702468c76ae03e31abdcd21b36200bc5525d",
+   "status": "COMPLETED",
+   "target_state_identity": "d5844246030c571f6c381fdc0504e1651e6e22a5ef3f3758065090ad886ebd72"
+  },
+  "operations_applied": 4,
+  "operations_submitted": 4,
+  "published_at": "2026-07-30T07:29:24.996150+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T07:29:24.703299Z",
+ "redirect_count": 4,
+ "reference_repair_publication": {
+  "publication_id": "b0d10d89-83f0-48a1-bcb6-38d5a26e6a8b",
+  "published_at": "2026-07-30T07:31:04.517342Z",
+  "reference_rewrites": 9
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "c906ef63-30f2-481f-ad82-0e41b80f53ae",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "9053874034446d0a812ec74a0fb0a02e072a73d762ef3f0a5416f18fca4be787",
+   "candidate_identity": "0d93c2d18aa1d4738eee92962f2daf3c6287c583118e0fdb8594533950079541",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 4,
+   "operations_checked": 4,
+   "passed": true,
+   "validated_at": "2026-07-30T07:28:40.119004+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 0,
+ "title": "Issue #44 structural cohort: invariants-edge",
+ "unique_resource_ids": 4,
+ "validation_summary": {
+  "base_state_identity": "9053874034446d0a812ec74a0fb0a02e072a73d762ef3f0a5416f18fca4be787",
+  "candidate_identity": "0d93c2d18aa1d4738eee92962f2daf3c6287c583118e0fdb8594533950079541",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 4,
+  "operations_checked": 4,
+  "passed": true,
+  "validated_at": "2026-07-30T07:29:24.983823+00:00",
+  "warnings": []
+ }
+}

@@ -1,0 +1,122 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 97
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 96
+ },
+ "cohort": "operations-runbooks-diagnostics",
+ "display_prefix": "cf229abb",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "operations-runbooks-diagnostics-publication-A.json",
+  "scan": "operations-runbooks-diagnostics-scan.json"
+ },
+ "move_operations": 2,
+ "nav_changes": 2,
+ "operation_type_counts": {
+  "MOVE_PAGE": 2,
+  "REPLACE_DOCUMENT": 2
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "operations/runbooks/troubleshooting.md",
+   "expected_revision": "49c6bf46-947c-4785-83c4-02d52cfc04f3",
+   "from_nav_path": "Operations/Daily ops/Troubleshooting",
+   "from_path": "operations/troubleshooting.md",
+   "nav_changed": true,
+   "operation_id": "a09a2b30-1314-4f59-a653-46b866499c0d",
+   "redirect_created": true,
+   "resource_id": "98a23368-e4a0-5e07-af63-91828e2fa742",
+   "to_nav_path": "Operations/Runbooks/Troubleshooting",
+   "to_path": "operations/runbooks/troubleshooting.md"
+  },
+  {
+   "current_path": "operations/runbooks/hub2-reboot.md",
+   "expected_revision": "01c1889a-f520-4932-b364-f489e205192e",
+   "from_nav_path": "Operations/Provisioning & Lifecycle/Hub2 Reboot",
+   "from_path": "operations/hub2-reboot.md",
+   "nav_changed": true,
+   "operation_id": "9923394a-32cb-4280-818d-00a9349ec2d6",
+   "redirect_created": true,
+   "resource_id": "3cae2e5f-9ed6-55a2-b6b3-ac2d333a4f2c",
+   "to_nav_path": "Operations/Runbooks/Hub2 Reboot",
+   "to_path": "operations/runbooks/hub2-reboot.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 28
+ },
+ "preserved_references": null,
+ "publication_id": "cf229abb-140c-402e-8478-bf3e90fe6e15",
+ "publication_receipt": {
+  "candidate_identity": "fedc2bf0333f04b92c995c58694861acec91d704bde48a611906e6ab655d511e",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 37742,
+   "deployment_cycle_id": "7cf26170-3332-4d83-9f0e-d297d7507257",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 48,
+   "release_id": "7e2c30b0-dd3e-4144-b35c-ee4b1acb67d4",
+   "sealed_digest": "4236c84fe119db9fa922e1b4cf5f4fbc47206e71fac4ed147b7f67a9d367389a",
+   "status": "COMPLETED",
+   "target_state_identity": "abff2c8ad1dba0a53d9d89e4c98b31cf48a0f8f6d7dfc3f3d37db925a69f1fa5"
+  },
+  "operations_applied": 4,
+  "operations_submitted": 4,
+  "published_at": "2026-07-30T11:02:21.626226+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T11:02:21.386241Z",
+ "redirect_count": 2,
+ "reference_repair_publication": {
+  "publication_id": "84489e67-3649-4b93-adb8-61e876c3830a",
+  "published_at": "2026-07-30T11:03:52.226353Z",
+  "reference_rewrites": 7
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "e6cc00ce-edf9-4009-adfd-619c25e19c92",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "d43966696fb75e6aea043382b9da56b16dcb624ee6a75fc5c65c81e4629fff1f",
+   "candidate_identity": "fedc2bf0333f04b92c995c58694861acec91d704bde48a611906e6ab655d511e",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 4,
+   "operations_checked": 4,
+   "passed": true,
+   "validated_at": "2026-07-30T11:01:37.152413+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 2,
+ "title": "Issue #44 structural cohort: operations-runbooks-diagnostics",
+ "unique_resource_ids": 2,
+ "validation_summary": {
+  "base_state_identity": "d43966696fb75e6aea043382b9da56b16dcb624ee6a75fc5c65c81e4629fff1f",
+  "candidate_identity": "fedc2bf0333f04b92c995c58694861acec91d704bde48a611906e6ab655d511e",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 4,
+  "operations_checked": 4,
+  "passed": true,
+  "validated_at": "2026-07-30T11:02:21.619597+00:00",
+  "warnings": []
+ }
+}

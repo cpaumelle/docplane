@@ -1,0 +1,140 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 70
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 69
+ },
+ "cohort": "invariants-dns",
+ "display_prefix": "16c3beb2",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "invariants-dns-publication-A.json",
+  "scan": "invariants-dns-scan.json"
+ },
+ "move_operations": 3,
+ "nav_changes": 3,
+ "operation_type_counts": {
+  "MOVE_PAGE": 3
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/invariants/i-dns-consumer-source-1.md",
+   "expected_revision": "052983b8-57c6-41b3-8bbd-0124756b09b4",
+   "from_nav_path": "Control Plane/Topology Invariants/I-DNS-CONSUMER-SOURCE-1",
+   "from_path": "control-plane/topology-invariants/i-dns-consumer-source-1.md",
+   "nav_changed": true,
+   "operation_id": "545467a4-745d-4ea2-8e57-4a95fa03be1b",
+   "redirect_created": true,
+   "resource_id": "4b1fbb26-7ca2-5e61-bf98-a008a9aeb7e1",
+   "to_nav_path": "Control Plane/Invariants/I-DNS-CONSUMER-SOURCE-1",
+   "to_path": "control-plane/invariants/i-dns-consumer-source-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-dns-runtime-config-1.md",
+   "expected_revision": "601f7502-e28f-44a0-a4c4-b4bf1cdcea81",
+   "from_nav_path": "Control Plane/Topology Invariants/I-DNS-RUNTIME-CONFIG-1",
+   "from_path": "control-plane/topology-invariants/i-dns-runtime-config-1.md",
+   "nav_changed": true,
+   "operation_id": "eb882dea-5823-4bc0-a20a-aef7f6a2ee7e",
+   "redirect_created": true,
+   "resource_id": "f59eea45-1361-5e42-8971-1c34e84fd2a8",
+   "to_nav_path": "Control Plane/Invariants/I-DNS-RUNTIME-CONFIG-1",
+   "to_path": "control-plane/invariants/i-dns-runtime-config-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-dnsmasq-retire-1.md",
+   "expected_revision": "e7a81540-6a7e-41c7-8a72-a2d73bc679e3",
+   "from_nav_path": "Control Plane/Topology Invariants/I-DNSMASQ-RETIRE-1",
+   "from_path": "control-plane/topology-invariants/i-dnsmasq-retire-1.md",
+   "nav_changed": true,
+   "operation_id": "14a9fa4a-460c-40e3-bdde-c52b287a065e",
+   "redirect_created": true,
+   "resource_id": "e6a8ac6c-d0e5-59bb-9116-740df22168af",
+   "to_nav_path": "Control Plane/Invariants/I-DNSMASQ-RETIRE-1",
+   "to_path": "control-plane/invariants/i-dnsmasq-retire-1.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [
+   {
+    "line": 575,
+    "page": "control-plane/cp-net-1-history.md",
+    "reason": "evidence_surface",
+    "target": "topology-invariants/i-dns-runtime-config-1.md"
+   }
+  ],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 36
+ },
+ "preserved_references": null,
+ "publication_id": "16c3beb2-6a38-443c-b791-2035c45455b7",
+ "publication_receipt": {
+  "candidate_identity": "79f7796a36ad52853311ad528504838871af78b76e872820bc403266885b30a2",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 38737,
+   "deployment_cycle_id": "cecf1e5b-1bf1-4500-8922-8b617abc0499",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 20,
+   "release_id": "78484e98-2cd4-419e-876e-84d7144371ec",
+   "sealed_digest": "7254175bdd3acb2711992c3063cf3aeb6292b33d2046a8fc0a2f579d5a8ecccc",
+   "status": "COMPLETED",
+   "target_state_identity": "28ad7312ea726867bc0e8b7609bf443399785ae356c1163cba7e8fc4d3511567"
+  },
+  "operations_applied": 3,
+  "operations_submitted": 3,
+  "published_at": "2026-07-30T07:34:48.835442+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T07:34:48.593456Z",
+ "redirect_count": 3,
+ "reference_repair_publication": {
+  "publication_id": "1c81cadb-0702-43d8-87ed-a2a8ff79c6e6",
+  "published_at": "2026-07-30T07:36:20.129726Z",
+  "reference_rewrites": 8
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "2edbd683-3ad9-4855-be00-d4f5658d9e7e",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "209e164b82f6695a66955dc9bed098f2d4dc56a97a925bac3e717b455d290dc0",
+   "candidate_identity": "79f7796a36ad52853311ad528504838871af78b76e872820bc403266885b30a2",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 3,
+   "operations_checked": 3,
+   "passed": true,
+   "validated_at": "2026-07-30T07:34:04.214054+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 0,
+ "title": "Issue #44 structural cohort: invariants-dns",
+ "unique_resource_ids": 3,
+ "validation_summary": {
+  "base_state_identity": "209e164b82f6695a66955dc9bed098f2d4dc56a97a925bac3e717b455d290dc0",
+  "candidate_identity": "79f7796a36ad52853311ad528504838871af78b76e872820bc403266885b30a2",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 3,
+  "operations_checked": 3,
+  "passed": true,
+  "validated_at": "2026-07-30T07:34:48.827044+00:00",
+  "warnings": []
+ }
+}

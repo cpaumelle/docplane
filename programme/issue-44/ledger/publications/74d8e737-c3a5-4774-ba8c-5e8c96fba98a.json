@@ -1,0 +1,133 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 75
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 74
+ },
+ "cohort": "invariants-transport",
+ "display_prefix": "74d8e737",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "invariants-transport-publication-A.json",
+  "scan": "invariants-transport-scan.json"
+ },
+ "move_operations": 3,
+ "nav_changes": 3,
+ "operation_type_counts": {
+  "MOVE_PAGE": 3
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/invariants/i-site-transport-authority-1.md",
+   "expected_revision": "10bb0779-0c02-4147-bd45-5455f925ad86",
+   "from_nav_path": "Control Plane/Topology Invariants/I-SITE-TRANSPORT-AUTHORITY-1",
+   "from_path": "control-plane/topology-invariants/i-site-transport-authority-1.md",
+   "nav_changed": true,
+   "operation_id": "fa2f29fe-30d1-4f32-a160-fe6ef692d6ba",
+   "redirect_created": true,
+   "resource_id": "a5f96cc3-6c72-54f7-8b1f-1d71228675a2",
+   "to_nav_path": "Control Plane/Invariants/I-SITE-TRANSPORT-AUTHORITY-1",
+   "to_path": "control-plane/invariants/i-site-transport-authority-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-transport-hub-1.md",
+   "expected_revision": "087ced5d-82b5-4d7d-9411-025328301d26",
+   "from_nav_path": "Control Plane/Topology Invariants/I-TRANSPORT-HUB-1",
+   "from_path": "control-plane/topology-invariants/i-transport-hub-1.md",
+   "nav_changed": true,
+   "operation_id": "7e6dbedf-7658-4643-80e0-9695949f4016",
+   "redirect_created": true,
+   "resource_id": "bf700b24-0a24-5ed9-af86-911818ba28a3",
+   "to_nav_path": "Control Plane/Invariants/I-TRANSPORT-HUB-1",
+   "to_path": "control-plane/invariants/i-transport-hub-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-wan-mtu-1.md",
+   "expected_revision": "419faf21-4b21-42e3-a45c-4b169f02b919",
+   "from_nav_path": "Control Plane/Topology Invariants/I-WAN-MTU-1",
+   "from_path": "control-plane/topology-invariants/i-wan-mtu-1.md",
+   "nav_changed": true,
+   "operation_id": "64f20528-6271-40cd-adfe-d70ce61fd640",
+   "redirect_created": true,
+   "resource_id": "9f7aa8c0-58c5-5d5b-8a3c-c71a3ecf8b66",
+   "to_nav_path": "Control Plane/Invariants/I-WAN-MTU-1",
+   "to_path": "control-plane/invariants/i-wan-mtu-1.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 36
+ },
+ "preserved_references": null,
+ "publication_id": "74d8e737-c3a5-4774-ba8c-5e8c96fba98a",
+ "publication_receipt": {
+  "candidate_identity": "d79d9cdbd54f09c6be51af2391ddba00ff5b432a81d81f11d70ce8efff2418ff",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 37481,
+   "deployment_cycle_id": "18d93855-2f68-4cb2-a4f1-a2a1d164797e",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 29,
+   "release_id": "5858e74c-3ff8-4c6b-8f22-c98c14447b8b",
+   "sealed_digest": "1f3fd2c9efe0b225e164bf706529efbd27ee2c20049a7dfea0987ef572c748d4",
+   "status": "COMPLETED",
+   "target_state_identity": "20eb5746585c3e6db0a27de25bbf6182a776d7be756fd404ed26c893cf5e27d1"
+  },
+  "operations_applied": 3,
+  "operations_submitted": 3,
+  "published_at": "2026-07-30T07:47:29.760019+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T07:47:29.493485Z",
+ "redirect_count": 3,
+ "reference_repair_publication": {
+  "publication_id": "c1c9b92f-6e30-4caf-9328-8a2e750c8ae2",
+  "published_at": "2026-07-30T07:49:00.727598Z",
+  "reference_rewrites": 11
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "2efd762a-06f9-4599-ba2b-f243be9af5b3",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "6fe1624e4e26e20a54cfee886f45dd0c21897c5289f5f85c42abe4c71d6c23e8",
+   "candidate_identity": "d79d9cdbd54f09c6be51af2391ddba00ff5b432a81d81f11d70ce8efff2418ff",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 3,
+   "operations_checked": 3,
+   "passed": true,
+   "validated_at": "2026-07-30T07:46:45.482331+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 0,
+ "title": "Issue #44 structural cohort: invariants-transport",
+ "unique_resource_ids": 3,
+ "validation_summary": {
+  "base_state_identity": "6fe1624e4e26e20a54cfee886f45dd0c21897c5289f5f85c42abe4c71d6c23e8",
+  "candidate_identity": "d79d9cdbd54f09c6be51af2391ddba00ff5b432a81d81f11d70ce8efff2418ff",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 3,
+  "operations_checked": 3,
+  "passed": true,
+  "validated_at": "2026-07-30T07:47:29.748305+00:00",
+  "warnings": []
+ }
+}
