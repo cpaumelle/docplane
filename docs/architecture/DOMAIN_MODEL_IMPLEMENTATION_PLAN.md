@@ -51,10 +51,11 @@ pleasant dashboard act.
 
 ## Sprint 2 — model genesis with harvested card types
 
-- On-fabric survey initiative (agent work, tracked in `work`): sweep compose
-  files, systemd units, proxy configs, DNS zones, monitoring targets and
-  corpus prose; produce candidate entity kinds with field frequency counts.
-  A kind's checklist is ratified only when several real instances fill it.
+- On-fabric survey initiative (agent work, tracked in `work`): the
+  executable brief is [Card-type harvest](CARD_TYPE_HARVEST.md). Read-only
+  and dependency-free, it may start before any other sprint; a kind's
+  checklist is ratified only when several real instances fill it, and the
+  harvest data doubles as the initial card population census.
 - Migration `00X_model_genesis.sql`: `model.entities` (stable id, unique
   `(entity_kind, entity_key)`, `version`, bounded secret-scanned
   `attributes`), `model.entity_links` (closed relation vocabulary including
