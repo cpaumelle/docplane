@@ -1,65 +1,41 @@
 {
-  "generated_at": "2026-07-30T13:40:00Z",
+  "generated_at": "2026-07-30T14:56:00Z",
   "generated_by": "agent-45",
-  "certification_version": 123,
+  "certification_version": 137,
   "historical_execution": {
-    "unique_pages_moved_cumulative": 74,
-    "move_operations_cumulative": 74,
+    "unique_pages_moved_cumulative": 88,
+    "move_operations_cumulative": 88,
     "pages_moved_more_than_once": 0,
-    "move_bearing_publications_cumulative": 30,
-    "rehearsals_excluded_cumulative": 42,
-    "confirmation_note": "Independently re-derived from a fresh GET /api/v1/changes pull (159 total changes) + full page fetch of all 105 Issue #44-tagged changes -- not carried forward from prior totals.",
-    "this_session_agent_45": {
-      "pages_moved": 12,
-      "cohorts": [
-        {"name": "ccm design pair", "pages": 2, "destination": "control-plane/design/", "move_change": "71e7704d-d85d-4f7c-ad28-9573740b13d3", "refs_change": "599aee65-83d4-4f27-8810-eea744f3f8fa"},
-        {"name": "ccm-interface-realization-step6-runbook (cross-subtree)", "pages": 1, "destination": "operations/runbooks/", "move_change": "caf41093-01c4-49c1-812b-1fbeee04d3c4", "refs_change": "e923394d-91e2-47f3-b504-5fcccfdd7c2a"},
-        {"name": "site-geo-fabric", "pages": 5, "destination": "control-plane/invariants/", "move_change": "688eda1e-2c3c-4c7e-b29a-b3e14b39e954", "refs_change": "173aa2a0-4d0d-4cf7-95c5-7066e272ed39"},
-        {"name": "framework-registry-invariants", "pages": 4, "destination": "control-plane/invariants/", "move_change": "9517faf1-ebb5-4cfa-8b73-936da65aab74", "refs_change": "33f84c7e-f6a5-40bb-b282-72893b3f4658"}
-      ],
-      "existence_aware_audit": "0 unintended stale references across all 12 moves + their reference-repair passes (migration/links.py scan against a fresh full 513-page corpus snapshot)."
-    },
-    "concurrent_agent_44_this_session": {
-      "pages_moved": 8,
-      "cohorts": ["control-plane-specs-transit-convergence (1)", "control-plane-design-transport-plane-authority (1)", "control-plane-invariants-flat-leaves (2)", "control-plane-specs-authority-and-schema (2)", "control-plane-design-drafts (2)"],
-      "territory_check": "Independently verified zero overlap with agent-45's claimed territory (topology-invariants/* and ccm-*) -- all 8 pages confirmed flat control-plane/*.md pages outside both claims."
-    }
+    "move_bearing_publications_cumulative": 33,
+    "confirmation_note": "Independently re-derived from a fresh GET /api/v1/changes pull (179 total changes, 120 Issue #44-tagged). 76 (prior) + 12 (agent-45 this session) = 88, exact arithmetic and API-derived match."
+  },
+  "this_session_agent_45": {
+    "pages_moved": 12,
+    "cohort": "topology-invariants-geo-and-interface-domain",
+    "strategy": "Published as ONE atomic component (not split into GEO-Core / GEO-Placement-Recovery / Interface-Domain subcohorts), because the sibling-link graph showed 19 of 36 same-directory links crossed those originally-planned boundaries. Splitting would have reproduced the exact partial-cluster bug already observed and repaired earlier this session.",
+    "destination": "control-plane/invariants/",
+    "move_change": "29c62fc5-0e94-43e1-876e-a5f33dbc48ee",
+    "refs_change": "1e39f2e6-9fad-43c4-81be-94b8e15d8503",
+    "refs_scope": "88 rewrites across 32 pages -- standard external-inbound repair via migration/links.py plan+apply. Notably, none of the 36 within-cohort sibling links needed any fix at all: since all 12 pages moved together to the same destination, every sibling reference between them remained valid automatically -- direct empirical validation that the atomic-component strategy solves the partial-cluster problem structurally, not just procedurally.",
+    "existence_aware_gate": "0 new unowned breaks. Full corpus-wide recheck before and after this publication found the identical 12 raw hits (11 real occurrences after excluding one confirmed false positive in agent-45's own checker -- inline code, not a live link), matching the accepted baseline exactly.",
+    "certification_transitions": "v135 (pre-move) -> v136 (after move) -> v137 (after refs)",
+    "routes_verified": "Sampled 3 of 12 moved pages: new path resolves via /api/v1/resolve, old path returns HTTP 200 via redirect on the rendered site."
   },
   "current_corpus": {
-    "operations_subtree": 121,
-    "control_plane_subtree": 127,
-    "combined_subtree": 248,
-    "flat_operations_root": 66,
-    "flat_control_plane_root": 25,
-    "combined_flat_roots": 91,
-    "remaining_nested_topology_invariants": 14,
-    "corpus_pages_active": 513,
-    "snapshot_timestamp": "2026-07-30T13:40:00Z"
+    "note": "No page count change from moves alone (path changes only); 514 active pages, same as before this session's publications."
   },
-  "remaining_actionable": {
-    "agent_45_territory": {
-      "topology_invariants_remaining": 14,
-      "breakdown": {
-        "GEO Consumer Convergence -- Core": 4,
-        "GEO Consumer Convergence -- Placement & Recovery": 3,
-        "Interface Domain": 4,
-        "i-config-projection-1.md (destination decision needed)": 1,
-        "i-interface-realization-1.md (sequencing dependency with ccm.md/capability.md)": 1,
-        "topology-invariants/index.md (hub-style retirement)": 1
-      },
-      "ccm_remaining": 4,
-      "ccm_breakdown": {
-        "ccm.md": "hub prerequisite, deferred",
-        "ccm-interface-realization-capability.md": "authoring decision required (relabel lifecycle before moving)",
-        "ccm-interface-realization-implementation.md": "no action -- already correctly archived",
-        "ccm-interface-realization-archaeology.md": "no action -- evidence surface, deliberate non-move"
-      }
+  "remaining_actionable_agent_45_territory": {
+    "topology_invariants": {
+      "i-config-projection-1.md": "standalone, zero sibling edges, still at control-plane/topology-invariants/ -- blocked on an authoring decision (destination: control-plane/foundational/ vs control-plane/invariants/), not a link-safety question",
+      "index.md": "retirement candidate, not a move -- control-plane/invariants/index.md (v61+) already supersedes it; needs a body diff before archive-in-place with redirect. One outbound link (to i-iface-naming-1.md) already repaired in this session's reference-repair pass even though index.md itself did not move"
     },
-    "agent_44_territory": {
-      "note": "Not independently re-audited this pass -- observed from live flat-root listing only. Known stragglers from the original Pool A: gateway-runtime-responsibilities.md, site-network-authority.md (flat control-plane, different page from topology-invariants/i-site-network-authority-1.md already moved). Several previously-uncategorized flat control-plane pages also present (cp-net-1-driver.md, cp-net-1-history.md, invariant-catalog-1.md, invariant-catalogue-parity-triage.md, sd-wan-invariants.md, sdwan.md, docs-mcp.md, cleanup-domains-net-internal.md, control-plane/index.md) -- these were not in agent-45's original 22-candidate scan and need agent-44's body review to classify."
-    }
+    "ccm": {
+      "ccm.md": "hub prerequisite, deferred -- 16+ inbound, needs H1/H2-style hub-conversion publication with dedicated inbound-repair",
+      "ccm-interface-realization-capability.md": "authoring/lifecycle decision required before moving -- its own soak completed 2 months ago but is not relabelled from active-sounding status",
+      "ccm-interface-realization-implementation.md": "no action needed -- already correctly archived",
+      "ccm-interface-realization-archaeology.md": "no action needed -- evidence surface, deliberate non-move"
+    },
+    "note": "agent-45's territory (topology-invariants/* + ccm-*) now has exactly 6 items remaining, every one with a named blocker or explicit no-action disposition. No unowned 'still requires movement' items remain in this territory."
   },
-  "completion_percentages": {
-    "withheld": "Still withheld. Agent-45's territory (18 remaining: 14 topology-invariants + 4 ccm) is now a closed, fully classified set with precise blockers, but agent-44's territory has newly-surfaced uncategorized pages not yet classified. No percentage published until both territories are closed."
-  }
+  "next_actionable_territory": "None remaining in agent-45's own territory without an operator decision (i-config-projection-1.md destination, ccm.md hub-conversion scheduling, ccm-interface-realization-capability.md relabelling). Agent 44's flat-control-plane territory has its own separately-tracked remaining queue."
 }
