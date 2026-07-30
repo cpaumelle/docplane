@@ -458,6 +458,15 @@ def declare_artifact(
             except psycopg2.errors.UniqueViolation as exc:
                 conn.rollback()
                 raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_TARGET_CONFLICT", "page_resource_id": str(page_id), "message": "Another active declaration already owns this page."}) from exc
+        # Declaration is the single act that both binds ownership and ARMS the
+        # publication guard: the guard fires only on provenance = GENERATED,
+        # and nothing else may set it — a page without a standing declaration
+        # is hand-editable by definition.
+        if request.target_page_resource_ids:
+            cur.execute(
+                "UPDATE docs.pages SET provenance = 'GENERATED', updated_at = now() WHERE resource_id = ANY(%s::uuid[])",
+                ([str(item) for item in request.target_page_resource_ids],),
+            )
         cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
         response = _artifact(cur.fetchone())
         append_event(
@@ -511,7 +520,17 @@ def retire_artifact(
             (datetime.now(timezone.utc), str(artifact_id), request.expected_version),
         )
         # Targets exist only while the declaration stands; removing them
-        # releases the pages for hand-editing or a successor declaration.
+        # releases the pages for hand-editing or a successor declaration —
+        # and the provenance flag the declaration armed is released with them,
+        # so the metadata surface never claims protection the guard no longer
+        # enforces.
+        cur.execute(
+            """
+            UPDATE docs.pages SET provenance = 'AUTHORED', updated_at = now()
+             WHERE resource_id IN (SELECT page_resource_id FROM model.artifact_targets WHERE artifact_id = %s)
+            """,
+            (str(artifact_id),),
+        )
         cur.execute("DELETE FROM model.artifact_targets WHERE artifact_id = %s", (str(artifact_id),))
         append_event(
             conn,
