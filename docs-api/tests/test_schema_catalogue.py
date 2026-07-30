@@ -112,6 +112,98 @@ def test_idempotency_keys_are_fingerprint_bound_and_bounded():
     assert key != schema_catalogue._key("cd" * 32, "operation", "model/schema-catalogue/docplane/docplane.md")
 
 
+def test_generator_payloads_validate_against_the_deployed_api_models():
+    """Pin every request body the generator sends to the real pydantic
+    contracts, so a renamed field fails HERE instead of mid-run on the
+    fabric (the to_entity_id/target_entity_id defect class)."""
+    from uuid import uuid4
+
+    from app.model_models import ArtifactDeclare, EntityCreate, EntityLinkCreate
+    from app.observe_models import ObservationBatch
+    from app.agent_models import ChangeCreate, ChangeOperationCreate
+
+    fp = "ab" * 32
+    database_id = uuid4()
+
+    EntityCreate.model_validate(
+        {"entity_kind": "DATABASE", "entity_key": "docplane", "display_name": "DocPlane PostgreSQL"}
+    )
+    EntityCreate.model_validate(
+        {"entity_kind": "SCHEMA", "entity_key": "docplane.docs", "display_name": "DocPlane PostgreSQL docs"}
+    )
+    # The exact link body ensure_entities sends — the field is to_entity_id.
+    EntityLinkCreate.model_validate({"relation": "STORES_IN", "to_entity_id": database_id})
+    ArtifactDeclare.model_validate(
+        {
+            "artifact_key": "schema-catalogue-docplane",
+            "generator_name": schema_catalogue.GENERATOR_NAME,
+            "generator_version": schema_catalogue.GENERATOR_VERSION,
+            "source_entity_id": database_id,
+            "redaction_policy": "canonical",
+            "target_page_resource_ids": [uuid4()],
+            "target_page_paths": ["model/schema-catalogue/docplane/index.md"],
+        }
+    )
+    ObservationBatch.model_validate(
+        {
+            "observations": [
+                {
+                    "subject_artifact_id": database_id,
+                    "observation_kind": "GENERATION",
+                    "outcome": "NOMINAL",
+                    "source_fingerprint": fp,
+                    "summary": "Regenerated 6 catalogue pages",
+                    "idempotency_key": schema_catalogue._key(fp, "generation"),
+                }
+            ]
+        }
+    )
+    ChangeCreate.model_validate(
+        {
+            "title": f"Schema catalogue regeneration {fp[:16]}",
+            "purpose": "Fingerprint-bound regeneration.",
+            "workspace_key": "reference",
+        }
+    )
+    ChangeOperationCreate.model_validate(
+        {
+            "operation_type": "CREATE_PAGE",
+            "payload": {"path": "model/schema-catalogue/docplane/index.md", "title": "t", "nav_path": "n", "content": "c"},
+        }
+    )
+    ChangeOperationCreate.model_validate(
+        {
+            "operation_type": "REPLACE_DOCUMENT",
+            "page_resource_id": uuid4(),
+            "expected_revision": "rev",
+            "payload": {"path": "p", "title": "t", "nav_path": "n", "content": "c"},
+        }
+    )
+
+
+def test_resumed_run_wires_links_for_pre_existing_entities():
+    """A run interrupted after entity creation must still create the
+    STORES_IN wire when it resumes — link creation cannot be skipped just
+    because the schema entity already exists."""
+    calls = []
+
+    class FakeClient:
+        def call(self, method, path, payload=None, idempotency_key=None):
+            calls.append((method, path, payload))
+            if path.startswith("GET") or method == "GET":
+                if "entity_kind=DATABASE" in path:
+                    return {"entities": [{"entity_key": "docplane", "entity_id": "db-id"}]}
+                if "entity_kind=SCHEMA" in path:
+                    return {"entities": [{"entity_key": "docplane.docs", "entity_id": "schema-id"}]}
+            return {"entity_id": "created-id"}
+
+    schema_catalogue.ensure_entities(FakeClient(), "docplane", "DocPlane PostgreSQL", ["docs"], "ab" * 32)
+    link_calls = [call for call in calls if call[0] == "POST" and call[1].endswith("/links")]
+    assert link_calls == [
+        ("POST", "/api/v1/model/entities/schema-id/links", {"relation": "STORES_IN", "to_entity_id": "db-id"}),
+    ]
+
+
 def test_last_generation_fingerprint_reads_the_status_list_shape():
     class FakeClient:
         def call(self, method, path, payload=None, idempotency_key=None):

@@ -307,15 +307,19 @@ def ensure_entities(client: Client, db_key: str, db_display: str, schemas: list[
     for schema in sorted(schemas):
         schema_key = f"{db_key}.{schema}"
         if schema_key in schema_entities:
-            continue
-        schema_id = client.call(
-            "POST", "/api/v1/model/entities",
-            {"entity_kind": "SCHEMA", "entity_key": schema_key, "display_name": f"{db_display} {schema}"},
-            _key(structure_hash, "entity", schema_key),
-        )["entity_id"]
+            schema_id = schema_entities[schema_key]["entity_id"]
+        else:
+            schema_id = client.call(
+                "POST", "/api/v1/model/entities",
+                {"entity_kind": "SCHEMA", "entity_key": schema_key, "display_name": f"{db_display} {schema}"},
+                _key(structure_hash, "entity", schema_key),
+            )["entity_id"]
+        # Always wire the link, even for a pre-existing entity: a resumed run
+        # may have created the entity without reaching this call, and the
+        # server inserts links ON CONFLICT DO NOTHING, so replays are safe.
         client.call(
             "POST", f"/api/v1/model/entities/{schema_id}/links",
-            {"relation": "STORES_IN", "target_entity_id": database_id},
+            {"relation": "STORES_IN", "to_entity_id": database_id},
             _key(structure_hash, "link", schema_key),
         )
     return database_id
