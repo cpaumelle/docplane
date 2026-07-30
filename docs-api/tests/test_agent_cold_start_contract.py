@@ -234,3 +234,28 @@ def test_bootstrap_helper_matches_deployed_port_and_bounds_agent_tokens():
     assert 'if not spec and kind == "AGENT":' in script
     assert 'spec = "24h"' in script
     assert "never, <n>h, <n>d, or RFC3339" in script
+
+
+def test_contract_documents_publication_timing_and_targeted_edits() -> None:
+    """A cold-start agent must be able to size timeouts and pick a bounded edit.
+
+    Publication is synchronous and rebuilds the served corpus, so a mutation can
+    outlive a default client timeout while still committing. The contract has to
+    say so, state the retry rule, and point small edits at a bounded operation
+    instead of a whole-document replace.
+    """
+    body = client.get("/.well-known/docplane.json").json()
+
+    publication = body["publication"]
+    assert publication["model"] == "synchronous"
+    assert publication["client_timeout_seconds_min"] >= 60
+    assert "identical Idempotency-Key" in publication["retry_rule"]
+
+    replace_steps = " ".join(body["quick_start"]["single_page_replace"])
+    assert "client_timeout_seconds_min" in replace_steps
+    assert "Never retry with a new key." in replace_steps
+    assert "page.revision" in replace_steps
+
+    targeted = " ".join(body["quick_start"]["targeted_edit"])
+    assert "REPLACE_SECTION" in targeted
+    assert "INSERT_AFTER_HEADING" in targeted

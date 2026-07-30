@@ -124,6 +124,32 @@ def _assert_published_patch_replay(
         })
 
 
+def _with_page_identity(result: dict[str, Any], resource_id: UUID) -> dict[str, Any]:
+    """Attach the resulting page revision/version to a replace response.
+
+    The change envelope alone cannot tell a caller which revision it produced, so
+    an agent had to issue a second resolve to confirm the write. That matters most
+    when the response was never seen: publication is synchronous and rebuilds the
+    whole corpus, so a client timeout on a *committed* write is a normal outcome.
+    Returning the identity here makes the success case self-verifying.
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT revision, version FROM docs.pages WHERE resource_id = %s",
+            (str(resource_id),),
+        )
+        row = cur.fetchone()
+    if row is not None:
+        result = dict(result)
+        result["page"] = {
+            "resource_id": str(resource_id),
+            "revision": str(row[0]),
+            "version": row[1],
+        }
+    return result
+
+
 @router.post("/api/v1/pages/{resource_id}/replace")
 def replace_page(
     resource_id: UUID,
@@ -172,7 +198,7 @@ def replace_page(
 
     if change["status"] == "PUBLISHED":
         _assert_published_replay(change, resource_id, request, operation_key)
-        return change
+        return _with_page_identity(change, resource_id)
     if change["status"] == "ABANDONED":
         raise HTTPException(
             status_code=409,
@@ -196,7 +222,7 @@ def replace_page(
         principal=principal,
     )
     validate_change(change_id, principal)
-    return publish_change(change_id, principal)
+    return _with_page_identity(publish_change(change_id, principal), resource_id)
 
 
 @router.post("/api/v1/pages/{resource_id}/patch")
