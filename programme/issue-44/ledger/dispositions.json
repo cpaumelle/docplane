@@ -1,0 +1,267 @@
+{
+  "generated_at": "2026-07-30T12:40:00Z",
+  "generated_by": "agent-45",
+  "scope": "pages Issue #44 has touched (moved/classified) or flagged as flat-root move candidates -- NOT the full corpus (see baseline/ for that)",
+  "count": 37,
+  "dispositions": [
+    {
+      "resource_id": "214b8f53-8221-5018-8923-62703c479d70",
+      "path": "operations/incidents/2026-06-01-wg-stg-01-stuck-conntrack.md",
+      "disposition": "evidence surface",
+      "detail": "metadata-only classification, knowledge_class=EVIDENCE, no path change",
+      "evidence": "73100f7e-20af-41cb-a2e6-3e3863346a72"
+    },
+    {
+      "resource_id": "549185b0-a3bf-5bdd-b96e-2a9f4ce612f4",
+      "path": "operations/incidents/transit-dispatch-zero-byte-2026-05-08.md",
+      "disposition": "evidence surface",
+      "detail": "metadata-only classification, knowledge_class=EVIDENCE, no path change",
+      "evidence": "73100f7e-20af-41cb-a2e6-3e3863346a72"
+    },
+    {
+      "resource_id": "58e274f0-2fed-598c-97b3-ac9e3824f9bf",
+      "path": "operations/runbooks/andorra-pi4-gateway-migration.md",
+      "disposition": "correctly placed",
+      "detail": "metadata-only classification, knowledge_class=OPERATION, no path change",
+      "evidence": "5d74638b-2198-4de1-aab2-31ea64491386"
+    },
+    {
+      "resource_id": "6c492c90-9a1e-5f04-b661-b21512144be9",
+      "path": "operations/runbooks/geo-consumer-onboarding.md",
+      "disposition": "correctly placed",
+      "detail": "metadata-only classification, knowledge_class=OPERATION, no path change",
+      "evidence": "5d74638b-2198-4de1-aab2-31ea64491386"
+    },
+    {
+      "resource_id": "6f28eec4-4d9b-5d69-88a9-1daf99fe2cca",
+      "path": "operations/runbooks/px-rolling-reboot.md",
+      "disposition": "correctly placed",
+      "detail": "metadata-only classification, knowledge_class=OPERATION, no path change",
+      "evidence": "5d74638b-2198-4de1-aab2-31ea64491386"
+    },
+    {
+      "resource_id": "7c103b51-d389-4f22-98fc-e7e7bcb7f6c4",
+      "path": "operations/incidents/px-cluster-qdevice-fencing-2026-07-29.md",
+      "disposition": "evidence surface",
+      "detail": "metadata-only classification, knowledge_class=EVIDENCE, no path change",
+      "evidence": "73100f7e-20af-41cb-a2e6-3e3863346a72"
+    },
+    {
+      "resource_id": "8030a315-fb69-5e28-bac3-739a9ac4dcf3",
+      "path": "operations/runbooks/edge-cache-bootstrap.md",
+      "disposition": "correctly placed",
+      "detail": "metadata-only classification, knowledge_class=OPERATION, no path change",
+      "evidence": "5d74638b-2198-4de1-aab2-31ea64491386"
+    },
+    {
+      "resource_id": "852286b2-c5ea-519b-960e-e62d75c50c72",
+      "path": "operations/runbooks/fr-ccm-lan-onboarding.md",
+      "disposition": "correctly placed",
+      "detail": "metadata-only classification, knowledge_class=OPERATION, no path change",
+      "evidence": "5d74638b-2198-4de1-aab2-31ea64491386"
+    },
+    {
+      "resource_id": "953c9c16-7a59-5b56-89f4-67e8ee3be770",
+      "path": "operations/runbooks/vpn-metrics-counter-reset-churn.md",
+      "disposition": "correctly placed",
+      "detail": "metadata-only classification, knowledge_class=OPERATION, no path change",
+      "evidence": "5d74638b-2198-4de1-aab2-31ea64491386"
+    },
+    {
+      "resource_id": "e1a00a14-b311-504a-8044-33b4643b4444",
+      "path": "operations/incidents/2026-06-03-wg-rw-endpoint-split-horizon.md",
+      "disposition": "evidence surface",
+      "detail": "metadata-only classification, knowledge_class=EVIDENCE, no path change",
+      "evidence": "73100f7e-20af-41cb-a2e6-3e3863346a72"
+    },
+    {
+      "resource_id": "f86ba0f8-4edf-5247-ac41-ee188d8d139b",
+      "path": "operations/runbooks/dns-repush.md",
+      "disposition": "correctly placed",
+      "detail": "metadata-only classification, knowledge_class=OPERATION, no path change",
+      "evidence": "5d74638b-2198-4de1-aab2-31ea64491386"
+    },
+    {
+      "resource_id": "8b870d00-6b34-5b1d-8b46-79e4ec9f25d5",
+      "path": "control-plane/architecture-overview.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "82ee0406-bab9-5ceb-adbd-3e36fc2b01f4",
+      "path": "control-plane/authentication-model.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "b7c7a53b-efad-5b41-8366-2ffaca4d2138",
+      "path": "control-plane/bootstrap-authority-map.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "5a7556ba-e05c-51a9-92e6-b11f9962df6a",
+      "path": "control-plane/ccm-dhcp-resolver-ownership-capability.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "e0fa89f8-5258-5db6-a74a-adb6ce29f32c",
+      "path": "control-plane/ccm-interface-realization-design.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "58199095-56e4-579b-ab14-15731bf9693f",
+      "path": "control-plane/ccm-interface-realization-step6-runbook.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "c2a0e0d9-b82d-5630-8482-4a7beb87edef",
+      "path": "control-plane/charliehub-mcp.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "7b0af754-a233-5c51-8eaa-2d7d139003fc",
+      "path": "control-plane/class-b-hosts.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "28da275c-1b7f-591f-a8c8-c6f38704d763",
+      "path": "control-plane/current-state.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "1a6f8e5c-5c57-4488-a7a0-e6860a934d67",
+      "path": "control-plane/docplane.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "95f28d0a-f2ec-5164-8dd5-1ae218f33957",
+      "path": "control-plane/docs-gen-1.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "79f6e14a-a55c-5a56-ad4f-cf031f060a73",
+      "path": "control-plane/gateway-runtime-responsibilities.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "5cb01d61-13e0-51a6-a5a8-e0584b5a1e83",
+      "path": "control-plane/hub2-authority-crosswalk.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "3fbe4fc8-fca3-54c0-a7a7-a8e89326c5c4",
+      "path": "control-plane/hub2-host-net.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "5c7a6db2-93c8-5a0b-af88-254d4fba3569",
+      "path": "control-plane/i-gen-no-vcs-1.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "73328a81-7f04-54de-b1c2-182221c2121c",
+      "path": "control-plane/i-traefik-empty-tcp.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "2b298854-54e5-5afc-8da0-7ce4053503af",
+      "path": "control-plane/lw-r1-design-notes.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "91529e16-0c87-5cb2-99aa-8b147a0b63f2",
+      "path": "control-plane/schema-migrations.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "7bfaba85-1856-5feb-91bd-7d37b7f72f3a",
+      "path": "control-plane/site-network-authority.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "808a7248-5362-5019-a556-e5bbce976ce6",
+      "path": "control-plane/system-map.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "290db043-435a-5d53-acd8-23e3ec85285e",
+      "path": "control-plane/transit-convergence.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "388fd4df-3241-547d-b69d-9b6b9b0b2d98",
+      "path": "control-plane/transport-plane-authority.md",
+      "disposition": "still requires movement",
+      "detail": null,
+      "evidence": "independently verified active/PUBLISHED/non-archived, still at flat control-plane root"
+    },
+    {
+      "resource_id": "85246812-6ddc-580f-927a-f2a5472ce7b3",
+      "path": "operations/control-plane-enforcement.md",
+      "disposition": "deliberate non-move",
+      "detail": null,
+      "evidence": "ee97ceab commit findings + independent page-body verification"
+    },
+    {
+      "resource_id": "21f87510-357d-5c57-b614-7c1454fe050d",
+      "path": "operations/induce-recover-doctrine.md",
+      "disposition": "authoring decision required",
+      "detail": null,
+      "evidence": "ee97ceab commit findings + independent page-body verification"
+    },
+    {
+      "resource_id": "6d91f9ba-eba5-5bea-9b30-7afed9c603e6",
+      "path": "operations/invariant-roadmap.md",
+      "disposition": "authoring decision required",
+      "detail": null,
+      "evidence": "ee97ceab commit findings + independent page-body verification"
+    },
+    {
+      "resource_id": "2de60132-4582-5930-85c3-760359e8c6b4",
+      "path": "operations/w4-1-5b-runtime-manifest-architecture.md",
+      "disposition": "hold-blocked",
+      "detail": null,
+      "evidence": "ee97ceab commit findings + independent page-body verification"
+    }
+  ]
+}

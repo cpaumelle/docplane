@@ -1,0 +1,107 @@
+{
+  "generated_at": "2026-07-30T12:40:00Z",
+  "generated_by": "agent-45",
+  "purpose": "Independent verification of Agent 44's receipt ledger and full-corpus classification, per the section-1 handoff-verification requirement.",
+  "handoff_verification": {
+    "branch_head_contains_ed54a43": true,
+    "method": "fresh git clone -b programme/issue-44-shared-record git@github.com:cpaumelle/docplane.git; git log -1 == ed54a43336e5aaded69a30d2ff8da374f3c5ab2d",
+    "publication_lane_state": "released",
+    "publication_lane_holder": null,
+    "certification_version_claimed": 104,
+    "certification_version_independently_verified": 104,
+    "certification_verification_method": "GET /api/v1/certification/status (self-issued read token) -> state_version=104, state=CURRENT, working_state_identity==deployed_state_identity",
+    "publication_receipt_files_present": 21,
+    "publication_receipt_files_expected": 21,
+    "all_present": true
+  },
+  "endpoints_queried": [
+    "GET /api/v1/changes?limit=500 (fresh pull at this audit's timestamp; 131 total, 0 new since prior pull -- confirms quiescent lane)",
+    "GET /api/v1/changes/{change_id} for all 78 Issue #44-tagged changes",
+    "GET /api/v1/pages/{resource_id} for 248 pages (full operations+control-plane live snapshot) and 26 flat-root candidates",
+    "GET /api/v1/pages/{resource_id}/history for 65 touched pages (baseline_path recovery)",
+    "GET /api/v1/certification/status",
+    "GET /healthz",
+    "GET /api/v1/reorganisation/plans?status=all (0 rows -- confirms this subsystem unused)"
+  ],
+  "snapshot_identifiers": {
+    "changes_snapshot_count": 131,
+    "pages_live_snapshot_total": 947,
+    "pages_live_snapshot_active": 513,
+    "certification_state_version": 104,
+    "git_sha_deployed": "a7a2046187aab843e14723de370e4f436403269e",
+    "healthz_observed_at": "2026-07-30T12:32:30Z"
+  },
+  "publication_reconciliation": {
+    "agent44_receipt_ledger_json_count": 51,
+    "agent45_independent_count": 54,
+    "discrepancy": 3,
+    "verdict": "NOT AN ERROR -- reconciled exactly, see below",
+    "explanation": "Agent 44's ledger/agent-44-receipt-ledger.json (51 rows) and handoff/publication-lane.json both predate folding the lane-release cohorts into that specific file. handoff/publication-lane.json's own notes field names the three cohorts published immediately before release: transit-deploy-state-machine, edge-observability-pattern, tls-cert-strategy. Each contributed exactly one MOVE_PAGE operation to one PUBLISHED change. Agent 45's fresh /api/v1/changes pull includes all three. Agent 44's 51 rows are a strict subset of Agent 45's 54 -- zero rows appear in Agent 44's ledger that are absent from Agent 45's independent reconstruction.",
+    "pages_only_in_agent45_reconstruction": [
+      {
+        "resource_id": "347e94af-c8f8-5360-98fb-26809f6ea979",
+        "baseline_path": "operations/transit-deploy-state-machine.md",
+        "current_path": "control-plane/specs/transit-deploy-state-machine.md",
+        "publication": "0bd16cd9-fb06-4ea2-8999-952362070e6c",
+        "published_at": "2026-07-30T11:31:42.121010Z"
+      },
+      {
+        "resource_id": "a2be1507-daf8-5065-b8ec-a88e0c3679a9",
+        "baseline_path": "operations/edge-observability-pattern.md",
+        "current_path": "control-plane/design/edge-observability-pattern.md",
+        "publication": "6f09bea9-b005-45f2-85c7-f8b9b2c70419",
+        "published_at": "2026-07-30T11:40:15.000663Z"
+      },
+      {
+        "resource_id": "eade8f27-214a-56be-9a68-29465f2bdf2f",
+        "baseline_path": "operations/tls-cert-strategy.md",
+        "current_path": "operations/security/tls-cert-strategy.md",
+        "publication": "ebb21b36-3bbf-4eb8-96f7-cf4d09a7f722",
+        "published_at": "2026-07-30T11:54:10.010817Z"
+      }
+    ],
+    "pages_only_in_agent44_ledger_not_confirmed_by_agent45": []
+  },
+  "stable_id_uniqueness_proof": {
+    "unique_pages_moved": 54,
+    "move_operations": 54,
+    "ratio": "1:1 -- zero pages moved more than once",
+    "method": "grouped all MOVE_PAGE operations across all PUBLISHED /api/v1/changes by page_resource_id; max group size observed = 1",
+    "unresolved_from_path": 0,
+    "already_at_destination_moves": 0,
+    "rehearsals_excluded": 33,
+    "rewrite_only_changes_excluded": 24,
+    "rewrite_only_operations_excluded": 217
+  },
+  "classification_reconciliation": {
+    "total_pages_classified": 248,
+    "sums_to_248": true,
+    "precedence_order_applied": [
+      "moved under Issue #44", "section landing", "evidence surface", "#43-blocked",
+      "hold-blocked", "active board/project", "backlog/paused", "archived",
+      "hub prerequisite", "authoring decision required", "deliberate non-move",
+      "correctly placed", "still requires movement"
+    ],
+    "fully_independently_verified_categories": {
+      "moved under Issue #44": {"count": 54, "method": "docs.changes MOVE_PAGE + page-history baseline"},
+      "evidence surface": {"count": 4, "method": "PATCH_METADATA knowledge_class=EVIDENCE, live page fetch confirms path/status unchanged"},
+      "hold-blocked": {"count": 1, "method": "page body fetch + cross-ref to operations/w4-1-x-docs-refresh-hold-point.md"},
+      "authoring decision required": {"count": 2, "method": "page body fetch + Agent 44 evidence-commit findings"},
+      "deliberate non-move": {"count": 1, "method": "page body fetch + Agent 44 evidence-commit findings"},
+      "still requires movement": {"count": 22, "method": "live fetch: active/PUBLISHED/criticality NORMAL/non-archived, still at flat control-plane root"},
+      "archived (subset)": {"note": "42 total via independently-fetched lifecycle field == ARCHIVED or status == archived; this is a broader independent signal than Agent 44's body-marked count and includes nested pages"},
+      "backlog/paused (subset)": {"note": "4 total via independently-fetched lifecycle field == PAUSED"}
+    },
+    "not_independently_re_derived": {
+      "count": 39,
+      "disposition_label": "reported by Agent 44: hub / evidence surface / active board-project / #43-blocked / section landing (flat, non-candidate)",
+      "reason": "These 39 flat-root pages (across operations and control-plane) were classified by Agent 44's own pass-final-audit.txt into finer categories (hub >=10 inbound, evidence surface, active board/project, #43-blocked, section landing) using inbound-link-count thresholds and body markers Agent 45 did not independently recompute for the full corpus in this pass (recomputing a 3067-link graph across 513 pages was judged disproportionate to this pass's scope). The category TOTAL is cross-checked structurally (66 + 36 = 102 flat roots; 102 - 26 verified candidates - 11 classified-without-move = 65; the 39 + 4-archived-flat + ~22-nested-in-that-65... reconciles against Agent 44's stated per-category counts within the flat-root breakdown in pass-final-audit.txt), but individual page-to-subcategory assignment within this bucket was not independently re-walked page by page.",
+      "recommendation": "A future pass should recompute inbound/outbound counts directly from /api/v1/search or a full corpus link scan to independently split this bucket, rather than accepting Agent 44's thresholds."
+    }
+  },
+  "discrepancies_or_unavailable_fields": [
+    "inbound/outbound link counts are not available from any /api/v1 endpoint used in this pass for the full 248-page set; where cited, they are quoted from Agent 44's pass-final-audit.txt/json, not independently recomputed.",
+    "'hub prerequisite', 'active board/project', '#43-blocked', 'section landing' are not independently itemised per page in this pass; see classification_reconciliation.not_independently_re_derived above.",
+    "5 of the 21 publication receipt files (per Agent 44's README.md) predate the receipt-emitting runner and carry explicit _unavailable fields for some local metadata; this does not affect the move/resource_id counts, which come from the live API for all 21."
+  ]
+}
