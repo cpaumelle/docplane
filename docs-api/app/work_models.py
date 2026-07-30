@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -76,6 +77,37 @@ class InitiativeLinkCreate(BaseModel):
 class InitiativeDependencyCreate(BaseModel):
     depends_on_initiative_id: UUID
     dependency_kind: Literal["REQUIRES", "BLOCKED_BY", "RELATED"] = "REQUIRES"
+
+
+class CaptureCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=20000)
+    kind: Literal["IDEA", "NEXT_ACTION", "FINDING", "QUESTION"] = "IDEA"
+    origin: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def origin_bounded(self):
+        if len(json.dumps(self.origin, sort_keys=True, default=str)) > 8000:
+            raise ValueError("origin context exceeds 8000 bytes")
+        return self
+
+
+class CapturePromote(BaseModel):
+    workspace_id: UUID | None = None
+    initiative_key: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9_-]{0,95}$")
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    objective: str | None = Field(default=None, min_length=1, max_length=5000)
+    priority: Literal["LOW", "NORMAL", "HIGH", "CRITICAL"] = "NORMAL"
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class CaptureAttach(BaseModel):
+    initiative_id: UUID
+    activity_type: Literal["NOTE", "OBSERVATION", "DECISION_REQUIRED", "HANDOFF", "SOAK_OBSERVATION", "BLOCKER", "RESOLUTION"] = "NOTE"
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class CaptureDiscard(BaseModel):
+    note: str | None = Field(default=None, max_length=4000)
 
 
 class PromotionUpdate(BaseModel):

@@ -15,6 +15,10 @@ from app.db import get_conn
 from app.event_store import append_event
 from app.work_models import (
     ActivityCreate,
+    CaptureAttach,
+    CaptureCreate,
+    CaptureDiscard,
+    CapturePromote,
     InitiativeCreate,
     InitiativeDependencyCreate,
     InitiativeLinkCreate,
@@ -405,4 +409,239 @@ def work_queues(principal: Principal = Depends(require_contributor)) -> dict[str
         parked_due = int(cur.fetchone()[0])
         cur.execute("SELECT count(*) FROM work.initiatives WHERE work_state = 'SOAKING' AND soak_review_at <= now()")
         soak_due = int(cur.fetchone()[0])
-    return {"by_state": by_state, "by_priority": by_priority, "parked_review_due": parked_due, "soak_review_due": soak_due}
+        cur.execute("SELECT count(*) FROM work.captures WHERE status = 'INBOX'")
+        inbox = int(cur.fetchone()[0])
+    return {"by_state": by_state, "by_priority": by_priority, "parked_review_due": parked_due, "soak_review_due": soak_due, "inbox": inbox}
+
+
+_CAPTURE_COLUMNS = (
+    "capture_id", "body", "kind", "origin", "status", "author_principal_id",
+    "initiative_id", "activity_id", "triaged_by_principal_id", "triaged_at",
+    "triage_note", "created_at",
+)
+
+
+def _capture_select() -> str:
+    return (
+        "SELECT capture_id, body, kind, origin, status, author_principal_id, "
+        "initiative_id, activity_id, triaged_by_principal_id, triaged_at, "
+        "triage_note, created_at FROM work.captures"
+    )
+
+
+def _capture(row) -> dict[str, Any]:
+    value = dict(zip(_CAPTURE_COLUMNS, row))
+    for key in ("capture_id", "author_principal_id", "initiative_id", "activity_id", "triaged_by_principal_id"):
+        if value.get(key) is not None:
+            value[key] = str(value[key])
+    value["uri"] = f"docplane://work/captures/{value['capture_id']}"
+    return value
+
+
+def _load_capture(conn, capture_id: UUID, *, for_update: bool = False) -> dict[str, Any]:
+    cur = conn.cursor()
+    cur.execute(_capture_select() + " WHERE capture_id = %s" + (" FOR UPDATE" if for_update else ""), (str(capture_id),))
+    row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAPTURE_NOT_FOUND"})
+    return _capture(row)
+
+
+def _require_inbox(capture: dict[str, Any]) -> None:
+    if capture["status"] != "INBOX":
+        raise HTTPException(status_code=409, detail={"code": "CAPTURE_ALREADY_TRIAGED", "status": capture["status"], "initiative_id": capture["initiative_id"]})
+
+
+@router.post("/api/v1/work/captures", status_code=201)
+def create_capture(
+    request: CaptureCreate,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    key = _key(idempotency_key)
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO work.captures (body, kind, origin, author_principal_id, idempotency_key)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (author_principal_id, idempotency_key)
+            DO UPDATE SET body = work.captures.body
+            RETURNING capture_id
+            """,
+            (request.body.strip(), request.kind, _json(request.origin), principal.principal_id, key),
+        )
+        capture_id = cur.fetchone()[0]
+        response = _load_capture(conn, capture_id)
+        append_event(
+            conn,
+            event_type="CAPTURE_CREATED",
+            channel="API",
+            producer_id="docplane-work",
+            idempotency_key=f"CAPTURE_CREATED:{principal.principal_id}:{key}",
+            principal=principal,
+            workspace_key="work",
+            resource_type="CAPTURE",
+            resource_id=str(capture_id),
+            metadata={"kind": request.kind},
+        )
+        conn.commit()
+        return response
+
+
+@router.get("/api/v1/work/captures")
+def list_captures(
+    status: str = Query(default="INBOX"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    statuses = {"INBOX", "PROMOTED", "ATTACHED", "DISCARDED", "all"}
+    if status not in statuses:
+        raise HTTPException(status_code=422, detail={"code": "CAPTURE_STATUS_INVALID", "allowed": sorted(statuses)})
+    predicate = "" if status == "all" else " WHERE status = %s"
+    params: list[Any] = [] if status == "all" else [status]
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT count(*) FROM work.captures{predicate}", params)
+        total = int(cur.fetchone()[0])
+        cur.execute(_capture_select() + predicate + " ORDER BY created_at DESC LIMIT %s", [*params, limit])
+        rows = cur.fetchall()
+    values = [_capture(row) for row in rows]
+    return {"captures": values, "count": len(values), "total": total, "truncated": len(values) < total}
+
+
+@router.post("/api/v1/work/captures/{capture_id}/promote")
+def promote_capture(
+    capture_id: UUID,
+    request: CapturePromote,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    key = _key(idempotency_key)
+    with get_conn() as conn:
+        capture = _load_capture(conn, capture_id, for_update=True)
+        _require_inbox(capture)
+        cur = conn.cursor()
+        if request.workspace_id is not None:
+            cur.execute("SELECT workspace_id, workspace_kind, workspace_key FROM docplane.workspaces WHERE workspace_id = %s", (str(request.workspace_id),))
+        else:
+            cur.execute("SELECT workspace_id, workspace_kind, workspace_key FROM docplane.workspaces WHERE workspace_key = 'work'")
+        workspace = cur.fetchone()
+        if workspace is None:
+            raise HTTPException(status_code=404, detail={"code": "WORKSPACE_NOT_FOUND"})
+        if workspace[1] != "WORK":
+            raise HTTPException(status_code=422, detail={"code": "INITIATIVE_REQUIRES_WORK_WORKSPACE"})
+        first_line = capture["body"].strip().splitlines()[0].strip()
+        title = (request.title or first_line)[:300]
+        initiative_key = request.initiative_key or f"cap-{capture['capture_id'][:8]}"
+        objective = (request.objective or capture["body"].strip())[:5000]
+        try:
+            cur.execute(
+                """
+                INSERT INTO work.initiatives
+                    (initiative_key, workspace_id, title, objective, owner_principal_id, idempotency_key, work_state, priority)
+                VALUES (%s, %s, %s, %s, %s, %s, 'BACKLOG', %s)
+                RETURNING initiative_id
+                """,
+                (initiative_key, str(workspace[0]), title, objective, principal.principal_id, f"capture-promote:{key}", request.priority),
+            )
+        except psycopg2.errors.UniqueViolation as exc:
+            conn.rollback()
+            raise HTTPException(status_code=409, detail={"code": "INITIATIVE_KEY_EXISTS"}) from exc
+        initiative_id = cur.fetchone()[0]
+        cur.execute("INSERT INTO work.initiative_links (initiative_id, relation, resource_type, resource_id, created_by) VALUES (%s, 'CONTEXT', 'EXTERNAL', %s, %s) ON CONFLICT DO NOTHING", (str(initiative_id), f"docplane://work/captures/{capture_id}", principal.principal_id))
+        cur.execute(
+            "UPDATE work.captures SET status = 'PROMOTED', initiative_id = %s, triaged_by_principal_id = %s, triaged_at = now(), triage_note = %s WHERE capture_id = %s",
+            (str(initiative_id), principal.principal_id, request.note, str(capture_id)),
+        )
+        append_event(
+            conn,
+            event_type="CAPTURE_TRIAGED",
+            channel="API",
+            producer_id="docplane-work",
+            idempotency_key=f"CAPTURE_TRIAGED:{principal.principal_id}:{key}",
+            principal=principal,
+            workspace_key=workspace[2],
+            resource_type="CAPTURE",
+            resource_id=str(capture_id),
+            metadata={"disposition": "PROMOTED", "initiative_id": str(initiative_id)},
+        )
+        conn.commit()
+        return {"capture": _load_capture(conn, capture_id), "initiative": _load(conn, initiative_id)}
+
+
+@router.post("/api/v1/work/captures/{capture_id}/attach")
+def attach_capture(
+    capture_id: UUID,
+    request: CaptureAttach,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    key = _key(idempotency_key)
+    with get_conn() as conn:
+        capture = _load_capture(conn, capture_id, for_update=True)
+        _require_inbox(capture)
+        initiative = _load(conn, request.initiative_id)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO work.initiative_activities
+                (initiative_id, author_principal_id, idempotency_key, activity_type, body, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (initiative_id, author_principal_id, idempotency_key)
+            DO UPDATE SET body = work.initiative_activities.body
+            RETURNING activity_id
+            """,
+            (str(request.initiative_id), principal.principal_id, f"capture-attach:{key}", request.activity_type, capture["body"], _json({"capture_id": str(capture_id), "capture_kind": capture["kind"], "capture_origin": capture["origin"]})),
+        )
+        activity_id = cur.fetchone()[0]
+        cur.execute(
+            "UPDATE work.captures SET status = 'ATTACHED', initiative_id = %s, activity_id = %s, triaged_by_principal_id = %s, triaged_at = now(), triage_note = %s WHERE capture_id = %s",
+            (str(request.initiative_id), str(activity_id), principal.principal_id, request.note, str(capture_id)),
+        )
+        append_event(
+            conn,
+            event_type="CAPTURE_TRIAGED",
+            channel="API",
+            producer_id="docplane-work",
+            idempotency_key=f"CAPTURE_TRIAGED:{principal.principal_id}:{key}",
+            principal=principal,
+            workspace_key=initiative["workspace_key"],
+            resource_type="CAPTURE",
+            resource_id=str(capture_id),
+            metadata={"disposition": "ATTACHED", "initiative_id": str(request.initiative_id)},
+        )
+        conn.commit()
+        return {"capture": _load_capture(conn, capture_id), "activity_id": str(activity_id)}
+
+
+@router.post("/api/v1/work/captures/{capture_id}/discard")
+def discard_capture(
+    capture_id: UUID,
+    request: CaptureDiscard,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    key = _key(idempotency_key)
+    with get_conn() as conn:
+        capture = _load_capture(conn, capture_id, for_update=True)
+        _require_inbox(capture)
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE work.captures SET status = 'DISCARDED', triaged_by_principal_id = %s, triaged_at = now(), triage_note = %s WHERE capture_id = %s",
+            (principal.principal_id, request.note, str(capture_id)),
+        )
+        append_event(
+            conn,
+            event_type="CAPTURE_TRIAGED",
+            channel="API",
+            producer_id="docplane-work",
+            idempotency_key=f"CAPTURE_TRIAGED:{principal.principal_id}:{key}",
+            principal=principal,
+            workspace_key="work",
+            resource_type="CAPTURE",
+            resource_id=str(capture_id),
+            metadata={"disposition": "DISCARDED"},
+        )
+        conn.commit()
+        return {"capture": _load_capture(conn, capture_id)}

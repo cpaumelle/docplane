@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const VIEWS = new Set(["overview", "authoring", "reorganisation", "history"]);
+const VIEWS = new Set(["overview", "work", "authoring", "reorganisation", "history"]);
 let token = sessionStorage.getItem("docplane-token") || "";
 let selectedPlan = null;
 
@@ -24,6 +24,7 @@ function activate(name) {
   $(`view-${view}`)?.classList.add("active");
   document.querySelector(`.nav[data-view="${view}"]`)?.classList.add("active");
   if (view === "overview") loadOverview();
+  if (view === "work") loadWork();
   if (view === "reorganisation") loadReorganisation();
   if (view === "history") loadHistory();
 }
@@ -66,6 +67,7 @@ async function connect() {
   sessionStorage.setItem("docplane-token", token);
   $("identity").textContent = `${capability.principal.display_name} · ${capability.principal.role}`;
   $("retry-publication").disabled = false;
+  $("capture-save").disabled = false;
   document.dispatchEvent(new CustomEvent("docplane:connected"));
   await loadOverview();
 }
@@ -89,6 +91,56 @@ async function loadOverview() {
   } catch (error) {
     $("certification").textContent = error.message;
   }
+}
+
+async function loadWork() {
+  if (!token) return;
+  try {
+    const [queues, inbox, initiatives] = await Promise.all([
+      api("/api/control-plane/work/queues"),
+      api("/api/control-plane/work/captures?status=INBOX"),
+      api("/api/control-plane/initiatives?limit=200"),
+    ]);
+    const states = queues.by_state || {};
+    $("work-cards").innerHTML = [
+      ["Inbox", queues.inbox ?? 0],
+      ["Now", states.ACTIVE ?? 0],
+      ["Roadmap", states.BACKLOG ?? 0],
+      ["Blocked", states.BLOCKED ?? 0],
+      ["Soaking", states.SOAKING ?? 0],
+      ["Parked", states.PARKED ?? 0],
+      ["Parked review due", queues.parked_review_due ?? 0],
+      ["Soak review due", queues.soak_review_due ?? 0],
+    ].map(([label, value]) => `<article class="card"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>`).join("");
+    const open = (initiatives.initiatives || []);
+    $("attach-target").innerHTML = `<option value="">Select an initiative…</option>` + open.map((item) => `<option value="${esc(item.initiative_id)}">${esc(item.title)} (${esc(item.work_state)})</option>`).join("");
+    $("work-inbox").innerHTML = (inbox.captures || []).length ? inbox.captures.map((item) => `<article class="panel"><strong>${esc(item.kind)}</strong><p>${esc(item.body)}</p><p class="muted">${esc(item.created_at)}</p><div class="actions"><button class="capture-promote" data-id="${esc(item.capture_id)}">Promote</button><button class="capture-attach" data-id="${esc(item.capture_id)}">Attach</button><button class="capture-discard" data-id="${esc(item.capture_id)}">Discard</button></div></article>`).join("") : `<p class="muted">Inbox zero.</p>`;
+    document.querySelectorAll(".capture-promote").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "promote").catch((error) => { $("work-inbox").textContent = error.message; })));
+    document.querySelectorAll(".capture-attach").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "attach").catch((error) => { $("work-inbox").textContent = error.message; })));
+    document.querySelectorAll(".capture-discard").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "discard").catch((error) => { $("work-inbox").textContent = error.message; })));
+    $("work-initiatives").innerHTML = open.length ? open.map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">${esc(item.initiative_key)} · ${esc(item.work_state)} · ${esc(item.priority)}</p><p>${esc(item.objective || "")}</p></article>`).join("") : `<p class="muted">No open initiatives.</p>`;
+  } catch (error) {
+    $("work-inbox").textContent = error.message;
+  }
+}
+
+async function saveCapture() {
+  const body = $("capture-body").value.trim();
+  if (!body) return;
+  await api("/api/control-plane/work/captures", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("capture") }, body: JSON.stringify({ body, kind: $("capture-kind").value, origin: { channel: "WEB", tool: "dashboard-work-view" } }) });
+  $("capture-body").value = "";
+  await loadWork();
+}
+
+async function triageCapture(id, action) {
+  const payload = {};
+  if (action === "attach") {
+    const target = $("attach-target").value;
+    if (!target) { $("work-inbox").textContent = "Select an attach target initiative first."; return; }
+    payload.initiative_id = target;
+  }
+  await api(`/api/control-plane/work/captures/${id}/${action}`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("triage") }, body: JSON.stringify(payload) });
+  await loadWork();
 }
 
 async function loadHistory() {
@@ -137,6 +189,8 @@ $("token").value = token;
 $("connect").addEventListener("click", () => connect().catch((error) => $("identity").textContent = error.message));
 document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
 $("refresh-overview").addEventListener("click", loadOverview);
+$("refresh-work").addEventListener("click", loadWork);
+$("capture-save").addEventListener("click", () => saveCapture().catch((error) => { $("work-inbox").textContent = error.message; }));
 $("refresh-history").addEventListener("click", loadHistory);
 $("refresh-reorganisation").addEventListener("click", loadReorganisation);
 $("retry-publication").addEventListener("click", async () => { $("certification").textContent = JSON.stringify(await api("/api/control-plane/publication/retry", {method:"POST",headers:{"Idempotency-Key":key("retry"),"Content-Type":"application/json"},body:"{}"}), null, 2); });

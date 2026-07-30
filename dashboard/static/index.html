@@ -22,6 +22,7 @@
   <div class="shell">
     <nav class="sidebar" data-product-aria="modules" aria-label="DocPlane modules">
       <button class="nav active" data-view="overview">Overview</button>
+      <button class="nav" data-view="work">Work</button>
       <button class="nav" data-view="authoring">Authoring</button>
       <button class="nav" data-view="reorganisation">Reorganisation</button>
       <button class="nav" data-view="history">Changes & versions</button>
@@ -34,6 +35,25 @@
           <article class="panel"><h2>Certification</h2><pre id="certification">Connect to load.</pre><button id="retry-publication" disabled>Retry current publication</button></article>
           <article class="panel"><h2>Recent changes</h2><div id="recent-changes" class="list muted">Connect to load.</div></article>
         </div>
+      </section>
+
+      <section id="view-work" class="view">
+        <div class="heading"><div><h1>Active work</h1><p>Capture without breaking flow; triage deliberately; review what is due.</p></div><button id="refresh-work">Refresh</button></div>
+        <div id="work-cards" class="cards"></div>
+        <div class="grid two">
+          <article class="panel">
+            <h2>Capture</h2>
+            <label>Thought<textarea id="capture-body" placeholder="One sentence is enough — triage happens later"></textarea></label>
+            <label>Kind<select id="capture-kind"><option>IDEA</option><option>NEXT_ACTION</option><option>FINDING</option><option>QUESTION</option></select></label>
+            <button id="capture-save" disabled>Save to inbox</button>
+          </article>
+          <article class="panel">
+            <h2>Inbox</h2>
+            <label>Attach target<select id="attach-target"><option value="">Select an initiative…</option></select></label>
+            <div id="work-inbox" class="list muted">Connect to load.</div>
+          </article>
+        </div>
+        <article class="panel"><h2>Initiatives</h2><div id="work-initiatives" class="list muted">Connect to load.</div></article>
       </section>
 
       <section id="view-authoring" class="view">

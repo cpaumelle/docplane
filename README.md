@@ -66,7 +66,7 @@ cp .env.example .env
 docker compose up --build -d postgres docs-api dashboard docs-web
 ```
 
-The API container applies `db/migrations/000_docplane_genesis.sql` before it starts serving. There is no alternate SQL bootstrap path.
+The API container applies the ordered migrations in `db/migrations/` before it starts serving. There is no alternate SQL bootstrap path.
 
 ### Managed installation
 
