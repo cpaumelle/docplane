@@ -1,10 +1,9 @@
 {
  "certification_version": 109,
  "evidence_commit": "ee97ceab",
- "holder": "agent-45",
- "live_snapshot": "2026-07-30T13:11:03Z (pages total=947 active=513, open_changes=0)",
- "notes": "Agent 45 acquiring the lane for a multi-cohort publication session (per updated throughput protocol): (1) ccm-* design pair -> control-plane/design/, (2) ccm-interface-realization-step6-runbook.md -> operations/runbooks/ (cross-subtree singleton), (3) topology-invariants Site/GEO-Fabric Edge (5 pages) -> control-plane/invariants/, (4) topology-invariants Framework/Registry (4 pages) -> control-plane/invariants/. Target 12 pages this session, refreshing live state between each cohort. Not touching ccm.md (hub, deferred), ccm-interface-realization-capability.md (authoring decision pending), i-config-projection-1.md (destination decision pending), i-interface-realization-1.md (sequencing dependency, deferred), or the old topology-invariants/index.md (retirement, deferred) this session. Acquired from branch head 0824c58977db2fdf1f101316af9b7530dbfbbd0c (agent-44's transit-convergence + transport-plane-authority release). Agent-44 territory (control-plane/*.md flat root minus ccm-* and this claim) is untouched.",
- "since": "2026-07-30T13:11:03Z",
- "state": "held",
- "acquired_from_head": "0824c58977db2fdf1f101316af9b7530dbfbbd0c"
+ "holder": "agent-44",
+ "live_snapshot": "2026-07-30T13:16:37Z (pages total=947 active=513, open_changes=0)",
+ "notes": "Agent 44 lane session over flat-root control-plane territory (ccm-* excluded). Prepared cohorts: invariant leaves (2), specs authority+schema (2), design drafts (2), foundational docs-gen-1 (1), access-and-auth consolidation (1) = 8 pages. Acquired from shared head .",
+ "since": "2026-07-30T13:16:37Z",
+ "state": "held"
 }
