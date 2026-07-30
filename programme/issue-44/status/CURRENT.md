@@ -86,19 +86,58 @@ carry an individual disposition:
 - `operations/invariant-roadmap.md` — authoring decision required
 - `operations/w4-1-5b-runtime-manifest-architecture.md` — hold-blocked (F11/F12 both OPEN)
 
-### Provisional next-cohort grouping (from the 22 — must be regenerated from a fresh
-snapshot before any rehearsal; grouped by evident topic only, not yet body-reviewed for
-inbound/outbound coupling)
+### Cohort status (updated 2026-07-30T12:52:07Z after body-reviewing the ccm-* cluster
+and discovering a disjoint 23-page cohort — see
+`audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json` for full detail)
 
-1. **Transit/gateway cluster**: `transit-convergence.md`, `gateway-runtime-responsibilities.md`,
-   `site-network-authority.md`, `transport-plane-authority.md`
-2. **`ccm-*` cluster**: `ccm-dhcp-resolver-ownership-capability.md`,
-   `ccm-interface-realization-design.md`, `ccm-interface-realization-step6-runbook.md`
-3. **Remaining design/spec/reference**: `architecture-overview.md`, `authentication-model.md`,
-   `bootstrap-authority-map.md`, `charliehub-mcp.md`, `class-b-hosts.md`, `current-state.md`,
-   `docplane.md`, `docs-gen-1.md`, `hub2-authority-crosswalk.md`, `hub2-host-net.md`,
-   `i-gen-no-vcs-1.md`, `i-traefik-empty-tcp.md`, `lw-r1-design-notes.md`,
-   `schema-migrations.md`, `system-map.md`
+1. **Transit/gateway cluster** — **IN PROGRESS, lane held by agent-44**:
+   `transit-convergence.md`, `gateway-runtime-responsibilities.md`,
+   `site-network-authority.md`, `transport-plane-authority.md`. Do not touch these pages.
+
+2. **`control-plane/topology-invariants/` remainder — 23 pages — NEW PRIMARY RECOMMENDATION,
+   fully disjoint from (1).** 22 invariant pages + 1 index, all independently verified
+   `active`/`REFERENCE`/non-#43-blocked. These were invisible to the flat-root-only scan
+   that produced the "22" count above (they're nested, not flat) and were wrongly defaulted
+   to "correctly placed" in the retrospective baseline — nesting under a path pattern the
+   programme has already retired elsewhere (18–23 siblings already moved to
+   `control-plane/invariants/` in earlier cohorts) is not correct placement. Destination
+   `control-plane/invariants/` already exists (v59 index). Same low-risk, precedented
+   pattern as the earlier invariants-* cohorts. Full list:
+   `audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json` →
+   `disjoint_discovery_topology_invariants_remainder.full_page_list`. The old
+   `control-plane/topology-invariants/index.md` needs hub-style retirement (like the H1/H2
+   conversions), not a plain move, since `control-plane/invariants/index.md` already
+   supersedes it.
+
+3. **`ccm-*` cluster — NOT one coherent cohort; body review changed 4 of 7 pages'
+   dispositions from the earlier guess.** Full per-page detail in
+   `audits/2026-07-30T1252-cohort-prep-ccm-and-invariants.json`:
+   - **Clean move pair → `control-plane/design/`**: `ccm-interface-realization-design.md`,
+     `ccm-dhcp-resolver-ownership-capability.md` (2 pages, low coupling, safe).
+   - **Hub prerequisite, not a plain move**: `ccm.md` (16 inbound, nav_path already says
+     Foundational — needs an H1/H2-style hub-conversion publication with dedicated
+     inbound-repair, into `control-plane/foundational/ccm.md`).
+   - **Authoring decision required before moving**: `ccm-interface-realization-capability.md`
+     (11 inbound — crosses the hub threshold too; reads as an active sprint doc but its own
+     body shows the canary/soak completed 2026-05-31, two months ago — needs relabelling to
+     historical before it's moved, or it will misrepresent a finished initiative as in flight).
+   - **Cross-subtree, not part of a control-plane cohort**: `ccm-interface-realization-step6-runbook.md`
+     (OPERATION lifecycle, executed/closed — belongs in `operations/runbooks/`, lowest
+     coupling of the cluster at 1 inbound).
+   - **No action needed**: `ccm-interface-realization-implementation.md` (already ARCHIVED,
+     correctly so — flag only a stale inline status-table cell, not a move question) and
+     `ccm-interface-realization-archaeology.md` (evidence surface, deliberate non-move,
+     explicitly "feeds" the capability doc).
+
+4. **Remaining design/spec/reference** (unchanged from before, not yet body-reviewed):
+   `architecture-overview.md`, `authentication-model.md`, `bootstrap-authority-map.md`,
+   `charliehub-mcp.md`, `class-b-hosts.md`, `current-state.md`, `docplane.md`,
+   `docs-gen-1.md`, `hub2-authority-crosswalk.md`, `hub2-host-net.md`, `i-gen-no-vcs-1.md`,
+   `i-traefik-empty-tcp.md`, `lw-r1-design-notes.md`, `schema-migrations.md`,
+   `system-map.md`
+
+All groupings above remain provisional and must be regenerated from a fresh snapshot
+before any rehearsal.
 
 ## Shared-branch lifecycle recommendation
 
