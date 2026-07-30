@@ -57,7 +57,7 @@ def capabilities(authorization: str | None = Header(default=None)) -> Any:
 def overview(authorization: str | None = Header(default=None)) -> dict[str, Any]:
     auth = _auth(authorization)
     endpoints = {
-        "structure": "/api/v1/dashboard/structure",
+        "structure": "/api/v1/dashboard/observatory?candidate_limit=1",
         "changes": "/api/v1/changes?limit=20",
         "certification": "/api/v1/certification/status",
         "work": "/api/v1/work/queues",
@@ -77,6 +77,57 @@ def overview(authorization: str | None = Header(default=None)) -> dict[str, Any]
 def structure(authorization: str | None = Header(default=None)) -> Any:
     try:
         return client.get("/api/v1/dashboard/structure", authorization=_auth(authorization))
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/observatory")
+def observatory(
+    candidate_limit: int = Query(default=50, ge=1, le=200),
+    candidate_after: str | None = None,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    params: dict[str, Any] = {"candidate_limit": candidate_limit}
+    if candidate_after:
+        params["candidate_after"] = candidate_after
+    try:
+        return client.get("/api/v1/dashboard/observatory", authorization=_auth(authorization), params=params)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/observatory/pages")
+def observatory_pages(
+    limit: int = Query(default=100, ge=1, le=200),
+    after: str | None = None,
+    q: str | None = None,
+    knowledge_class: str | None = None,
+    identifier_family: str | None = None,
+    archive_state: str | None = Query(default=None, pattern="^(active|archived)$"),
+    dated_only: bool = False,
+    authorization: str | None = Header(default=None),
+) -> Any:
+    params: dict[str, Any] = {"limit": limit, "dated_only": dated_only}
+    if after:
+        params["after"] = after
+    for name, value in (
+        ("q", q),
+        ("knowledge_class", knowledge_class),
+        ("identifier_family", identifier_family),
+        ("archive_state", archive_state),
+    ):
+        if value:
+            params[name] = value
+    try:
+        return client.get("/api/v1/dashboard/observatory/pages", authorization=_auth(authorization), params=params)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/observatory/export")
+def observatory_export(authorization: str | None = Header(default=None)) -> Any:
+    try:
+        return client.get("/api/v1/dashboard/observatory/export", authorization=_auth(authorization))
     except ControlPlaneError as exc:
         _raise(exc)
 

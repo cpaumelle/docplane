@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import base64
+import binascii
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -32,6 +35,10 @@ from app.publication import change_view, publish_change, validate_change
 from app.runtime import certification_status, deploy_current_state
 
 router = APIRouter(tags=["docplane-v1"])
+
+OBSERVATORY_EXPORT_MAX_RESOURCES = 5000
+OBSERVATORY_EXPORT_MAX_BYTES = 10 * 1024 * 1024
+_DATED_PATH = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def _json(value: Any) -> psycopg2.extras.Json:
@@ -702,24 +709,155 @@ def retry_publication(
 
 @router.get("/api/v1/dashboard/structure")
 def dashboard_structure(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
+    return _observatory_snapshot()
+
+
+def _observatory_snapshot() -> dict[str, Any]:
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT path, title, nav_path, content, revision, version, status, updated_at, updated_by FROM docs.pages ORDER BY path"
+            """
+            SELECT p.resource_id::text, p.path, p.title, p.nav_path, p.content,
+                   p.revision, p.version, p.status, p.updated_at, p.updated_by,
+                   w.workspace_key, p.publication_state, p.knowledge_class,
+                   p.verification_state, p.owner_principal_id::text,
+                   p.review_due_at, p.criticality, p.metadata_review_required,
+                   p.metadata_version, p.provenance
+              FROM docs.pages p
+              JOIN docplane.workspaces w ON w.workspace_id = p.workspace_id
+             ORDER BY p.path
+            """
         )
         rows = cur.fetchall()
-    pages = [
+    keys = (
+        "resource_id", "path", "title", "nav_path", "content", "revision",
+        "version", "status", "updated_at", "updated_by", "workspace_key",
+        "publication_state", "knowledge_class", "verification_state",
+        "owner_principal_id", "review_due_at", "criticality",
+        "metadata_review_required", "metadata_version", "provenance",
+    )
+    return build_structure([dict(zip(keys, row)) for row in rows])
+
+
+def _cursor(value: str | None) -> int:
+    if value is None:
+        return 0
+    try:
+        decoded = base64.urlsafe_b64decode(value.encode() + b"==").decode()
+        offset = int(decoded)
+        if offset < 0:
+            raise ValueError
+        return offset
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        raise HTTPException(
+            status_code=422, detail={"code": "OBSERVATORY_CURSOR_INVALID"}
+        )
+
+
+def _next_cursor(offset: int) -> str:
+    return base64.urlsafe_b64encode(str(offset).encode()).decode().rstrip("=")
+
+
+def _page(values: list[dict[str, Any]], after: str | None, limit: int) -> dict[str, Any]:
+    offset = _cursor(after)
+    selected = values[offset:offset + limit]
+    next_offset = offset + len(selected)
+    has_more = next_offset < len(values)
+    return {
+        "items": selected,
+        "count": len(selected),
+        "total": len(values),
+        "has_more": has_more,
+        "next_after": _next_cursor(next_offset) if has_more else None,
+    }
+
+
+@router.get("/api/v1/dashboard/observatory")
+def dashboard_observatory(
+    candidate_limit: int = Query(default=50, ge=1, le=200),
+    candidate_after: str | None = Query(default=None),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    snapshot = _observatory_snapshot()
+    candidates = _page(
+        snapshot.pop("review_candidates"), candidate_after, candidate_limit
+    )
+    snapshot.pop("pages")
+    return {
+        **snapshot,
+        "review_candidates": candidates,
+        "pagination_contract": {
+            "dialect": "docplane-named-after-v1",
+            "count": "records returned in this response",
+            "total": "records available in the snapshot",
+            "has_more": "true when another page exists",
+            "next_after": "opaque cursor for the matching after parameter",
+        },
+    }
+
+
+@router.get("/api/v1/dashboard/observatory/pages")
+def dashboard_observatory_pages(
+    limit: int = Query(default=100, ge=1, le=200),
+    after: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=300),
+    knowledge_class: str | None = Query(default=None, max_length=100),
+    identifier_family: str | None = Query(default=None, max_length=100),
+    archive_state: str | None = Query(default=None, pattern="^(active|archived)$"),
+    dated_only: bool = Query(default=False),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    snapshot = _observatory_snapshot()
+    pages = snapshot["pages"]
+    if q:
+        needle = q.casefold()
+        pages = [
+            page for page in pages
+            if needle in f"{page['path']} {page.get('title') or ''}".casefold()
+        ]
+    if knowledge_class:
+        pages = [page for page in pages if page.get("knowledge_class") == knowledge_class]
+    if identifier_family:
+        pages = [page for page in pages if page.get("identifier_family") == identifier_family]
+    if archive_state:
+        pages = [page for page in pages if page.get("status") == archive_state]
+    if dated_only:
+        pages = [page for page in pages if _DATED_PATH.search(page["path"])]
+    return {
+        "fingerprint": snapshot["fingerprint"],
+        "pages": _page(pages, after, limit),
+    }
+
+
+@router.get("/api/v1/dashboard/observatory/export")
+def dashboard_observatory_export(
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    snapshot = _observatory_snapshot()
+    manifest = [
         {
-            "path": row[0],
-            "title": row[1],
-            "nav_path": row[2],
-            "content": row[3],
-            "revision": row[4],
-            "version": row[5],
-            "status": row[6],
-            "updated_at": row[7],
-            "updated_by": row[8],
+            "resource_id": page["resource_id"],
+            "revision": page["revision"],
+            "path": page["path"],
         }
-        for row in rows
+        for page in snapshot["pages"]
     ]
-    return build_structure(pages)
+    value = {
+        "contract_version": "docplane-observatory-export-v1",
+        "fingerprint": snapshot["fingerprint"],
+        "manifest": manifest,
+        "observatory": snapshot,
+    }
+    encoded_size = len(json.dumps(value, default=str).encode("utf-8"))
+    if len(manifest) > OBSERVATORY_EXPORT_MAX_RESOURCES or encoded_size > OBSERVATORY_EXPORT_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "EXPORT_LIMIT_EXCEEDED",
+                "resources": len(manifest),
+                "resource_limit": OBSERVATORY_EXPORT_MAX_RESOURCES,
+                "bytes": encoded_size,
+                "byte_limit": OBSERVATORY_EXPORT_MAX_BYTES,
+            },
+        )
+    return value
