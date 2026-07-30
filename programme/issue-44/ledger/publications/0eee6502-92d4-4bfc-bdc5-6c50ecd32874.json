@@ -1,0 +1,85 @@
+{
+ "_unavailable": [
+  "rehearsal: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "certification_before: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "certification_after: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "post_publication_checks: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed.",
+  "post_publication_audit: no local cohort receipt for this publication; it predates the receipt-emitting runner. Regenerate from /api/v1/changes if needed."
+ ],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": null,
+ "certification_before": null,
+ "cohort": "architecture hub becomes its section landing page",
+ "display_prefix": "0eee6502",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": null,
+  "scan": null
+ },
+ "move_operations": 1,
+ "nav_changes": 1,
+ "operation_type_counts": {
+  "MOVE_PAGE": 1,
+  "REPLACE_DOCUMENT": 1
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/architecture/index.md",
+   "expected_revision": "ae4ca2e0-3713-4b94-b778-2aaa0f121659",
+   "from_nav_path": "Control Plane/Architecture",
+   "from_path": "control-plane/architecture.md",
+   "nav_changed": true,
+   "operation_id": "e2d23944-45af-4294-925e-9e9b9b1de7ce",
+   "redirect_created": false,
+   "resource_id": "50242c9d-10da-5847-9133-ac9e241f6088",
+   "to_nav_path": "Control Plane/Architecture/Index",
+   "to_path": "control-plane/architecture/index.md"
+  }
+ ],
+ "post_publication_audit": null,
+ "post_publication_checks": null,
+ "preserved_references": null,
+ "publication_id": "0eee6502-92d4-4bfc-bdc5-6c50ecd32874",
+ "publication_receipt": {
+  "candidate_identity": "1d8cb8fb85b95ffe1ee6b8a86b04a47672f06283d5fb43d4e4ed20b60fa4454c",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 37368,
+   "deployment_cycle_id": "2448f8b8-1715-46bd-af9b-d2163d3c6b07",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 32,
+   "release_id": "85ebf89f-9430-4add-a84d-dcc12438a023",
+   "sealed_digest": "ed1f24d3f606928723913df128dadedc97642c660230ffe4713667144ac66007",
+   "status": "COMPLETED",
+   "target_state_identity": "36ada73955c8021e0e9ba9744b689edc1b371d20b21e512eba9ac9e6f598361b"
+  },
+  "operations_applied": 2,
+  "operations_submitted": 2,
+  "published_at": "2026-07-30T08:21:29.589357+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T08:21:29.298271Z",
+ "redirect_count": 0,
+ "reference_repair_publication": null,
+ "rehearsal": null,
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 1,
+ "title": "Issue #44 H2: architecture hub becomes its section landing page",
+ "unique_resource_ids": 1,
+ "validation_summary": {
+  "base_state_identity": "b6e3007288970dae910615a45347f899ea741f1e75ed786f08c34f5e8e9cb057",
+  "candidate_identity": "1d8cb8fb85b95ffe1ee6b8a86b04a47672f06283d5fb43d4e4ed20b60fa4454c",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 2,
+  "operations_checked": 2,
+  "passed": true,
+  "validated_at": "2026-07-30T08:21:29.583146+00:00",
+  "warnings": []
+ }
+}

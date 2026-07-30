@@ -1,0 +1,124 @@
+{
+ "agent_44_receipt_result": {
+  "already_at_destination": 0,
+  "awaiting": "independent reconstruction by agent-45",
+  "excluded_from_count": [
+   "REPLACE_DOCUMENT (rewrite-only)",
+   "PATCH_METADATA (metadata-only)",
+   "CREATE_PAGE",
+   "ARCHIVE_PAGE",
+   "RESTORE_PAGE",
+   "REMOVE_REDIRECT",
+   "ABANDONED changes (rehearsals; never applied)"
+  ],
+  "move_bearing_publications": 21,
+  "move_operations": 54,
+  "repeated_moves": 0,
+  "unique_resource_ids": 54,
+  "unresolved_from_path": 0
+ },
+ "authority_model": [
+  "GitHub stores programme coordination and durable evidence.",
+  "DocPlane stores current page content and state.",
+  "/api/v1/changes and page history provide publication history; they are the only authority for what was published.",
+  "Prose reports are NOT authoritative counts. Any number in a chat message, commit body or issue comment is a derived claim and must be re-derivable from receipts.",
+  "No frozen original 'pages requiring movement' denominator exists. Issue #44 began without one. Any denominator in use is a RETROSPECTIVE classification and must be labelled as such; it must never be presented as the original programme estimate.",
+  "The live API gates remain the real mutation authority. The publication-lane file records coordination only and grants nothing."
+ ],
+ "certification_authority": {
+  "observed_at": "2026-07-30T12:23:22Z",
+  "state": "CURRENT",
+  "state_version": 104,
+  "surface": "/api/v1/certification/status",
+  "working_equals_deployed": true
+ },
+ "evidence_commit": {
+  "branch": "agent/issue-44-canary-evidence",
+  "disambiguation": "IMPORTANT. This commit is in cpaumelle/charliehub-hub2, NOT in cpaumelle/docplane, and it is on a non-default branch. Searching the docplane default history for 'ee97ceab' will find nothing. That is the source of the earlier confusion over identifiers described as commits but absent from the default repository history. Raw cohort receipts, review transcripts and audit text files live there; this docplane record is the shared, structured programme surface.",
+  "path": "programme/issue-44/cohorts/",
+  "repository": "cpaumelle/charliehub-hub2",
+  "sha": "ee97ceab3014a4c20e863dc7fe4356632de45897",
+  "short": "ee97ceab",
+  "url": "https://github.com/cpaumelle/charliehub-hub2/commit/ee97ceab3014a4c20e863dc7fe4356632de45897"
+ },
+ "file_ownership": {
+  "agent-44": [
+   "ledger/publications/<full-publication-id>.json  (immutable, one per move publication)",
+   "ledger/agent-44-receipt-ledger.json  (immutable source evidence)",
+   "handoff/publication-lane.json",
+   "authority.json",
+   "README.md"
+  ],
+  "agent-45": [
+   "ledger/moves.json",
+   "ledger/dispositions.json",
+   "baseline/retrospective-baseline.json",
+   "baseline/retrospective-baseline.md",
+   "status/current.json",
+   "status/CURRENT.md",
+   "audits/<timestamp>-ledger-audit.json"
+  ],
+  "rule": "No file has two writers. Aggregates are generated, never hand-edited. Agent 44 must not hand-edit cumulative counts in CURRENT.md."
+ },
+ "generated_at": "2026-07-30T12:23:22Z",
+ "generated_by": "agent-44",
+ "issues": {
+  "baseline_exception": {
+   "note": "Pre-existing defect. NOT caused by Issue #44 and not an Issue #44 move source. operations/runbooks/pi4-gateway-bootstrap-recipe.md L57 -> reference/rpi-trixie-cloud-init.md, which serves HTTP 404.",
+   "number": 78,
+   "repo": "cpaumelle/docplane",
+   "state": "OPEN",
+   "title": "Broken reference: pi4-gateway-bootstrap-recipe links to a reference page that does not exist"
+  },
+  "programme": {
+   "number": 44,
+   "repo": "cpaumelle/docplane",
+   "state": "OPEN",
+   "title": "Resume governed information architecture reorganisation for /control-plane/ and /operations/"
+  },
+  "register": {
+   "number": 43,
+   "repo": "cpaumelle/docplane",
+   "state": "OPEN",
+   "title": "Corpus integrity: rotate legacy-exposed secrets and repair redaction revision identity"
+  }
+ },
+ "live_endpoints": {
+  "base": "https://docplane.charliehub.internal",
+  "certification": "/api/v1/certification/status",
+  "notes": [
+   "The page listing SILENTLY TRUNCATES at limit=500. Always request limit=2000 and assert count == total before using a snapshot.",
+   "MOVE_PAGE payloads carry to_path but NOT from_path. Exact from_path comes from page history: the superseded version records the change_id that superseded it.",
+   "Neither offset, page nor cursor is honoured by the page listing."
+  ],
+  "operation_contracts": "/api/v1/operation-contracts",
+  "page_history_from_path": "/api/v1/pages/<resource_id>/history",
+  "page_listing": "/api/v1/pages?status=all&limit=2000",
+  "publication_receipt_detail": "/api/v1/changes/<change_id>",
+  "publication_receipts": "/api/v1/changes?limit=500"
+ },
+ "live_snapshot": {
+  "corpus_pages_active": 513,
+  "corpus_pages_total": 947,
+  "observed_at": "2026-07-30T12:23:22Z",
+  "open_changes": 0
+ },
+ "programme": "DocPlane Issue #44 - governed information-architecture reorganisation",
+ "register_authority": {
+  "observed_at": "2026-07-30T12:23:22Z",
+  "resource_id": "06071711-905e-4a27-a0ea-3249ad98bbc9",
+  "revision": "76b539ca-61bc-40ff-8f96-303093e77185",
+  "semantics": "membership-only eligibility gate; carries 8-char prefixes, no ACTIVE/BLOCKED/DEFER column",
+  "surface": "#43 register page in DocPlane",
+  "version": 7
+ },
+ "repository": {
+  "full_name": "cpaumelle/docplane",
+  "name": "docplane",
+  "owner": "cpaumelle",
+  "programme_branch": "programme/issue-44-shared-record",
+  "programme_path": "programme/issue-44/",
+  "role": "shared programme record: coordination and durable evidence"
+ },
+ "schema": "issue-44/authority/v1"
+}

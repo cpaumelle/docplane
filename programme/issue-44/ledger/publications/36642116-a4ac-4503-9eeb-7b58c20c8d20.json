@@ -1,0 +1,133 @@
+{
+ "_unavailable": [],
+ "actor_principal_id": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+ "certification_after": {
+  "state": "CURRENT",
+  "state_version": 72
+ },
+ "certification_before": {
+  "state": "CURRENT",
+  "state_version": 71
+ },
+ "cohort": "invariants-identity",
+ "display_prefix": "36642116",
+ "immutable": true,
+ "kind": "structural-move",
+ "local_receipt_files": {
+  "publication_a": "invariants-identity-publication-A.json",
+  "scan": "invariants-identity-scan.json"
+ },
+ "move_operations": 3,
+ "nav_changes": 3,
+ "operation_type_counts": {
+  "MOVE_PAGE": 3
+ },
+ "owner": "agent-44",
+ "pages": [
+  {
+   "current_path": "control-plane/invariants/i-identity-consistency-1.md",
+   "expected_revision": "8b468a00-751c-4b0f-a9e9-c28b17b0171e",
+   "from_nav_path": "Control Plane/Topology Invariants/I-IDENTITY-CONSISTENCY-1",
+   "from_path": "control-plane/topology-invariants/i-identity-consistency-1.md",
+   "nav_changed": true,
+   "operation_id": "4d71ce51-692c-41ba-af19-50c51832d261",
+   "redirect_created": true,
+   "resource_id": "0fa6b478-8c70-596e-a78c-e16dfbcf6589",
+   "to_nav_path": "Control Plane/Invariants/I-IDENTITY-CONSISTENCY-1",
+   "to_path": "control-plane/invariants/i-identity-consistency-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-name-migrate-1.md",
+   "expected_revision": "18e48cbc-361a-4818-9393-8c60ece41d32",
+   "from_nav_path": "Control Plane/Topology Invariants/I-NAME-MIGRATE-1",
+   "from_path": "control-plane/topology-invariants/i-name-migrate-1.md",
+   "nav_changed": true,
+   "operation_id": "b6dcf595-69b3-45f7-850d-e9b7ef4f9117",
+   "redirect_created": true,
+   "resource_id": "ed5994a5-7064-5730-a728-915438ef912e",
+   "to_nav_path": "Control Plane/Invariants/I-NAME-MIGRATE-1",
+   "to_path": "control-plane/invariants/i-name-migrate-1.md"
+  },
+  {
+   "current_path": "control-plane/invariants/i-name-ref-1.md",
+   "expected_revision": "1208e899-320e-47ab-a2a5-1364b4531987",
+   "from_nav_path": "Control Plane/Topology Invariants/I-NAME-REF-1",
+   "from_path": "control-plane/topology-invariants/i-name-ref-1.md",
+   "nav_changed": true,
+   "operation_id": "91ec740c-91b1-4b53-a7b8-2cdcef79ba5b",
+   "redirect_created": true,
+   "resource_id": "8703490d-47a0-5d11-9d3c-0da062df839e",
+   "to_nav_path": "Control Plane/Invariants/I-NAME-REF-1",
+   "to_path": "control-plane/invariants/i-name-ref-1.md"
+  }
+ ],
+ "post_publication_audit": {
+  "preserved": [],
+  "unintended_stale_references": null
+ },
+ "post_publication_checks": {
+  "failed": 0,
+  "total": 36
+ },
+ "preserved_references": null,
+ "publication_id": "36642116-a4ac-4503-9eeb-7b58c20c8d20",
+ "publication_receipt": {
+  "candidate_identity": "dd1c521a1d56e75b8916aafc083b4da55a98539c51290239831caa318a86cb7b",
+  "contract_version": "direct-publication-v1",
+  "database_transaction": "COMMITTED",
+  "deployment": {
+   "build_time_ms": 36579,
+   "deployment_cycle_id": "e8b00706-6caa-44e4-809b-216e7b1b9e0f",
+   "dry_run": false,
+   "pages": 513,
+   "redirects": 23,
+   "release_id": "bbe6ba10-d03c-43f3-aaf7-62ecbaa09116",
+   "sealed_digest": "9ca9d3753a96d562a2d764c2420a0062cebc26da0c703293b027786879582bf5",
+   "status": "COMPLETED",
+   "target_state_identity": "8f91b11df7d823a0e36ba10063da67a4d597bdc70563d0169d0cd328c14a7589"
+  },
+  "operations_applied": 3,
+  "operations_submitted": 3,
+  "published_at": "2026-07-30T07:39:16.938877+00:00",
+  "published_by": "1371b4cb-5f3f-4c62-bf86-ee9e0e6ded05",
+  "review_required": false
+ },
+ "published_at": "2026-07-30T07:39:16.657742Z",
+ "redirect_count": 3,
+ "reference_repair_publication": {
+  "publication_id": "1cee1572-4937-42fa-aec5-2dfef7b49264",
+  "published_at": "2026-07-30T07:40:45.607908Z",
+  "reference_rewrites": 6
+ },
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "change_id": "d487e453-532f-4f68-a334-b4b0e087f5c9",
+  "residual_open": 0,
+  "validation": {
+   "base_state_identity": "0d28bff7b8e00b19cba6bc49ddcdbd8cd45cfe789f04f12d191718a90d38459e",
+   "candidate_identity": "dd1c521a1d56e75b8916aafc083b4da55a98539c51290239831caa318a86cb7b",
+   "contract_version": "direct-publication-v1",
+   "errors": [],
+   "operations_accepted": 3,
+   "operations_checked": 3,
+   "passed": true,
+   "validated_at": "2026-07-30T07:38:32.039134+00:00",
+   "warnings": []
+  }
+ },
+ "schema": "issue-44/publication-record/v1",
+ "source_content_corrections": 0,
+ "title": "Issue #44 structural cohort: invariants-identity",
+ "unique_resource_ids": 3,
+ "validation_summary": {
+  "base_state_identity": "0d28bff7b8e00b19cba6bc49ddcdbd8cd45cfe789f04f12d191718a90d38459e",
+  "candidate_identity": "dd1c521a1d56e75b8916aafc083b4da55a98539c51290239831caa318a86cb7b",
+  "contract_version": "direct-publication-v1",
+  "errors": [],
+  "operations_accepted": 3,
+  "operations_checked": 3,
+  "passed": true,
+  "validated_at": "2026-07-30T07:39:16.930513+00:00",
+  "warnings": []
+ }
+}
