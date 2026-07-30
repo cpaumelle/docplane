@@ -38,6 +38,7 @@ from migration.links import (
     redirect_is_representable,
     protected_lines,
     resolve,
+    resolve_candidates,
     resolve_identifier_prefixes,
     retarget,
     retarget_nav,
@@ -637,3 +638,140 @@ def test_an_unmatched_backtick_protects_nothing():
     """A stray backtick must not silently protect the rest of the document."""
     result = plan("control-plane/index.md", "stray ` tick then [x](doctrine.md)\n")
     assert len(result.rewrites) == 1 and not result.preservations
+
+
+# --- root-absolute pretty-URL resolution (Issue #44 corrective phase) -------
+#
+# Historical defect (e): resolve() rejected any root-absolute link not ending
+# in ".md", hiding every DocPlane pretty-URL link ("/control-plane/ccm/") from
+# the inbound graph and every existence/stale-reference check. Fixed via
+# resolve_candidates(), which returns both the page-form and index-form
+# candidate for an extensionless target; resolve() keeps returning a single
+# best-guess (page-form first) for callers that only need a display value.
+#
+# Historical defect (f): a moved page whose OLD path was itself an index.md
+# (a section landing, e.g. "control-plane/topology-invariants/index.md") was
+# never matched by a root-absolute pretty reference to it ("/control-plane/
+# topology-invariants/"), because only the page-form guess was ever checked
+# against the move mapping. scan_stale_references() and plan_rewrites() must
+# check every resolve_candidates() entry against the mapping, not just the
+# first guess.
+
+def test_root_absolute_pretty_path_resolves_to_page_form_candidate():
+    assert resolve_candidates("network/x.md", "/control-plane/ccm/") == \
+        ["control-plane/ccm.md", "control-plane/ccm/index.md"]
+    assert resolve("network/x.md", "/control-plane/ccm/") == "control-plane/ccm.md"
+
+
+def test_root_absolute_pretty_path_with_anchor_strips_anchor_from_candidates():
+    refs = list(find_links("network/x.md", "[d](/control-plane/ccm/#topology)\n"))
+    assert refs[0].resolved_candidates == \
+        ("control-plane/ccm.md", "control-plane/ccm/index.md")
+    assert refs[0].target == "/control-plane/ccm/#topology"
+
+
+def test_root_absolute_md_path_has_exactly_one_candidate():
+    assert resolve_candidates("network/x.md", "/control-plane/ccm.md") == \
+        ["control-plane/ccm.md"]
+
+
+def test_root_absolute_asset_link_is_not_treated_as_a_pretty_page():
+    """A root-absolute non-Markdown asset ("/images/logo.png") must stay
+    excluded, not be guessed as "images/logo.png.md" -- the same class of
+    over-matching bug fixed for relative asset links below."""
+    assert resolve_candidates("network/x.md", "/images/logo.png") == []
+    assert resolve("network/x.md", "/images/logo.png") is None
+
+
+def test_relative_asset_link_is_not_treated_as_a_pretty_page():
+    assert resolve_candidates("control-plane/index.md", "../logo.png") == []
+    assert resolve("control-plane/index.md", "../logo.png") is None
+
+
+def test_relative_pretty_url_path_resolves_like_the_root_absolute_case():
+    """The "relative paths" requirement: a same-directory or sibling pretty
+    link (no .md suffix) must get the same page/index dual-candidate
+    treatment as a root-absolute one, not silently resolve to None."""
+    assert resolve_candidates("control-plane/index.md", "ccm/") == \
+        ["control-plane/ccm.md", "control-plane/ccm/index.md"]
+    assert resolve_candidates("control-plane/topology-invariants/i-1.md", "../ccm/") == \
+        ["control-plane/ccm.md", "control-plane/ccm/index.md"]
+
+
+def test_genuinely_absent_root_absolute_target_has_no_matching_candidate():
+    corpus = {"control-plane/index.md": "[d](/control-plane/does-not-exist/)\n"}
+    unintended, preserved = scan_stale_references(corpus, MAP)
+    assert not unintended and not preserved  # not a stale reference to a KNOWN moved page either
+    assert resolve_candidates("control-plane/index.md", "/control-plane/does-not-exist/") == \
+        ["control-plane/does-not-exist.md", "control-plane/does-not-exist/index.md"]
+
+
+def test_stale_root_absolute_reference_to_a_moved_page_is_detected():
+    """The corrective-phase headline case: a root-absolute pretty link to a
+    page's pre-move path must be caught by scan_stale_references(), exactly
+    like a relative or .md-suffixed reference already was."""
+    corpus = {"operations/runbooks/r.md": "[d](/control-plane/doctrine/)\n"}
+    unintended, _ = scan_stale_references(corpus, MAP)
+    assert [r.target for r in unintended] == ["/control-plane/doctrine/"]
+
+
+def test_stale_root_absolute_reference_to_a_moved_page_is_rewritten():
+    result = plan_rewrites("operations/runbooks/r.md",
+                           "[d](/control-plane/doctrine/)\n", MAP)
+    assert result.rewrites[0].new_target == "/control-plane/foundational/doctrine.md"
+    assert result.rewrites[0].resolved_old == "control-plane/doctrine.md"
+
+
+def test_moved_index_page_is_matched_via_its_index_candidate_not_the_guess():
+    """A moved page whose OLD path is itself an index.md (a section landing)
+    is only reachable through the SECOND resolve_candidates() entry -- the
+    single-guess resolver silently missed this class entirely."""
+    mapping = {"control-plane/topology-invariants/index.md":
+               "control-plane/invariants/index.md"}
+    corpus = {"network/x.md": "[d](/control-plane/topology-invariants/)\n"}
+    unintended, _ = scan_stale_references(corpus, mapping)
+    assert [r.target for r in unintended] == ["/control-plane/topology-invariants/"]
+
+    result = plan_rewrites("network/x.md",
+                           "[d](/control-plane/topology-invariants/)\n", mapping)
+    assert result.rewrites[0].new_target == "/control-plane/invariants/index.md"
+    assert result.rewrites[0].resolved_old == "control-plane/topology-invariants/index.md"
+
+
+def test_inbound_counting_treats_pretty_and_md_forms_of_the_same_target_alike():
+    """Models the corrected inbound-count finding: a hub page referenced both
+    by its pretty URL and its literal .md path must count both occurrences as
+    stale references to the same moved target, not silently drop the pretty
+    one."""
+    corpus = {
+        "a.md": "[x](/control-plane/doctrine/)\n",
+        "b.md": "[y](/control-plane/doctrine.md)\n",
+        "c.md": "[z](/control-plane/foundational/doctrine.md)\n",  # already current, not stale
+    }
+    unintended, _ = scan_stale_references(corpus, MAP)
+    assert sorted(r.page for r in unintended) == ["a.md", "b.md"]
+
+
+def test_recently_moved_topology_invariants_page_repair_end_to_end():
+    """A realistic Issue #44 fixture: i-geo-consumer-1 moved from
+    topology-invariants/ to invariants/. A root-absolute pretty reference to
+    its old path, a relative old-style reference from a sibling page, and a
+    reference to its current path must each be classified correctly."""
+    mapping = {"control-plane/topology-invariants/i-geo-consumer-1.md":
+               "control-plane/invariants/i-geo-consumer-1.md"}
+    corpus = {
+        "operations/runbooks/geo.md":
+            "[old pretty](/control-plane/topology-invariants/i-geo-consumer-1/)\n",
+        "control-plane/topology-invariants/i-other-1.md":
+            "[old relative](i-geo-consumer-1.md)\n",
+        "control-plane/invariants/i-other-2.md":
+            "[current](i-geo-consumer-1.md)\n",
+    }
+    unintended, _ = scan_stale_references(corpus, mapping)
+    assert sorted(r.page for r in unintended) == [
+        "control-plane/topology-invariants/i-other-1.md",
+        "operations/runbooks/geo.md",
+    ]
+    repair = plan_rewrites("operations/runbooks/geo.md", corpus["operations/runbooks/geo.md"],
+                           mapping)
+    assert repair.rewrites[0].new_target == "/control-plane/invariants/i-geo-consumer-1.md"
