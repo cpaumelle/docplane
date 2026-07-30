@@ -1,0 +1,151 @@
+{
+ "_unavailable": [],
+ "cohort": "issue-44-link-repair",
+ "display_prefix": "f18538be",
+ "immutable": true,
+ "kind": "repair-only (no moves, no new pages)",
+ "move_operations": 0,
+ "owner": "agent-44",
+ "pages_rewritten": 5,
+ "post_publication_audit": {
+  "broken_targets_after": 10,
+  "broken_targets_before": 34,
+  "gate": "PASSED",
+  "new_unowned_breaks_after": 0
+ },
+ "proof": "masking equality on every page: only link destinations changed",
+ "publication_id": "f18538be-c410-4b67-b3d2-20f8d6418414",
+ "published_at": "2026-07-30T14:00Z (see change receipt for exact stamp)",
+ "references_repaired": 24,
+ "rehearsal": {
+  "abandoned": "ABANDONED",
+  "residual_open": 0,
+  "validated": true
+ },
+ "repair_style": "root-absolute canonical paths, anchors preserved verbatim",
+ "repairs": [
+  {
+   "page": "control-plane/design/ccm-dhcp-resolver-ownership-capability.md",
+   "rewrites": [
+    [
+     "ccm-interface-realization-capability.md",
+     "/control-plane/ccm-interface-realization-capability/"
+    ],
+    [
+     "../operations/security/ssh-observation-post.md#dns-resolution-mechanism",
+     "/operations/security/ssh-observation-post/#dns-resolution-mechanism"
+    ],
+    [
+     "../operations/in-flight.md",
+     "/operations/in-flight/"
+    ]
+   ]
+  },
+  {
+   "page": "control-plane/design/ccm-interface-realization-design.md",
+   "rewrites": [
+    [
+     "topology-invariants/i-interface-realization-1.md",
+     "/control-plane/topology-invariants/i-interface-realization-1/"
+    ],
+    [
+     "ccm-interface-realization-archaeology.md",
+     "/control-plane/ccm-interface-realization-archaeology/"
+    ],
+    [
+     "ccm-interface-realization-capability.md",
+     "/control-plane/ccm-interface-realization-capability/"
+    ],
+    [
+     "ccm-interface-realization-archaeology.md#e3-the-renderer-code-exists-and-is-gated",
+     "/control-plane/ccm-interface-realization-archaeology/#e3-the-renderer-code-exists-and-is-gated"
+    ],
+    [
+     "ccm-interface-realization-capability.md",
+     "/control-plane/ccm-interface-realization-capability/"
+    ],
+    [
+     "ccm-interface-realization-archaeology.md",
+     "/control-plane/ccm-interface-realization-archaeology/"
+    ],
+    [
+     "topology-invariants/i-interface-realization-1.md",
+     "/control-plane/topology-invariants/i-interface-realization-1/"
+    ],
+    [
+     "invariants/i-wan-mtu-1.md",
+     "/control-plane/invariants/i-wan-mtu-1/"
+    ],
+    [
+     "../services/ccm-edge.md",
+     "/services/ccm-edge/"
+    ],
+    [
+     "../operations/managed-consumers-migration-plan.md",
+     "/operations/managed-consumers-migration-plan/"
+    ]
+   ]
+  },
+  {
+   "page": "control-plane/invariants/i-lan-geo-bypass-1.md",
+   "rewrites": [
+    [
+     "i-geo-placement-1.md",
+     "/control-plane/topology-invariants/i-geo-placement-1/"
+    ],
+    [
+     "i-geo-consumer-1.md",
+     "/control-plane/topology-invariants/i-geo-consumer-1/"
+    ]
+   ]
+  },
+  {
+   "page": "control-plane/invariants/i-site-transport-authority-1.md",
+   "rewrites": [
+    [
+     "../transit-convergence.md",
+     "/control-plane/specs/transit-convergence/"
+    ]
+   ]
+  },
+  {
+   "page": "operations/runbooks/ccm-interface-realization-step6-runbook.md",
+   "rewrites": [
+    [
+     "ccm-interface-realization-implementation.md",
+     "/control-plane/ccm-interface-realization-implementation/"
+    ],
+    [
+     "ccm-interface-realization-capability.md#w4-follow-ups",
+     "/control-plane/ccm-interface-realization-capability/#w4-follow-ups"
+    ],
+    [
+     "ccm-interface-realization-implementation.md#w34-soak-contract",
+     "/control-plane/ccm-interface-realization-implementation/#w34-soak-contract"
+    ],
+    [
+     "ccm-interface-realization-capability.md",
+     "/control-plane/ccm-interface-realization-capability/"
+    ],
+    [
+     "ccm-interface-realization-archaeology.md",
+     "/control-plane/ccm-interface-realization-archaeology/"
+    ],
+    [
+     "topology-invariants/i-interface-realization-1.md",
+     "/control-plane/topology-invariants/i-interface-realization-1/"
+    ],
+    [
+     "design/ccm-interface-realization-design.md",
+     "/control-plane/design/ccm-interface-realization-design/"
+    ],
+    [
+     "ccm-interface-realization-implementation.md",
+     "/control-plane/ccm-interface-realization-implementation/"
+    ]
+   ]
+  }
+ ],
+ "schema": "issue-44/publication-record/v1",
+ "unique_resource_ids": 0
+}

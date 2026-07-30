@@ -1,9 +1,9 @@
 {
- "certification_version": 126,
+ "certification_version": 127,
  "evidence_commit": "ee97ceab",
  "holder": null,
- "live_snapshot": "2026-07-30T13:51:32Z (pages total=947 active=513, open_changes=0)",
- "notes": "REGRESSION RECORDED - do not treat this session as clean. Agent 44 moved 8 pages in 5 cohorts (all move+refs+scan accepted, certification CURRENT). BUT the corpus-wide existence-aware audit went 9 -> 34 broken targets. Attribution: 21 from 4 pages Agent 45 moved concurrently (uncorrected source-relative depth on ccm-interface-realization-design 10, ccm-interface-realization-step6-runbook 8, ccm-dhcp-resolver-ownership-capability 3, i-lan-geo-bypass-1 2); 1 from an Agent 44 miss (control-plane/invariants/i-site-transport-authority-1.md L155 ../transit-convergence.md, a second link on a page where refs rewrote only one); 1 evidence-surface preservation; the rest baseline. Per-cohort scans reported CLEAN because they only check stale references to that cohort pages, NOT corpus-wide target existence. Repair needed before further publication.",
- "since": "2026-07-30T13:51:32Z",
+ "live_snapshot": "2026-07-30T14:08:31Z (pages total=947 active=513, open_changes=0)",
+ "notes": "Repair session COMPLETE. 24 references repaired across 5 pages in one bounded publication f18538be (root-absolute, anchors preserved, masking equality proven). Broken targets 34 -> 10. Gate PASSES: 0 new unowned breaks. Baseline is now 10 owned exceptions, not 9: the 10th is a NEW evidence-surface preservation created by the schema-migrations move (operations/w4-1-5c-g1a-evidence.md, compat route 200) - registered as owned rather than repaired, because rewriting an evidence surface falsifies a historical record. Ledger reconciled: 76 moves / 76 unique ids / 32 move-bearing publications. Ordinary moves NOT resumed - API-native publication lease still outstanding.",
+ "since": "2026-07-30T14:08:31Z",
  "state": "released"
 }
