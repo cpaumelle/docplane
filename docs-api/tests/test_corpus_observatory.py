@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from fastapi import HTTPException
+
+from app.agent_api import (
+    OBSERVATORY_EXPORT_MAX_BYTES,
+    OBSERVATORY_EXPORT_MAX_RESOURCES,
+    _page,
+)
 from app.corpus_structure import build
 from app.maintenance_policy import review_flags
 
@@ -94,3 +102,26 @@ def test_maintenance_flags_have_one_shared_policy_owner():
     overdue = page("reference/b.md", review_due_at=NOW - timedelta(days=1))
     assert review_flags(missing, NOW) == {"metadata_review"}
     assert review_flags(overdue, NOW) == {"verification_due"}
+
+
+def test_named_after_pagination_is_explicit_and_invalid_cursors_fail_loud():
+    first = _page([{"value": number} for number in range(3)], None, 2)
+    assert first == {
+        "items": [{"value": 0}, {"value": 1}],
+        "count": 2,
+        "total": 3,
+        "has_more": True,
+        "next_after": "Mg",
+    }
+    second = _page([{"value": number} for number in range(3)], first["next_after"], 2)
+    assert second["items"] == [{"value": 2}]
+    assert second["has_more"] is False
+    assert second["next_after"] is None
+    with pytest.raises(HTTPException) as failure:
+        _page([], "not-a-cursor!", 100)
+    assert failure.value.detail["code"] == "OBSERVATORY_CURSOR_INVALID"
+
+
+def test_export_envelope_is_fixed_and_documented():
+    assert OBSERVATORY_EXPORT_MAX_RESOURCES == 5000
+    assert OBSERVATORY_EXPORT_MAX_BYTES == 10 * 1024 * 1024
