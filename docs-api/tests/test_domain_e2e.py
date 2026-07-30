@@ -340,6 +340,38 @@ def test_only_the_declaring_automation_can_retire_a_declaration():
         assert cur.fetchone()[0] == "AUTHORED"  # retirement releases the page honestly
 
 
+def test_a_retired_artifact_key_admits_a_successor_declaration():
+    """The full regeneration lifecycle (Sprint 5 canary, fourth finding):
+    retire must release the key so a successor generation can take it back,
+    while a key with a standing ACTIVE declaration keeps refusing."""
+    entity = client.post("/api/v1/model/entities", json={"entity_kind": "SCHEMA", "entity_key": f"e2e-succ-{RUN}", "display_name": "E2E successor", "attributes": {}}, headers={**AGENT, "Idempotency-Key": _key()})
+    page = _seed_page(f"reference/e2e-{RUN}-successor-target.md")
+    artifact_key = f"e2e-succ-{RUN}"
+    body = {"artifact_key": artifact_key, "generator_name": "tbls", "generator_version": "1", "source_entity_id": entity.json()["entity_id"], "target_page_resource_ids": [page["resource_id"]]}
+
+    first = client.post("/api/v1/model/artifacts", json=body, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert first.status_code == 201, first.text
+
+    # A second ACTIVE declaration on the same key must refuse.
+    duplicate = client.post("/api/v1/model/artifacts", json={**body, "generator_version": "2"}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert duplicate.status_code == 409 and duplicate.json()["detail"]["code"] == "MODEL_ARTIFACT_KEY_EXISTS"
+
+    retired = client.post(f"/api/v1/model/artifacts/{first.json()['artifact_id']}/retire", json={"expected_version": 1}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert retired.status_code == 200, retired.text
+
+    # The successor takes the key back, gets a NEW artifact identity, and
+    # re-arms provenance on its targets.
+    successor = client.post("/api/v1/model/artifacts", json={**body, "generator_version": "2"}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert successor.status_code == 201, successor.text
+    assert successor.json()["artifact_id"] != first.json()["artifact_id"]
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT provenance FROM docs.pages WHERE resource_id = %s", (page["resource_id"],))
+        assert cur.fetchone()[0] == "GENERATED"
+        cur.execute("SELECT count(*) FROM model.generated_artifacts WHERE artifact_key = %s", (artifact_key,))
+        assert cur.fetchone()[0] == 2  # retired generation stays as audit history
+
+
 def test_rollback_image_tolerates_upgraded_database():
     import sys
     from pathlib import Path
