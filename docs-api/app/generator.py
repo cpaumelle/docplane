@@ -39,6 +39,31 @@ class NavConflict(RuntimeError):
         super().__init__(message)
 
 
+class RouteConflict(RuntimeError):
+    """More than one thing claims a single rendered URL.
+
+    Every release output - a page, or a redirect stub - occupies exactly one URL.
+    When two claim the same one, whichever is written last wins and the other
+    silently disappears while still appearing in navigation and still certifying
+    as CURRENT. Three shapes of this have reached production:
+
+      * two active pages, e.g. ``a/b.md`` and ``a/b/index.md``;
+      * a redirect whose source and target render to the same URL, so the stub
+        overwrites the page it points at;
+      * a redirect whose source URL belongs to a DIFFERENT active page, so the
+        stub overwrites an unrelated page.
+
+    All three are the same fact - a URL claimed twice - so they are one check.
+    """
+
+    def __init__(self, collisions: dict[str, list[str]]):
+        self.collisions = collisions
+        detail = "; ".join(
+            f"{url} <- {', '.join(claims)}" for url, claims in sorted(collisions.items())
+        )
+        super().__init__(f"rendered route claimed more than once: {detail}")
+
+
 class RedirectConflict(RuntimeError):
     """Redirect state that must fail publication rather than be silently omitted."""
 
@@ -68,6 +93,22 @@ def rendered_url(md_path: str) -> str:
         parent = path.parent.as_posix()
         return "/" if parent == "." else f"/{parent}/"
     return f"/{path.with_suffix('')}/"
+
+
+def validate_routes(pages: list[dict], redirects: dict[str, str] | None = None) -> None:
+    """Assert every rendered URL is claimed by exactly one release output.
+
+    Runs before the nav is built, so an unrepresentable corpus fails a dry run and
+    is never promoted. Uses rendered_url() so route shape is defined in one place.
+    """
+    claims: dict[str, list[str]] = {}
+    for page in pages:
+        claims.setdefault(rendered_url(str(page["path"])), []).append(str(page["path"]))
+    for source in (redirects or {}):
+        claims.setdefault(rendered_url(str(source)), []).append(f"redirect:{source}")
+    collisions = {url: sorted(c) for url, c in claims.items() if len(c) > 1}
+    if collisions:
+        raise RouteConflict(collisions)
 
 
 def validate_redirects(redirects: dict[str, str], pages: list[dict]) -> dict[str, str]:
@@ -357,6 +398,9 @@ def run(
     # Validated before the nav is built so unsound redirect state fails a dry run
     # too, rather than first surfacing at promotion time.
     compatibility = validate_redirects(dict(redirects or {}), pages)
+    # One URL, one output. Checked after redirect validation so the more specific
+    # redirect errors surface first, and before the nav so a dry run fails too.
+    validate_routes(pages, compatibility)
     nav = build_nav(pages, section_order=section_order)
     if dry_run:
         return {
