@@ -1,0 +1,861 @@
+{
+ "live": 175,
+ "redirect_dependent": [
+  {
+   "source": "agent-guides/troubleshooting.md",
+   "target_url": "/control-plane/topology-invariants/i-route-rollback-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-route-rollback-1.md",
+    "control-plane/topology-invariants/i-route-rollback-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-route-rollback-1.md"
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/control-plane/doctrine/",
+   "candidates": [
+    "control-plane/doctrine.md",
+    "control-plane/doctrine/index.md"
+   ],
+   "moved_to": "control-plane/foundational/doctrine.md"
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "control-plane/design/ccm-interface-realization-design.md",
+   "target_url": "/control-plane/topology-invariants/i-interface-realization-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-interface-realization-1.md",
+    "control-plane/topology-invariants/i-interface-realization-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-interface-realization-1.md"
+  },
+  {
+   "source": "control-plane/design/ccm-interface-realization-design.md",
+   "target_url": "/control-plane/topology-invariants/i-interface-realization-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-interface-realization-1.md",
+    "control-plane/topology-invariants/i-interface-realization-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-interface-realization-1.md"
+  },
+  {
+   "source": "control-plane/foundational/authority-model.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "control-plane/foundational/correctness-domains.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "control-plane/foundational/correctness-domains.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "control-plane/foundational/correctness-domains.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/foundational/correctness-domains.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/bootstrap-authority-map/",
+   "candidates": [
+    "control-plane/bootstrap-authority-map.md",
+    "control-plane/bootstrap-authority-map/index.md"
+   ],
+   "moved_to": "control-plane/specs/bootstrap-authority-map.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/transit-manager-data-model/",
+   "candidates": [
+    "control-plane/transit-manager-data-model.md",
+    "control-plane/transit-manager-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/transit-manager-data-model.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/bootstrap-authority-map/",
+   "candidates": [
+    "control-plane/bootstrap-authority-map.md",
+    "control-plane/bootstrap-authority-map/index.md"
+   ],
+   "moved_to": "control-plane/specs/bootstrap-authority-map.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/bootstrap-authority-map/",
+   "candidates": [
+    "control-plane/bootstrap-authority-map.md",
+    "control-plane/bootstrap-authority-map/index.md"
+   ],
+   "moved_to": "control-plane/specs/bootstrap-authority-map.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/transit-manager-data-model/",
+   "candidates": [
+    "control-plane/transit-manager-data-model.md",
+    "control-plane/transit-manager-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/transit-manager-data-model.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/control-plane/bootstrap-authority-map/",
+   "candidates": [
+    "control-plane/bootstrap-authority-map.md",
+    "control-plane/bootstrap-authority-map/index.md"
+   ],
+   "moved_to": "control-plane/specs/bootstrap-authority-map.md"
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/operations/transit-deploy-state-machine/",
+   "candidates": [
+    "operations/transit-deploy-state-machine.md",
+    "operations/transit-deploy-state-machine/index.md"
+   ],
+   "moved_to": "control-plane/specs/transit-deploy-state-machine.md"
+  },
+  {
+   "source": "control-plane/invariants/i-coverage-derived-1.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "control-plane/invariants/i-coverage-derived-1.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-coverage-derived-1.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "control-plane/invariants/i-coverage-derived-1.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "control-plane/invariants/i-coverage-derived-1.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-lan-geo-bypass-1.md",
+   "target_url": "/control-plane/topology-invariants/i-geo-placement-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-geo-placement-1.md",
+    "control-plane/topology-invariants/i-geo-placement-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-geo-placement-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-lan-geo-bypass-1.md",
+   "target_url": "/control-plane/topology-invariants/i-geo-consumer-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-geo-consumer-1.md",
+    "control-plane/topology-invariants/i-geo-consumer-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-geo-consumer-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-transport-hub-1.md",
+   "target_url": "/control-plane/topology-invariants/i-iface-naming-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-iface-naming-1.md",
+    "control-plane/topology-invariants/i-iface-naming-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-iface-naming-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "control-plane/specs/bootstrap-authority-map.md",
+   "target_url": "/control-plane/gateway-convergence-doctrine/",
+   "candidates": [
+    "control-plane/gateway-convergence-doctrine.md",
+    "control-plane/gateway-convergence-doctrine/index.md"
+   ],
+   "moved_to": "control-plane/foundational/gateway-convergence-doctrine.md"
+  },
+  {
+   "source": "control-plane/specs/ccm-data-model.md",
+   "target_url": "/control-plane/transit-manager-data-model/",
+   "candidates": [
+    "control-plane/transit-manager-data-model.md",
+    "control-plane/transit-manager-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/transit-manager-data-model.md"
+  },
+  {
+   "source": "control-plane/specs/ccm-data-model.md",
+   "target_url": "/control-plane/transit-manager-data-model/",
+   "candidates": [
+    "control-plane/transit-manager-data-model.md",
+    "control-plane/transit-manager-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/transit-manager-data-model.md"
+  },
+  {
+   "source": "control-plane/specs/ccm-data-model.md",
+   "target_url": "/control-plane/transit-manager-data-model/",
+   "candidates": [
+    "control-plane/transit-manager-data-model.md",
+    "control-plane/transit-manager-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/transit-manager-data-model.md"
+  },
+  {
+   "source": "control-plane/specs/transit-manager-data-model.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "network/fabric-v2/coverage-convergence-roadmap.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "network/fabric-v2/coverage-convergence-roadmap.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "network/fabric-v2/coverage-convergence-roadmap.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "network/fabric-v2/coverage-convergence-roadmap.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "network/fabric-v2/coverage-convergence-roadmap.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "network/fabric-v2/coverage-convergence-roadmap.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "network/fabric-v2/coverage-convergence-roadmap.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/control-plane/anti-patterns/shadow-inventory/",
+   "candidates": [
+    "control-plane/anti-patterns/shadow-inventory.md",
+    "control-plane/anti-patterns/shadow-inventory/index.md"
+   ],
+   "moved_to": "control-plane/foundational/shadow-inventory.md"
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/control-plane/correctness-domains/",
+   "candidates": [
+    "control-plane/correctness-domains.md",
+    "control-plane/correctness-domains/index.md"
+   ],
+   "moved_to": "control-plane/foundational/correctness-domains.md"
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/control-plane/topology-invariants/i-coverage-derived-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-coverage-derived-1.md",
+    "control-plane/topology-invariants/i-coverage-derived-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-coverage-derived-1.md"
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "operations/f-staging-traffic-model-1.md",
+   "target_url": "/control-plane/hub2-host-net/",
+   "candidates": [
+    "control-plane/hub2-host-net.md",
+    "control-plane/hub2-host-net/index.md"
+   ],
+   "moved_to": "control-plane/design/hub2-host-net.md"
+  },
+  {
+   "source": "operations/incidents/2026-06-01-wg-stg-01-stuck-conntrack.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "operations/incidents/2026-06-01-wg-stg-01-stuck-conntrack.md",
+   "target_url": "/control-plane/topology-invariants/i-route-rollback-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-route-rollback-1.md",
+    "control-plane/topology-invariants/i-route-rollback-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-route-rollback-1.md"
+  },
+  {
+   "source": "operations/incidents/2026-06-03-wg-rw-endpoint-split-horizon.md",
+   "target_url": "/control-plane/topology-invariants/i-vpn-endpoint-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+    "control-plane/topology-invariants/i-vpn-endpoint-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-vpn-endpoint-1.md"
+  },
+  {
+   "source": "operations/incidents/2026-06-03-wg-rw-endpoint-split-horizon.md",
+   "target_url": "/control-plane/topology-invariants/i-vpn-endpoint-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+    "control-plane/topology-invariants/i-vpn-endpoint-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-vpn-endpoint-1.md"
+  },
+  {
+   "source": "operations/incidents/2026-06-03-wg-rw-endpoint-split-horizon.md",
+   "target_url": "/control-plane/topology-invariants/i-vpn-endpoint-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+    "control-plane/topology-invariants/i-vpn-endpoint-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-vpn-endpoint-1.md"
+  },
+  {
+   "source": "operations/runbooks/ccm-interface-realization-step6-runbook.md",
+   "target_url": "/control-plane/topology-invariants/i-interface-realization-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-interface-realization-1.md",
+    "control-plane/topology-invariants/i-interface-realization-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-interface-realization-1.md"
+  },
+  {
+   "source": "operations/uk-staging-handoff-summary.md",
+   "target_url": "/control-plane/transit-manager-data-model/",
+   "candidates": [
+    "control-plane/transit-manager-data-model.md",
+    "control-plane/transit-manager-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/transit-manager-data-model.md"
+  },
+  {
+   "source": "operations/uk-staging-handoff-summary.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "operations/uk-staging-handoff-summary.md",
+   "target_url": "/control-plane/bootstrap-authority-map/",
+   "candidates": [
+    "control-plane/bootstrap-authority-map.md",
+    "control-plane/bootstrap-authority-map/index.md"
+   ],
+   "moved_to": "control-plane/specs/bootstrap-authority-map.md"
+  },
+  {
+   "source": "services/internal-dns.md",
+   "target_url": "/control-plane/topology-invariants/i-vpn-endpoint-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-vpn-endpoint-1.md",
+    "control-plane/topology-invariants/i-vpn-endpoint-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-vpn-endpoint-1.md"
+  },
+  {
+   "source": "services/internal-dns.md",
+   "target_url": "/control-plane/ccm-data-model/",
+   "candidates": [
+    "control-plane/ccm-data-model.md",
+    "control-plane/ccm-data-model/index.md"
+   ],
+   "moved_to": "control-plane/specs/ccm-data-model.md"
+  },
+  {
+   "source": "services/transit-manager.md",
+   "target_url": "/control-plane/topology-invariants/i-wg-watchdog-1/",
+   "candidates": [
+    "control-plane/topology-invariants/i-wg-watchdog-1.md",
+    "control-plane/topology-invariants/i-wg-watchdog-1/index.md"
+   ],
+   "moved_to": "control-plane/invariants/i-wg-watchdog-1.md"
+  },
+  {
+   "source": "services/transit-manager.md",
+   "target_url": "/control-plane/event-contract/",
+   "candidates": [
+    "control-plane/event-contract.md",
+    "control-plane/event-contract/index.md"
+   ],
+   "moved_to": "control-plane/specs/event-contract.md"
+  }
+ ],
+ "absent": [
+  {
+   "source": "agent-guides/docs-structure-dashboard.md",
+   "target_url": "/dashboard/",
+   "candidates": [
+    "dashboard.md",
+    "dashboard/index.md"
+   ]
+  },
+  {
+   "source": "business-finance/shared/zoho-api-techniques.md",
+   "target_url": "/services/zoho-books-api/bank-operations/",
+   "candidates": [
+    "services/zoho-books-api/bank-operations.md",
+    "services/zoho-books-api/bank-operations/index.md"
+   ]
+  },
+  {
+   "source": "business-finance/verdegris-andorra/overview.md",
+   "target_url": "/services/zoho-books-api/bank-operations/",
+   "candidates": [
+    "services/zoho-books-api/bank-operations.md",
+    "services/zoho-books-api/bank-operations/index.md"
+   ]
+  },
+  {
+   "source": "business-finance/verdegris-andorra/overview.md",
+   "target_url": "/services/zoho-books-api/api-techniques/",
+   "candidates": [
+    "services/zoho-books-api/api-techniques.md",
+    "services/zoho-books-api/api-techniques/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/operations/monitoring/",
+   "candidates": [
+    "operations/monitoring.md",
+    "operations/monitoring/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/network/fabric-v2/architecture-authority-boundary-assessment/",
+   "candidates": [
+    "network/fabric-v2/architecture-authority-boundary-assessment.md",
+    "network/fabric-v2/architecture-authority-boundary-assessment/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/architecture-overview.md",
+   "target_url": "/network/fabric-v2/architecture-authority-boundary-assessment/",
+   "candidates": [
+    "network/fabric-v2/architecture-authority-boundary-assessment.md",
+    "network/fabric-v2/architecture-authority-boundary-assessment/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/foundational/correctness-domains.md",
+   "target_url": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+   "candidates": [
+    "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+    "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/foundational/shadow-inventory.md",
+   "target_url": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+   "candidates": [
+    "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+    "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/hub2-authority-crosswalk.md",
+   "target_url": "/var/lib/charliehub/agent-context/architecture/architecture-map.yaml",
+   "candidates": [
+    "var/lib/charliehub/agent-context/architecture/architecture-map.yaml.md",
+    "var/lib/charliehub/agent-context/architecture/architecture-map.yaml/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/invariants/i-coverage-derived-1.md",
+   "target_url": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+   "candidates": [
+    "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+    "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/invariants/i-wg-watchdog-1.md",
+   "target_url": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+   "candidates": [
+    "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+    "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+   ]
+  },
+  {
+   "source": "control-plane/specs/event-contract.md",
+   "target_url": "/network/fabric-v2/wireguard.md",
+   "candidates": [
+    "network/fabric-v2/wireguard.md.md",
+    "network/fabric-v2/wireguard.md/index.md"
+   ]
+  },
+  {
+   "source": "index.md",
+   "target_url": "/dashboard/",
+   "candidates": [
+    "dashboard.md",
+    "dashboard/index.md"
+   ]
+  },
+  {
+   "source": "index.md",
+   "target_url": "/.well-known/docplane.json",
+   "candidates": [
+    ".well-known/docplane.json.md",
+    ".well-known/docplane.json/index.md"
+   ]
+  },
+  {
+   "source": "index.md",
+   "target_url": "/openapi.json",
+   "candidates": [
+    "openapi.json.md",
+    "openapi.json/index.md"
+   ]
+  },
+  {
+   "source": "index.md",
+   "target_url": "/healthz",
+   "candidates": [
+    "healthz.md",
+    "healthz/index.md"
+   ]
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+   "candidates": [
+    "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+    "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+   ]
+  },
+  {
+   "source": "network/fabric-v2/monitoring-authority-assessment.md",
+   "target_url": "/network/fabric-v2/coverage-convergence-architecture-assessment/",
+   "candidates": [
+    "network/fabric-v2/coverage-convergence-architecture-assessment.md",
+    "network/fabric-v2/coverage-convergence-architecture-assessment/index.md"
+   ]
+  }
+ ]
+}
