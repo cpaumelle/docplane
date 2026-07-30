@@ -266,3 +266,94 @@ def test_a_release_with_an_index_form_landing_page_builds_and_serves_once(tmp_pa
     html = landing.read_text(encoding="utf-8")
     assert 'http-equiv="refresh"' not in html
     assert (site / "control-plane/invariants/i-x-1/index.html").is_file()
+
+
+# --------------------------------------------------------------------------
+# one rendered URL, one output
+# --------------------------------------------------------------------------
+
+def test_two_active_pages_on_one_url_fail_validation():
+    """a/b.md and a/b/index.md both render to /a/b/; one would be unreachable."""
+    pages = _canary_pages() + [_page("a/b.md", "A/B"), _page("a/b/index.md", "A/B/Index")]
+    with pytest.raises(generator.RouteConflict) as excinfo:
+        generator.validate_routes(pages)
+    assert excinfo.value.collisions == {"/a/b/": ["a/b.md", "a/b/index.md"]}
+
+
+def test_the_reverse_insertion_order_fails_identically():
+    forward = _canary_pages() + [_page("a/b.md", "A/B"), _page("a/b/index.md", "A/B/Index")]
+    reverse = _canary_pages() + [_page("a/b/index.md", "A/B/Index"), _page("a/b.md", "A/B")]
+    with pytest.raises(generator.RouteConflict) as first:
+        generator.validate_routes(forward)
+    with pytest.raises(generator.RouteConflict) as second:
+        generator.validate_routes(reverse)
+    assert first.value.collisions == second.value.collisions
+
+
+def test_one_page_alone_passes():
+    generator.validate_routes(_canary_pages() + [_page("a/b.md", "A/B")])
+    generator.validate_routes(_canary_pages() + [_page("a/b/index.md", "A/B/Index")])
+
+
+def test_ordinary_distinct_pages_pass():
+    generator.validate_routes(_canary_pages() + [
+        _page("a/b.md", "A/B"), _page("a/c.md", "A/C"), _page("a/c/d.md", "A/C/D")])
+
+
+def test_a_redirect_whose_url_belongs_to_another_active_page_fails():
+    """The shape that overwrote a category index in production: the moved page's
+    old URL was another page's URL, so its stub replaced that page."""
+    pages = _canary_pages() + [_page("a/b/index.md", "A/B/Index"),
+                               _page("a/c.md", "A/C")]
+    with pytest.raises(generator.RouteConflict) as excinfo:
+        generator.validate_routes(pages, {"a/b.md": "a/c.md"})
+    assert excinfo.value.collisions == {"/a/b/": ["a/b/index.md", "redirect:a/b.md"]}
+
+
+def test_two_redirects_claiming_one_url_fail():
+    pages = _canary_pages() + [_page("a/c.md", "A/C")]
+    with pytest.raises(generator.RouteConflict):
+        generator.validate_routes(pages, {"a/b.md": "a/c.md", "a/b/index.md": "a/c.md"})
+
+
+def test_an_ordinary_redirect_passes_route_validation():
+    pages = _canary_pages()
+    generator.validate_routes(pages, {
+        "control-plane/correctness-domains.md":
+            "control-plane/foundational/correctness-domains.md"})
+
+
+def test_redirects_remain_governed_by_the_same_rendered_url_guard():
+    """Route uniqueness does not replace the redirect-specific guard; the more
+    specific error must still surface first for a page/index redirect."""
+    pages = _canary_pages() + [_page("a/b/index.md", "A/B/Index")]
+    with pytest.raises(generator.RedirectConflict) as excinfo:
+        generator.validate_redirects({"a/b.md": "a/b/index.md"}, pages)
+    assert excinfo.value.kind == "same-rendered-url"
+
+
+@pytest.mark.skipif(shutil.which("mkdocs") is None, reason="mkdocs not installed")
+def test_an_invalid_release_cannot_be_generated_or_promoted(tmp_path, monkeypatch):
+    """A colliding corpus must fail run() and promote nothing, so it can never
+    reach CURRENT."""
+    _, _, site = _split_layout(tmp_path, monkeypatch)
+    pages = _canary_pages() + [_page("a/b.md", "A/B"), _page("a/b/index.md", "A/B/Index")]
+    with pytest.raises(generator.RouteConflict):
+        generator.run(pages)
+    assert not (site / "a" / "b" / "index.html").exists()
+
+
+def test_a_dry_run_also_fails_on_a_colliding_corpus():
+    pages = _canary_pages() + [_page("a/b.md", "A/B"), _page("a/b/index.md", "A/B/Index")]
+    with pytest.raises(generator.RouteConflict):
+        generator.run(pages, dry_run=True)
+
+
+def test_the_corrected_corpus_shape_passes():
+    """Post-remediation shape: index plus a relocated page at its own path."""
+    pages = _canary_pages() + [
+        _page("control-plane/topology-invariants/index.md", "Control Plane/Topology Invariants/Index"),
+        _page("control-plane/specs/wg-mesh-topology-correctness.md",
+              "Control Plane/Specs/WG Mesh Topology Correctness"),
+    ]
+    generator.validate_routes(pages, {})
