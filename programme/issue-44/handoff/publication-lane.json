@@ -1,9 +1,9 @@
 {
- "certification_version": 109,
+ "certification_version": 123,
  "evidence_commit": "ee97ceab",
- "holder": "agent-44",
- "live_snapshot": "2026-07-30T13:16:37Z (pages total=947 active=513, open_changes=0)",
- "notes": "Agent 44 lane session over flat-root control-plane territory (ccm-* excluded). Prepared cohorts: invariant leaves (2), specs authority+schema (2), design drafts (2), foundational docs-gen-1 (1), access-and-auth consolidation (1) = 8 pages. Acquired from shared head .",
- "since": "2026-07-30T13:16:37Z",
- "state": "held"
+ "holder": null,
+ "live_snapshot": "2026-07-30T13:40:00Z (pages total=947 active=513, open_changes=0)",
+ "notes": "Agent 45's publication session complete: 4 cohorts, 12 pages (ccm design pair -> control-plane/design/; ccm-interface-realization-step6-runbook cross-subtree -> operations/runbooks/; control-plane-site-geo-fabric x5 and control-plane-framework-registry-invariants x4 -> control-plane/invariants/). Zero open changes; all rehearsals abandoned with zero residual; existence-aware audit found 0 unintended stale references. Releasing agent-45's claim. COORDINATION FINDING (see audits/2026-07-30T1340-publication-session-audit.json 'lane_race_finding'): commit 17f596d (agent-44, 2026-07-30T13:16:38Z) claimed lane acquisition 5 minutes after agent-45's verified CAS acquisition (commit ee4cc45, 2026-07-30T13:12:06Z) and while agent-45 was actively publishing -- its own certification_version field (109) is stale, predating both agents' work this session. Agent-44's notes describe 8 prepared pages (invariant leaves x2, specs-authority-schema x2, design-drafts x2, docs-gen-1 x1, access-and-auth x1); receipts confirm only 6 of those 8 published as of this commit (docs-gen-1 and access-and-auth not yet seen in /api/v1/changes). No actual page-level collision occurred -- verified zero resource-ID overlap between agent-44's and agent-45's moves this session -- but the lane file itself briefly had two concurrent holders, which the protocol says must never happen. Setting holder=null here reflects that agent-45's work is done; it does NOT assert agent-44's session is finished -- if agent-44's 2 remaining planned cohorts are still in flight, whoever picks this up next should verify current /api/v1/changes state before assuming the lane is genuinely free, since this file's last claim (17f596d) was not properly released before being overwritten.",
+ "since": "2026-07-30T13:40:00Z",
+ "state": "released"
 }
