@@ -69,10 +69,14 @@ def test_status_reports_ahead_entries_against_a_real_database():
         history = migrate.applied(conn)
         rows, ahead = migrate.status(conn, migrations)
         assert len(rows) == len(migrations)
-        assert ahead == []  # the current image is never behind its own files
+        # Every applied migration is either known to this image or reported
+        # ahead — never hidden, never rejected. (The database MAY be ahead of
+        # this image's files: that is exactly the rollback situation.)
+        known_applied = sum(1 for migration in migrations if migration.ordinal in history)
+        assert len(ahead) == len(history) - known_applied
         if history:
-            # The rollback view: an image knowing only the first migration
-            # must report — not hide, not reject — everything ahead of it.
+            # The narrowest image view: knowing only the first migration must
+            # report everything else as ahead.
             rows, ahead = migrate.status(conn, migrations[:1])
             assert len(rows) == 1
             assert len(ahead) == len(history) - 1
