@@ -1,0 +1,163 @@
+{
+  "control-plane/ccm.md": [],
+  "control-plane/cp-net-1-driver.md": [
+    {
+      "source_path": "operations/runbooks/add-site-subnet-fabric-routing.md",
+      "line": 16,
+      "target": "../../control-plane/cp-net-1-driver.md",
+      "context": "[CP-NET-1](../../control-plane/cp-net-1-driver.md) (which owns the resolver)."
+    },
+    {
+      "source_path": "operations/runbooks/add-site-subnet-fabric-routing.md",
+      "line": 117,
+      "target": "../../control-plane/cp-net-1-driver.md",
+      "context": "- [CP-NET-1 Driver](../../control-plane/cp-net-1-driver.md) \u2014 4A debt register (I-FABRIC-HUB2-MAIN-1)"
+    },
+    {
+      "source_path": "control-plane/invariants/index.md",
+      "line": 1433,
+      "target": "/control-plane/cp-net-1-driver/",
+      "context": "> **Transition status (until [CP-NET-1](/control-plane/cp-net-1-driver/) Phase 3 completes):** a host still on"
+    },
+    {
+      "source_path": "operations/runbooks/andorra-pi4-gateway-migration.md",
+      "line": 108,
+      "target": "../../control-plane/cp-net-1-driver.md",
+      "context": "- [CP-NET-1 Driver](../../control-plane/cp-net-1-driver.md) \u00b7 [Edge Identity Model](../../control-plane/edge-identity-model.md)"
+    },
+    {
+      "source_path": "control-plane/design/cp-net-1-gap-2-edge-resolver-authority.md",
+      "line": 14,
+      "target": "../cp-net-1-driver.md",
+      "context": "| **Does NOT block** | The **px host cohort** (`px5`, `px1`, `px2`, `px3`) \u2014 those are static, node-local, tool-supported, and proceed independently once the soak hold lifts. See [CP-NET-1 Driver](../cp-net-1-driver.md). |"
+    },
+    {
+      "source_path": "control-plane/design/cp-net-1-gap-2-edge-resolver-authority.md",
+      "line": 95,
+      "target": "../cp-net-1-driver.md",
+      "context": "| [CP-NET-1 Driver](../cp-net-1-driver.md) (Option A, ratified 2026-06-12) | Edges migrate to **`10.254.0.1` primary**, `10.0.0.1` legacy secondary until Phase 4B. |"
+    },
+    {
+      "source_path": "control-plane/design/cp-net-1-gap-2-edge-resolver-authority.md",
+      "line": 195,
+      "target": "../cp-net-1-driver.md",
+      "context": "4. The edge cohort in the [CP-NET-1 Driver](../cp-net-1-driver.md) Phase 3 contract is updated to"
+    },
+    {
+      "source_path": "control-plane/design/cp-net-1-gap-2-edge-resolver-authority.md",
+      "line": 201,
+      "target": "../cp-net-1-driver.md",
+      "context": "- [CP-NET-1 Driver](../cp-net-1-driver.md) \u2014 Option A target; cohort order"
+    },
+    {
+      "source_path": "operations/invariant-roadmap.md",
+      "line": 68,
+      "target": "../control-plane/cp-net-1-driver.md",
+      "context": "| **I-DNS-CONSUMER-SOURCE-1** \u2014 Consumer resolver sourcing | 2026-05-26 CBRE soak: a MacBook on public Wi-Fi failed `getaddrinfo` because hand-placed `/etc/resolver/charliehub.{net,internal}` were pinned to the deprecated `10.0.0.1`; the whole-zone `.net` scope black-holed a public CNAME (`app.microshare.eu` -> `*.infra.charliehub.net`) off-fabric. CP-NET-1 Phase 2B flipped DHCP clients to `10.254.0.1`, but manually-managed endpoint DNS was outside scope, so the pins survived the renumber. | **codified, not enforced** \u2014 tactical remediation is manual (delete `.net` scope, migrate `.internal` to `10.254.0.1`); a capability-managed resolver projection is filed as a future option, not built (observe -> localize -> mutate; n=1). Sibling of the server-side I-DNS-RUNTIME-CONFIG-1. | [I-DNS-CONSUMER-SOURCE-1](../control-plane/invariants/i-dns-consumer-source-1.md) \u00b7 [I-DNS-RUNTIME-CONFIG-1](../control-plane/invariants/i-dns-runtime-config-1.md) \u00b7 [CP-NET-1 Driver](../control-plane/cp-net-1-driver.md) |"
+    },
+    {
+      "source_path": "operations/completed.md",
+      "line": 91,
+      "target": "../control-plane/cp-net-1-driver.md",
+      "context": "| 05-19\u201327 | **CP-NET-1 early phases + charliehub-mcp consolidation** | Phase 4B Mac audit, Phase 2B DHCP flip, Phase 1A soak; both legacy MCPs retired into consolidated `charliehub_mcp`. | [CP-NET-1 driver](../control-plane/cp-net-1-driver.md) |"
+    },
+    {
+      "source_path": "control-plane/cp-net-1-history.md",
+      "line": 7,
+      "target": "cp-net-1-driver.md",
+      "context": "> **Doc structure**: this is the **history** doc \u2014 execution outcomes, discovery archaeology, superseded contracts, and contracts for phases that are not yet active. For architectural overview see [CP-NET-1 Overview](cp-net-1/overview.md). For current execution state see [CP-NET-1 Driver](cp-net-1-driver.md)."
+    },
+    {
+      "source_path": "control-plane/cp-net-1-history.md",
+      "line": 197,
+      "target": "cp-net-1-driver.md",
+      "context": "> **SUPERSEDED 2026-05-24** by the single-resolver form now in [Driver \u2192 Current executable phase](cp-net-1-driver.md). The original v1 contract below baked in `dns-server,10.254.0.1,1.1.1.1` (dual-resolver with external public fallback). That form contradicts the tightened I-DNS-DUAL-RESOLVER-1 invariant: external public resolvers (1.1.1.1, 8.8.8.8) are bootstrap-only or break-glass, NOT steady-state CT/scope policy. The v2 contract in the Driver emits **single resolver only** (`dns-server,10.254.0.1`)."
+    },
+    {
+      "source_path": "control-plane/cp-net-1-history.md",
+      "line": 215,
+      "target": "cp-net-1-driver.md",
+      "context": "When a phase becomes the next-up executable phase, its contract moves from this section to the [Driver](cp-net-1-driver.md). Until then, the architectural envelope lives here and in the Overview's \u00a71 rollout sequence."
+    },
+    {
+      "source_path": "control-plane/cp-net-1-history.md",
+      "line": 312,
+      "target": "cp-net-1-driver.md",
+      "context": "Detailed step contracts pair-reviewed pending closer to date. The consolidated 4A debt register in the [Driver](cp-net-1-driver.md) defines scope."
+    },
+    {
+      "source_path": "control-plane/invariants/i-dns-consumer-source-1.md",
+      "line": 85,
+      "target": "../cp-net-1-driver.md",
+      "context": "- [CP-NET-1 \u2014 Driver](../cp-net-1-driver.md) \u2014 the `10.0.0.1` -> `10.254.0.1` fabric DNS renumber whose soak surfaced this invariant. CP-NET-1 Phase 2B flipped DHCP clients to `10.254.0.1`; manually-managed endpoint DNS (this invariant) was outside that scope."
+    },
+    {
+      "source_path": "operations/dns-vip-authority-trace.md",
+      "line": 104,
+      "target": "../control-plane/cp-net-1-driver.md",
+      "context": "[CP-NET-1 Driver](../control-plane/cp-net-1-driver.md) straggler status (2026-06-12)."
+    },
+    {
+      "source_path": "control-plane/cp-net-1/overview.md",
+      "line": 7,
+      "target": "../cp-net-1-driver.md",
+      "context": "> **Doc structure**: this is the **overview** doc \u2014 architecture, invariants, rationale, reusable runbooks, data model. For current execution state see [CP-NET-1 Driver](../cp-net-1-driver.md). For execution archaeology and superseded contracts see [CP-NET-1 History](../cp-net-1-history.md)."
+    }
+  ],
+  "control-plane/hub2-authority-crosswalk.md": [
+    {
+      "source_path": "operations/uk-staging-handoff-summary.md",
+      "line": 209,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "| Hub2 Authority Crosswalk | [/control-plane/hub2-authority-crosswalk/](/control-plane/hub2-authority-crosswalk/) | Primary entry point: \"where do I look for X?\" |"
+    },
+    {
+      "source_path": "control-plane/specs/ccm-data-model.md",
+      "line": 20,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "See also: [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) \u00b7 [Transit Manager Data Model](/control-plane/specs/transit-manager-data-model.md)"
+    },
+    {
+      "source_path": "control-plane/specs/ccm-data-model.md",
+      "line": 340,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "- [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) \u2014 operational entry point"
+    },
+    {
+      "source_path": "control-plane/design/hub2-host-net.md",
+      "line": 44,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "> **See also:** [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) \u2014 operational authority lookups (*\"who owns this thing on hub2?\"*). H-HOST-NET-1 is complementary: it documents the hub2 realization layer itself, its renderers, boundaries, and debt classification."
+    },
+    {
+      "source_path": "control-plane/architecture-overview.md",
+      "line": 29,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "| Who owns this **domain** (routing, DNS, NAT, GEO, \u2026)? | [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) (domain-keyed matrix) |"
+    },
+    {
+      "source_path": "control-plane/architecture-overview.md",
+      "line": 174,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "- [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) \u2014 domain authority"
+    },
+    {
+      "source_path": "control-plane/specs/transit-manager-data-model.md",
+      "line": 24,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "- [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) \u2014 navigational context and key workflow summaries"
+    },
+    {
+      "source_path": "control-plane/specs/transit-manager-data-model.md",
+      "line": 422,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "- [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) \u2014 deploy workflow summaries"
+    },
+    {
+      "source_path": "control-plane/specs/bootstrap-authority-map.md",
+      "line": 21,
+      "target": "/control-plane/hub2-authority-crosswalk/",
+      "context": "- [Hub2 Authority Crosswalk](/control-plane/hub2-authority-crosswalk/) \u2014 post-bootstrap operational questions"
+    }
+  ]
+}

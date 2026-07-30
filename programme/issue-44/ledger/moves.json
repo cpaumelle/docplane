@@ -1427,6 +1427,38 @@
       ],
       "current_lifecycle": "REFERENCE",
       "current_publication_state": "PUBLISHED"
+    },
+    {
+      "resource_id": "239bd178-ac3d-5dfd-90ab-1fd69a2f2380",
+      "baseline_path": "control-plane/ccm.md",
+      "current_path": "control-plane/foundational/ccm.md",
+      "current_lifecycle": "REFERENCE",
+      "move_operation_count": 1,
+      "publications": [
+        "e0152f48-3b68-4299-9e00-415c227e72be"
+      ],
+      "move_timestamps": [
+        "2026-07-30T17:23:50.342739Z"
+      ],
+      "titles": [
+        "Issue #44 hub conversion: ccm.md -> foundational (23 inbound, normative CCM contract)"
+      ]
+    },
+    {
+      "resource_id": "1aead82e-9c88-5f39-b059-348d2026a9c0",
+      "baseline_path": "control-plane/cp-net-1-driver.md",
+      "current_path": "control-plane/cp-net-1/driver.md",
+      "current_lifecycle": "OPERATION",
+      "move_operation_count": 1,
+      "publications": [
+        "945dc7ab-87bc-4ff0-b46e-36993e68b968"
+      ],
+      "move_timestamps": [
+        "2026-07-30T17:27:04.291949Z"
+      ],
+      "titles": [
+        "Issue #44 hub conversion: cp-net-1-driver.md -> cp-net-1/ section (17 inbound, joins existing overview.md sibling)"
+      ]
     }
   ]
 }

@@ -1,0 +1,84 @@
+{
+  "change_id": "945dc7ab-87bc-4ff0-b46e-36993e68b968",
+  "workspace_key": "reference",
+  "title": "Issue #44 hub conversion: control-plane/cp-net-1-driver.md -> control-plane/cp-net-1/driver.md",
+  "purpose": "Move control-plane/cp-net-1-driver.md to control-plane/cp-net-1/driver.md, joining its established sibling category. Ordinary structural move (page-vs-section conflict checked, no collision). Content and inbound-reference fixes follow in a separate bounded change.",
+  "author_principal_id": "73a1f3b0-58fd-48b9-a0b9-efc06dabda03",
+  "idempotency_key": "i44-hub-cpnet1-move-publish-r1-create",
+  "status": "PUBLISHED",
+  "base_state_identity": null,
+  "validation_summary": {
+    "errors": [],
+    "passed": true,
+    "warnings": [],
+    "validated_at": "2026-07-30T17:27:04.539007+00:00",
+    "contract_version": "direct-publication-v1",
+    "candidate_identity": "d6636570f949134c5683df383785f847f4cdf764ef48f8e10a5799ad90c0ee6f",
+    "operations_checked": 1,
+    "base_state_identity": "df8478a162b6dfb38b15266593eb0a013371677637a2f0d91d1c1acfddf9849c",
+    "operations_accepted": 1
+  },
+  "preview_receipt": {
+    "operations": [
+      {
+        "errors": [],
+        "accepted": true,
+        "sequence": 0,
+        "warnings": [],
+        "operation_id": "bb351fe2-02e8-4b3d-bc1b-6727a2f58202",
+        "operation_type": "MOVE_PAGE"
+      }
+    ],
+    "candidate_identity": "d6636570f949134c5683df383785f847f4cdf764ef48f8e10a5799ad90c0ee6f"
+  },
+  "publication_receipt": {
+    "deployment": {
+      "pages": 521,
+      "status": "COMPLETED",
+      "dry_run": false,
+      "redirects": 87,
+      "release_id": "292bf6a5-a85a-4ce8-84a2-7aa803912251",
+      "build_time_ms": 38392,
+      "sealed_digest": "fe93344f2440779f5380f50745e634fb89f446877d4d5e68c0a8db59457e6271",
+      "deployment_cycle_id": "08e38d68-fcca-45bf-a43f-f0bb4435285e",
+      "target_state_identity": "631ad268284bd073aabf96d3b34415bb177f3192ea07ace624f48d18ae89353e"
+    },
+    "published_at": "2026-07-30T17:27:04.546013+00:00",
+    "published_by": "73a1f3b0-58fd-48b9-a0b9-efc06dabda03",
+    "review_required": false,
+    "contract_version": "direct-publication-v1",
+    "candidate_identity": "d6636570f949134c5683df383785f847f4cdf764ef48f8e10a5799ad90c0ee6f",
+    "operations_applied": 1,
+    "database_transaction": "COMMITTED",
+    "operations_submitted": 1
+  },
+  "failure_receipt": null,
+  "created_at": "2026-07-30T17:27:03.892342Z",
+  "updated_at": "2026-07-30T17:27:43.718161Z",
+  "published_at": "2026-07-30T17:27:04.291949Z",
+  "operations": [
+    {
+      "operation_id": "bb351fe2-02e8-4b3d-bc1b-6727a2f58202",
+      "sequence": 0,
+      "idempotency_key": "i44-hub-cpnet1-move-publish-r1-op1",
+      "operation_type": "MOVE_PAGE",
+      "page_resource_id": "1aead82e-9c88-5f39-b059-348d2026a9c0",
+      "expected_revision": "59b60182-08f8-4dbc-8b11-0e4866096a3e",
+      "expected_section_hash": null,
+      "payload": {
+        "to_path": "control-plane/cp-net-1/driver.md",
+        "to_nav_path": "Control Plane/CP-NET-1/Driver",
+        "create_redirect": true
+      },
+      "validation_result": {
+        "errors": [],
+        "accepted": true,
+        "sequence": 0,
+        "warnings": [],
+        "operation_id": "bb351fe2-02e8-4b3d-bc1b-6727a2f58202",
+        "operation_type": "MOVE_PAGE"
+      },
+      "created_at": "2026-07-30T17:27:03.988442Z"
+    }
+  ]
+}
