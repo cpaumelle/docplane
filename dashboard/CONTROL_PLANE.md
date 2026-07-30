@@ -1,6 +1,62 @@
-# Dashboard authority
+# Dashboard purpose and authority
 
-The dashboard is an HTTP client of the DocPlane API. It has no database, filesystem or release-store authority.
+The dashboard provides **human corpus observability, decision support and governed
+authoring**. Its implementation owner is `dashboard/`, and its routed product surface is
+`/dashboard/`.
+
+The dashboard is an HTTP client of the DocPlane API. PostgreSQL, reached only through that
+API, is authoritative. The dashboard has no database, filesystem, authentication,
+permission, publication or release-store authority. It does not scan generated MkDocs
+files or reconstruct corpus policy in browser JavaScript.
+
+The retired CharlieHub MkDocs dashboard is behavioral and design evidence only. Its useful
+questions, visual hierarchy and calibrated structural signals inform the Corpus
+Observatory; its implementation and any independent scanning model are not an authority.
+
+## Product information architecture
+
+The dashboard surfaces `Overview · Work · Explore · Review · Author · Changes`.
+
+Explore and Review are the Know-domain Corpus Observatory:
+
+- **Explore** navigates authoritative snapshot structure, pages and governed metadata.
+- **Review** is the ranked attention queue. Structural candidates include bounded,
+  server-generated reason codes, measured evidence, thresholds, resource IDs and revisions.
+- Freshness and verification are Review concerns. The section path-prefix pre-flight and
+  revision-bound verification request lifecycle remain available there.
+- Raw reorganisation remains available under Review's **Advanced** control so existing
+  plans can still be inspected, analysed, validated and published.
+
+Structural signals support contributor judgement; they never authorise mutation.
+Classification and overdue policy have one owner in the maintenance API and its shared
+server-side policy module. Observatory code consumes that policy rather than redefining it.
+
+The markdown-parsed lifecycle field is displayed only as **Legacy lifecycle signal**. It is
+non-canonical pending metadata audit and backfill. Governed workspace, knowledge class,
+publication state, archive state, verification state, provenance and criticality are the
+durable classification surface.
+
+## Bounded read contract
+
+`GET /api/v1/dashboard/observatory` returns complete directory aggregates and paginated
+review candidates. `GET /api/v1/dashboard/observatory/pages` returns page summaries.
+Both paginated collections use the `docplane-named-after-v1` dialect:
+
+- `count`: records returned in this response;
+- `total`: records available in the snapshot;
+- `has_more`: whether another page exists;
+- `next_after`: opaque value passed to the matching `after` parameter.
+
+Page responses default to 100 and permit at most 200 records. Candidate responses default
+to 50 and permit at most 200.
+
+The authenticated export is produced by the API, not assembled by downloading page bodies
+in the browser. Its manifest records resource IDs, paths and revisions. Export is limited
+to 5,000 resources and 10 MiB uncompressed; crossing either limit returns
+`413 EXPORT_LIMIT_EXCEEDED` with actual counts and configured limits. It never silently
+returns a partial corpus.
+
+## Governed authoring
 
 A named contributor token is kept only in browser session storage and memory, then forwarded
 to the API. Human authoring follows the same contract as MCP and other clients:
@@ -26,6 +82,11 @@ bootstrap.
 In managed deployments, self-service is disabled. The dashboard does not attempt issuance;
 it displays discovery's operator procedure and accepts the existing operator-issued bearer.
 Manual bearer entry is a fallback, not the primary private-fabric flow.
+
+Successful private-fabric bootstrap does not occupy navigation space with a Connected label
+or token control. The principal appears unobtrusively in the footer. Managed-token-required
+and bootstrap-failed states remain prominent, and explicit troubleshooting can reveal the
+manual bearer fallback.
 
 The routed DocPlane origin is security-relevant: it supplies the trusted fabric-admission
 context for self-issue. Direct dashboard or docs-api service ports are not equivalent and

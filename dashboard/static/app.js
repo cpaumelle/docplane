@@ -1,8 +1,12 @@
 const $ = (id) => document.getElementById(id);
-const VIEWS = new Set(["overview", "work", "freshness", "authoring", "reorganisation", "history"]);
+const VIEWS = new Set(["overview", "work", "explore", "review", "authoring", "history"]);
 const TOKEN_KEY = "docplane-token";
 let selectedPlan = null;
 let authentication = null;
+let observatory = null;
+let exploredPages = [];
+let pageCursor = null;
+let candidateCursor = null;
 
 function headers(extra = {}) {
   const token = authentication?.token();
@@ -189,8 +193,8 @@ function activate(name) {
   document.querySelector(`.nav[data-view="${view}"]`)?.classList.add("active");
   if (view === "overview") loadOverview();
   if (view === "work") loadWork();
-  if (view === "freshness") loadFreshness();
-  if (view === "reorganisation") loadReorganisation();
+  if (view === "explore") loadExplore();
+  if (view === "review") loadReview();
   if (view === "history") loadHistory();
 }
 function navigate(name) {
@@ -233,17 +237,46 @@ async function loadOverview() {
     const certification = overview.modules.certification?.data || {};
     const changes = overview.modules.changes?.data?.changes || [];
     const work = overview.modules.work?.data || {};
+    const maintenance = overview.modules.maintenance?.data?.queues || {};
+    const deployments = overview.modules.deployments?.data?.attempts || [];
+    const attention = Object.values(maintenance).reduce((total, items) => total + (items || []).length, 0);
     $("overview-cards").innerHTML = [
       ["Active pages", structure.summary?.active_pages ?? 0],
       ["Archived pages", structure.summary?.archived_pages ?? 0],
       ["Open changes", changes.filter((item) => !["PUBLISHED", "ABANDONED"].includes(item.status)).length],
       ["Active initiatives", Object.entries(work.by_state || {}).filter(([state]) => !["COMPLETE", "ABANDONED"].includes(state)).reduce((total, [,count]) => total + count, 0)],
+      ["Needs attention", attention],
+      ["Last deployment", deployments[0]?.status || "Unavailable"],
     ].map(([label,value]) => `<article class="card"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>`).join("");
-    $("certification").textContent = JSON.stringify(certification, null, 2);
-    $("recent-changes").innerHTML = changes.length ? changes.slice(0, 8).map((item) => `<button type="button"><strong>${esc(item.title)}</strong><span>${esc(item.status)}</span></button>`).join("") : `<p class="muted">No changes yet.</p>`;
+    renderCertification(certification, overview.modules.certification?.available !== false);
+    $("recent-changes").innerHTML = changes.length ? changes.slice(0, 8).map((item) => `<button type="button" class="recent-change" data-id="${esc(item.change_id)}"><strong>${esc(item.title)}</strong><span>${esc(item.status)}</span></button>`).join("") : `<p class="muted">No changes yet.</p>`;
+    document.querySelectorAll(".recent-change").forEach((button) => button.addEventListener("click", () => navigate("history")));
   } catch (error) {
     $("certification").textContent = error.message;
   }
+}
+
+function renderCertification(value, available) {
+  if (!available) {
+    $("certification").innerHTML = `<strong>Unavailable</strong><p>The certification module is unavailable.</p>`;
+    return;
+  }
+  const working = value.working_state_identity || value.working_identity;
+  const deployed = value.deployed_state_identity || value.deployed_identity;
+  const failure = value.failure || value.failed_stage;
+  let state = "Current";
+  let detail = "Working and deployed identities match.";
+  if (failure) {
+    state = "Deployment failed";
+    detail = `Failed at ${failure.stage || failure}. Inspect the latest deployment receipt before retrying.`;
+  } else if (working && deployed && working !== deployed) {
+    state = "Publication behind";
+    detail = "The working corpus state has not been deployed.";
+  } else if (value.current === false || value.status === "STALE") {
+    state = "Publication behind";
+    detail = "The working corpus state has not been deployed.";
+  }
+  $("certification").innerHTML = `<strong>${esc(state)}</strong><p>${esc(detail)}</p>`;
 }
 
 async function loadWork() {
@@ -303,24 +336,129 @@ async function triageCapture(id, action) {
   await loadWork();
 }
 
-async function loadFreshness() {
+function renderDirectories() {
+  const rows = observatory?.directories || [];
+  $("explore-directories").innerHTML = rows.length ? rows.map((row) => `
+    <button class="directory" data-path="${esc(row.path)}">
+      <strong>${esc(row.path)}</strong>
+      <span>${esc(row.direct_pages)} direct · ${esc(row.descendant_pages)} descendants · ${esc(row.archived_pages)} archived</span>
+      <span>depth ${esc(row.max_depth)} · ${esc(row.size_bytes)} bytes${row.protected ? " · protected" : ""}</span>
+    </button>`).join("") : `<p class="muted">No directories in this snapshot.</p>`;
+  document.querySelectorAll(".directory").forEach((button) => button.addEventListener("click", () => {
+    $("explore-query").value = button.dataset.path;
+    renderPages();
+  }));
+}
+
+function renderPages() {
+  const query = $("explore-query").value.trim().toLowerCase();
+  const knowledge = $("explore-class").value;
+  const archive = $("explore-archive").value;
+  const dated = $("explore-dated").checked;
+  const rows = exploredPages.filter((page) =>
+    (!query || `${page.path} ${page.title || ""}`.toLowerCase().includes(query))
+    && (!knowledge || page.knowledge_class === knowledge)
+    && (!archive || page.status === archive)
+    && (!dated || /\d{4}-\d{2}-\d{2}/.test(page.path))
+  );
+  $("explore-pages").innerHTML = rows.length ? rows.map((page) => `
+    <article class="page-row">
+      <strong>${esc(page.title || page.path)}</strong>
+      <code>${esc(page.path)}</code>
+      <span>${esc(page.knowledge_class || "unclassified")} · ${esc(page.verification_state || "unknown")} · revision ${esc(page.revision)}</span>
+      <div class="actions"><a href="/?view=authoring&edit=${encodeURIComponent(page.path)}#authoring">Inspect / edit</a><button class="page-history" data-path="${esc(page.path)}">History</button><button class="page-verify" data-id="${esc(page.resource_id)}" data-path="${esc(page.path)}">Verify</button></div>
+    </article>`).join("") : `<p class="muted">No loaded pages match these filters.</p>`;
+  document.querySelectorAll(".page-history").forEach((button) => button.addEventListener("click", () => navigate("history")));
+  document.querySelectorAll(".page-verify").forEach((button) => button.addEventListener("click", () => requestVerification({page_resource_id: button.dataset.id}, button.dataset.path)));
+}
+
+async function loadPageBatch(reset = false) {
+  if (reset) { exploredPages = []; pageCursor = null; }
+  const suffix = pageCursor ? `&after=${encodeURIComponent(pageCursor)}` : "";
+  const data = await api(`/api/control-plane/observatory/pages?limit=100${suffix}`);
+  exploredPages.push(...(data.pages?.items || []));
+  pageCursor = data.pages?.next_after || null;
+  $("explore-more").hidden = !data.pages?.has_more;
+  const classes = [...new Set(exploredPages.map((page) => page.knowledge_class).filter(Boolean))].sort();
+  const selected = $("explore-class").value;
+  $("explore-class").innerHTML = `<option value="">All</option>` + classes.map((value) => `<option ${value === selected ? "selected" : ""}>${esc(value)}</option>`).join("");
+  renderPages();
+}
+
+async function loadExplore() {
   if (!authentication?.token()) return;
   try {
-    const [freshness, requests] = await Promise.all([
-      api("/api/control-plane/maintenance/freshness?limit=200"),
+    observatory = await api("/api/control-plane/observatory?candidate_limit=50");
+    candidateCursor = observatory.review_candidates?.next_after || null;
+    renderDirectories();
+    await loadPageBatch(true);
+  } catch (error) {
+    $("explore-directories").textContent = error.message;
+  }
+}
+
+function renderCandidates(values, append = false) {
+  const html = values.length ? values.map((candidate) => `
+    <article class="candidate ${candidate.protected ? "candidate--protected" : ""}">
+      <div><strong>${esc(candidate.path)}</strong><span>${esc(candidate.severity)} · score ${esc(candidate.score)} · ${esc(candidate.evidence_count)} resources${candidate.protected ? " · protected surface" : ""}</span></div>
+      <ul>${candidate.reasons.map((reason) => `<li><code>${esc(reason.code)}</code> ${esc(reason.explanation)}</li>`).join("")}</ul>
+      <div class="actions"><button class="candidate-inspect" data-path="${esc(candidate.path)}">Inspect</button><button class="candidate-verify" data-path="${esc(candidate.path)}">Verify scope</button><button class="candidate-capture" data-path="${esc(candidate.path)}" data-reasons="${esc(candidate.reasons.map((item) => item.code).join(", "))}">Capture work</button><button class="candidate-plan" data-path="${esc(candidate.path)}">Begin plan</button></div>
+    </article>`).join("") : `<p class="muted">No structural candidates in this snapshot.</p>`;
+  if (append) $("review-candidates").insertAdjacentHTML("beforeend", html);
+  else $("review-candidates").innerHTML = html;
+  document.querySelectorAll(".candidate-inspect").forEach((button) => button.onclick = () => {
+    navigate("explore");
+    $("explore-query").value = button.dataset.path;
+    renderPages();
+  });
+  document.querySelectorAll(".candidate-verify").forEach((button) => button.onclick = () => requestVerification({path_prefix: button.dataset.path}, button.dataset.path));
+  document.querySelectorAll(".candidate-capture").forEach((button) => button.onclick = () => captureCandidate(button.dataset.path, button.dataset.reasons));
+  document.querySelectorAll(".candidate-plan").forEach((button) => button.onclick = () => {
+    $("plan-title").value = `Review ${button.dataset.path}`;
+    $("plan-purpose").value = `Governed reorganisation candidate surfaced from ${button.dataset.path}.`;
+    document.querySelector(".advanced").open = true;
+    document.querySelector(".advanced").scrollIntoView({behavior: "smooth"});
+  });
+}
+
+async function captureCandidate(path, reasons) {
+  await api("/api/control-plane/work/captures", {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "Idempotency-Key": key("observatory-capture")},
+    body: JSON.stringify({body: `Review ${path}: ${reasons}`, kind: "FINDING", origin: {channel: "WEB", tool: "corpus-observatory"}}),
+  });
+  $("verification-scope-guidance").textContent = `Captured ${path} in the Work inbox.`;
+}
+
+async function loadReview() {
+  if (!authentication?.token()) return;
+  try {
+    const [model, requests] = await Promise.all([
+      api("/api/control-plane/observatory?candidate_limit=50"),
       api("/api/control-plane/verification-requests?status=OPEN"),
     ]);
+    observatory = model;
+    candidateCursor = model.review_candidates?.next_after || null;
+    renderCandidates(model.review_candidates?.items || []);
+    $("review-more").hidden = !model.review_candidates?.has_more;
     $("verification-requests").innerHTML = (requests.requests || []).length ? requests.requests.map((item) => `<article class="panel"><strong>${esc(item.reason)}</strong><p>${esc(item.note || item.path_prefix || item.page_resource_id || item.entity_id)}</p><p class="muted">${esc(item.requested_at)} · ${esc((item.briefing || {}).page_count ?? "?")} page(s)</p></article>`).join("") : `<p class="muted">No open requests.</p>`;
-    $("freshness-table").innerHTML = (freshness.pages || []).length ? freshness.pages.map((page) => `<article class="panel"><strong>${esc(page.path)}</strong><p class="muted">${esc(page.section)} · ${esc(page.verification_state)} · ${esc(page.criticality)}${page.provenance === "GENERATED" ? " · GENERATED" : ""}</p><p class="muted">updated ${esc(page.updated_at)} · last verified ${esc(page.last_verified_at || "never")}</p><div class="actions"><button class="verify-page" data-id="${esc(page.resource_id)}" data-path="${esc(page.path)}">Verify against fabric</button></div></article>`).join("") : `<p class="muted">No active pages.</p>`;
-    document.querySelectorAll(".verify-page").forEach((button) => button.addEventListener("click", () => requestVerification({ page_resource_id: button.dataset.id }, button.dataset.path).catch((error) => { $("freshness-table").textContent = error.message; })));
+    await loadReorganisation();
   } catch (error) {
-    $("freshness-table").textContent = error.message;
+    $("review-candidates").textContent = error.message;
   }
 }
 
 async function requestVerification(scope, label) {
-  await api("/api/control-plane/verification-requests", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("verify") }, body: JSON.stringify({ ...scope, note: `Requested from the freshness table: ${label}` }) });
-  await loadFreshness();
+  try {
+    await api("/api/control-plane/verification-requests", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key("verify") }, body: JSON.stringify({ ...scope, note: `Requested from Corpus Observatory Review: ${label}` }) });
+    $("verification-scope-guidance").textContent = `Verification requested for ${label}.`;
+    await loadReview();
+  } catch (error) {
+    const detail = error.payload?.detail?.upstream || error.payload?.detail || {};
+    $("verification-scope-guidance").textContent = detail.code === "VERIFICATION_SCOPE_TOO_LARGE"
+      ? `${detail.remedy || "Split the scope into narrower path prefixes."} Limit: ${detail.limit || 200} pages.`
+      : error.message;
+  }
 }
 
 async function loadHistory() {
@@ -386,11 +524,14 @@ function clearAuthenticatedView() {
   $("work-cards").innerHTML = "";
   $("work-inbox").textContent = "Connect to load.";
   $("work-initiatives").textContent = "Connect to load.";
-  $("freshness-table").textContent = "Connect to load.";
+  $("explore-directories").textContent = "Connect to load.";
+  $("explore-pages").textContent = "Connect to load.";
+  $("review-candidates").textContent = "Connect to load.";
   $("verification-requests").textContent = "Connect to load.";
   setAuthenticatedControls(false);
 }
 function showAuthenticationState(state, detail = {}) {
+  $("auth-presentation").hidden = state === "connected";
   $("auth-status").dataset.state = state;
   if (state === "bootstrapping") $("auth-status").textContent = "Connecting…";
   if (state === "connected") $("auth-status").textContent = "Connected";
@@ -430,12 +571,34 @@ if (typeof document !== "undefined") {
   document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
   $("refresh-overview").addEventListener("click", loadOverview);
   $("refresh-work").addEventListener("click", loadWork);
-  $("refresh-freshness").addEventListener("click", loadFreshness);
+  $("refresh-explore").addEventListener("click", loadExplore);
+  $("refresh-review").addEventListener("click", loadReview);
+  ["explore-query", "explore-class", "explore-archive", "explore-dated"].forEach((id) => $(id).addEventListener("input", renderPages));
+  $("explore-more").addEventListener("click", () => loadPageBatch(false).catch((error) => { $("explore-pages").textContent = error.message; }));
+  $("review-more").addEventListener("click", async () => {
+    if (!candidateCursor) return;
+    try {
+      const data = await api(`/api/control-plane/observatory?candidate_limit=50&candidate_after=${encodeURIComponent(candidateCursor)}`);
+      renderCandidates(data.review_candidates?.items || [], true);
+      candidateCursor = data.review_candidates?.next_after || null;
+      $("review-more").hidden = !data.review_candidates?.has_more;
+    } catch (error) { $("review-candidates").textContent = error.message; }
+  });
+  $("export-observatory").addEventListener("click", async () => {
+    try {
+      const data = await api("/api/control-plane/observatory/export");
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type: "application/json"}));
+      link.download = `docplane-observatory-${data.fingerprint}.json`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (error) { $("explore-pages").textContent = error.message; }
+  });
   $("capture-save").addEventListener("click", () => saveCapture().catch((error) => { $("work-inbox").textContent = error.message; }));
   $("verify-section").addEventListener("click", () => {
     const prefix = $("verify-prefix").value.trim().replace(/\/+$/, "");
     if (!prefix) return;
-    requestVerification({ path_prefix: prefix }, prefix).catch((error) => { $("verification-requests").textContent = error.message; });
+    requestVerification({ path_prefix: prefix }, prefix);
   });
   $("refresh-history").addEventListener("click", loadHistory);
   $("refresh-reorganisation").addEventListener("click", loadReorganisation);

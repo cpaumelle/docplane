@@ -18,7 +18,7 @@
       <a class="navlink" href="/" title="Browse documentation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v4h4"/></svg>Docs</a>
       <span class="navlink navlink--active" title="Authoring dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard</span>
     </nav>
-    <div class="connect">
+    <div class="connect" id="auth-presentation">
       <span id="auth-status" data-state="bootstrapping">Connecting…</span>
       <details id="auth-fallback">
         <summary>Use existing token</summary>
@@ -31,9 +31,9 @@
     <nav class="sidebar" data-product-aria="modules" aria-label="DocPlane modules">
       <button class="nav active" data-view="overview">Overview</button>
       <button class="nav" data-view="work">Work</button>
-      <button class="nav" data-view="freshness">Freshness</button>
+      <button class="nav" data-view="explore">Explore</button>
+      <button class="nav" data-view="review">Review</button>
       <button class="nav" data-view="authoring">Authoring</button>
-      <button class="nav" data-view="reorganisation">Reorganisation</button>
       <button class="nav" data-view="history">Changes & versions</button>
     </nav>
     <main>
@@ -41,7 +41,7 @@
         <div class="heading"><div><h1>Operational state</h1><p>Current corpus, publication and maintenance signals.</p></div><button id="refresh-overview">Refresh</button></div>
         <div id="overview-cards" class="cards"></div>
         <div class="grid two">
-          <article class="panel"><h2>Certification</h2><pre id="certification">Connect to load.</pre><button id="retry-publication" disabled>Retry current publication</button></article>
+          <article class="panel"><h2>Certification</h2><div id="certification">Connect to load.</div><button id="retry-publication" disabled>Retry current publication</button></article>
           <article class="panel"><h2>Recent changes</h2><div id="recent-changes" class="list muted">Connect to load.</div></article>
         </div>
       </section>
@@ -65,17 +65,44 @@
         <article class="panel"><h2>Initiatives</h2><div id="work-initiatives" class="list muted">Connect to load.</div></article>
       </section>
 
-      <section id="view-freshness" class="view">
-        <div class="heading"><div><h1>Freshness</h1><p>Least-recently-verified pages first. Verification is on demand — no cron re-checks facts that rarely change.</p></div><button id="refresh-freshness">Refresh</button></div>
+      <section id="view-explore" class="view">
+        <div class="heading"><div><h1>Explore the corpus</h1><p>Navigate the authoritative corpus snapshot by structure and governed metadata.</p></div><div class="actions"><button id="export-observatory">Export manifest</button><button id="refresh-explore">Refresh</button></div></div>
+        <article class="panel">
+          <div class="filters">
+            <label>Path or title<input id="explore-query" placeholder="operations/proxmox"></label>
+            <label>Classification<select id="explore-class"><option value="">All</option></select></label>
+            <label>Archive state<select id="explore-archive"><option value="">All</option><option value="active">Active</option><option value="archived">Archived</option></select></label>
+            <label><input id="explore-dated" type="checkbox"> Dated files only</label>
+          </div>
+        </article>
         <div class="grid two">
-          <article class="panel">
-            <h2>Verify a section</h2>
-            <label>Path prefix<input id="verify-prefix" placeholder="operations/proxmox"></label>
-            <button id="verify-section" disabled>Request fabric verification</button>
-          </article>
+          <article class="panel"><h2>Sections and directories</h2><div id="explore-directories" class="list muted">Connect to load.</div></article>
+          <article class="panel"><h2>Pages</h2><div id="explore-pages" class="list muted">Connect to load.</div><button id="explore-more" hidden>Load more</button></article>
+        </div>
+        <p class="signal-note"><strong>Legacy lifecycle signal:</strong> parsed lifecycle labels remain visible for audit and migration only; governed metadata is authoritative.</p>
+      </section>
+
+      <section id="view-review" class="view">
+        <div class="heading"><div><h1>Review</h1><p>A single ranked attention queue for structural evidence, classification and verification.</p></div><button id="refresh-review">Refresh</button></div>
+        <article class="panel">
+          <h2>Verify a section before relying on it</h2>
+          <div class="scope-action"><label>Path prefix<input id="verify-prefix" placeholder="operations/proxmox"></label><button id="verify-section" disabled>Request fabric verification</button></div>
+          <p id="verification-scope-guidance" class="muted">Requests are revision-bound and may cover at most 200 pages.</p>
+        </article>
+        <div class="grid two">
+          <article class="panel"><h2>Ranked candidates</h2><div id="review-candidates" class="list muted">Connect to load.</div><button id="review-more" hidden>Load more</button></article>
           <article class="panel"><h2>Open verification requests</h2><div id="verification-requests" class="list muted">Connect to load.</div></article>
         </div>
-        <article class="panel"><h2>Pages by staleness</h2><div id="freshness-table" class="list muted">Connect to load.</div></article>
+        <details class="panel advanced">
+          <summary><strong>Advanced reorganisation</strong> — manage existing plans or build raw operations</summary>
+          <ol class="workflow"><li>Plan</li><li>Analyze</li><li>Validate</li><li>Publish</li></ol>
+          <div class="grid two">
+            <article class="panel"><h2>Create plan</h2><label>Title<input id="plan-title"></label><label>Purpose<textarea id="plan-purpose"></textarea></label><label>Workspace<input id="plan-workspace" value="reference"></label><button id="create-plan">Create plan</button></article>
+            <article class="panel"><h2>Add operation</h2><label>Type<select id="operation-type"><option>MOVE_PAGE</option><option>REPARENT_NAV</option><option>ARCHIVE_PAGE</option><option>RESTORE_PAGE</option><option>ADD_REDIRECT</option><option>REMOVE_REDIRECT</option><option>REORDER_SECTIONS</option></select></label><label>Page resource ID<input id="operation-page-id"></label><label>Expected revision<input id="operation-revision"></label><label>Payload JSON<textarea id="operation-payload">{}</textarea></label><button id="add-operation" disabled>Add operation</button></article>
+          </div>
+          <div class="actions"><button id="refresh-reorganisation">Refresh plans</button><button id="analyze-plan" disabled>Analyze</button><button id="validate-plan" disabled>Validate</button><button id="publish-plan" disabled>Publish</button></div>
+          <div class="grid two"><article class="panel"><h2>Open plans</h2><div id="reorg-plans" class="list muted">Connect to load.</div></article><article class="panel"><h2>Selected plan</h2><pre id="reorg-detail">No plan selected.</pre></article></div>
+        </details>
       </section>
 
       <section id="view-authoring" class="view">
@@ -99,17 +126,6 @@
             <article class="panel"><h2>Version history</h2><div id="authoring-history" class="list muted">Select a page.</div></article>
           </div>
         </div>
-      </section>
-
-      <section id="view-reorganisation" class="view">
-        <div class="heading"><div><h1>Reorganisation</h1><p>Structural edits use the same revision-bound direct publication transaction.</p></div><button id="refresh-reorganisation">Refresh</button></div>
-        <ol class="workflow"><li>Plan</li><li>Analyze</li><li>Validate</li><li>Publish</li></ol>
-        <div class="grid two">
-          <article class="panel"><h2>Create plan</h2><label>Title<input id="plan-title"></label><label>Purpose<textarea id="plan-purpose"></textarea></label><label>Workspace<input id="plan-workspace" value="reference"></label><button id="create-plan">Create plan</button></article>
-          <article class="panel"><h2>Add operation</h2><label>Type<select id="operation-type"><option>MOVE_PAGE</option><option>REPARENT_NAV</option><option>ARCHIVE_PAGE</option><option>RESTORE_PAGE</option><option>ADD_REDIRECT</option><option>REMOVE_REDIRECT</option><option>REORDER_SECTIONS</option></select></label><label>Page resource ID<input id="operation-page-id"></label><label>Expected revision<input id="operation-revision"></label><label>Payload JSON<textarea id="operation-payload">{}</textarea></label><button id="add-operation" disabled>Add operation</button></article>
-        </div>
-        <div class="actions"><button id="analyze-plan" disabled>Analyze</button><button id="validate-plan" disabled>Validate</button><button id="publish-plan" disabled>Publish</button></div>
-        <div class="grid two"><article class="panel"><h2>Plans</h2><div id="reorg-plans" class="list muted">Connect to load.</div></article><article class="panel"><h2>Selected plan</h2><pre id="reorg-detail">No plan selected.</pre></article></div>
       </section>
 
       <section id="view-history" class="view">

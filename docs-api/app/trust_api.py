@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
+from app.maintenance_policy import MAINTENANCE_PREDICATES
 from app.trust_models import PageClassificationUpdate, PageOwnerUpdate, PageVerificationCreate, VerificationExpiryRun
 from app.workspace_access import page_workspace
 
@@ -223,21 +224,13 @@ def maintenance_pages(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     cutoff = datetime.now(timezone.utc) + timedelta(days=due_within_days)
-    predicates = {
-        "metadata_review": "p.metadata_review_required",
-        "unowned": "p.owner_principal_id IS NULL AND p.publication_state = 'PUBLISHED'",
-        "unverified": "p.verification_state = 'UNVERIFIED' AND p.publication_state = 'PUBLISHED'",
-        "verification_due": "p.verification_state = 'VERIFIED' AND p.review_due_at IS NOT NULL AND p.review_due_at <= %s",
-        "expired": "p.verification_state = 'EXPIRED'",
-        "outdated": "p.verification_state = 'OUTDATED'",
-    }
-    selected = list(predicates) if queue == "all" else [queue]
+    selected = list(MAINTENANCE_PREDICATES) if queue == "all" else [queue]
     result: dict[str, list[dict[str, Any]]] = {}
     with get_conn() as conn:
         cur = conn.cursor()
         for name in selected:
             params: list[Any] = [cutoff] if name == "verification_due" else []
             params.append(limit)
-            cur.execute(f"SELECT p.resource_id::text, p.path, p.title, p.revision, w.workspace_key, p.publication_state, p.knowledge_class, p.verification_state, p.owner_principal_id::text, p.review_due_at, p.criticality, p.metadata_review_required, p.metadata_version, p.updated_at FROM docs.pages p JOIN docplane.workspaces w ON w.workspace_id = p.workspace_id WHERE {predicates[name]} ORDER BY coalesce(p.review_due_at, p.updated_at), p.path LIMIT %s", params)
+            cur.execute(f"SELECT p.resource_id::text, p.path, p.title, p.revision, w.workspace_key, p.publication_state, p.knowledge_class, p.verification_state, p.owner_principal_id::text, p.review_due_at, p.criticality, p.metadata_review_required, p.metadata_version, p.updated_at FROM docs.pages p JOIN docplane.workspaces w ON w.workspace_id = p.workspace_id WHERE {MAINTENANCE_PREDICATES[name]} ORDER BY coalesce(p.review_due_at, p.updated_at), p.path LIMIT %s", params)
             result[name] = [dict(zip(("resource_id", "path", "title", "revision", "workspace_key", "publication_state", "knowledge_class", "verification_state", "owner_principal_id", "review_due_at", "criticality", "metadata_review_required", "metadata_version", "updated_at"), row)) for row in cur.fetchall()]
     return {"queues": result, "due_cutoff": cutoff}
