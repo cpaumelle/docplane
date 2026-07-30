@@ -1,0 +1,222 @@
+[
+ {
+  "evidence_surface": false,
+  "inbound": 0,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Architecture & State/Architecture Overview",
+  "path": "control-plane/architecture-overview.md",
+  "resource_id": "8b870d00-6b34-5b1d-8b46-79e4ec9f25d5",
+  "title": "Architecture Overview",
+  "version": 5
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 15,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Foundational/CCM Contract",
+  "path": "control-plane/ccm.md",
+  "resource_id": "239bd178-ac3d-5dfd-90ab-1fd69a2f2380",
+  "title": "CCM Contract",
+  "version": 18
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 5,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/charliehub-mcp",
+  "path": "control-plane/charliehub-mcp.md",
+  "resource_id": "c2a0e0d9-b82d-5630-8482-4a7beb87edef",
+  "title": "charliehub-mcp",
+  "version": 16
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 6,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Class B Host Registry",
+  "path": "control-plane/class-b-hosts.md",
+  "resource_id": "7b0af754-a233-5c51-8eaa-2d7d139003fc",
+  "title": "Class B Host Registry",
+  "version": 5
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 3,
+  "lifecycle": "BACKLOG",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Cleanup \u2014 domains.charliehub.net to internal",
+  "path": "control-plane/cleanup-domains-net-internal.md",
+  "resource_id": "6220aab7-29b9-5562-b5d6-f94f7af266b6",
+  "title": "Cleanup: domains.charliehub.net \u2192 .internal",
+  "version": 10
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 13,
+  "lifecycle": "OPERATION",
+  "nav_children": 0,
+  "nav_path": "Control Plane/CP-NET-1/Driver",
+  "path": "control-plane/cp-net-1-driver.md",
+  "resource_id": "1aead82e-9c88-5f39-b059-348d2026a9c0",
+  "title": "CP-NET-1 \u2014 Driver",
+  "version": 20
+ },
+ {
+  "evidence_surface": true,
+  "inbound": 3,
+  "lifecycle": "ARCHIVED",
+  "nav_children": 0,
+  "nav_path": "Control Plane/CP-NET-1/History",
+  "path": "control-plane/cp-net-1-history.md",
+  "resource_id": "dd31d522-3610-5037-add7-40e47dfbd1a2",
+  "title": "CP-NET-1 \u2014 History",
+  "version": 4
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 2,
+  "lifecycle": "OPERATION",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Current State",
+  "path": "control-plane/current-state.md",
+  "resource_id": "28da275c-1b7f-591f-a8c8-c6f38704d763",
+  "title": "Current State",
+  "version": 11
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 1,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/DocPlane",
+  "path": "control-plane/docplane.md",
+  "resource_id": "1a6f8e5c-5c57-4488-a7a0-e6860a934d67",
+  "title": "DocPlane",
+  "version": 1
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 1,
+  "lifecycle": "ARCHIVED",
+  "nav_children": 0,
+  "nav_path": "Control Plane/docs-mcp",
+  "path": "control-plane/docs-mcp.md",
+  "resource_id": "af9fcd70-cb5b-51a4-98fb-3fd34e8a57a9",
+  "title": "docs-mcp",
+  "version": 12
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 12,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Edge Identity Model",
+  "path": "control-plane/edge-identity-model.md",
+  "resource_id": "7c7d7e81-fa7e-5dcc-8335-e1b434da1424",
+  "title": "Edge Identity Model",
+  "version": 14
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 3,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Gateway Runtime Responsibilities",
+  "path": "control-plane/gateway-runtime-responsibilities.md",
+  "resource_id": "79f6e14a-a55c-5a56-ad4f-cf031f060a73",
+  "title": "Gateway Runtime Responsibilities Contract",
+  "version": 11
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 0,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Hub2 Authority Crosswalk",
+  "path": "control-plane/hub2-authority-crosswalk.md",
+  "resource_id": "5cb01d61-13e0-51a6-a5a8-e0584b5a1e83",
+  "title": "Hub2 Authority Crosswalk",
+  "version": 9
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 1,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Index",
+  "path": "control-plane/index.md",
+  "resource_id": "7b882cf6-6dd9-51fe-a6e6-773ce21cb312",
+  "title": "Index",
+  "version": 23
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 1,
+  "lifecycle": "BACKLOG",
+  "nav_children": 0,
+  "nav_path": "Control Plane/INVARIANT-CATALOG-1",
+  "path": "control-plane/invariant-catalog-1.md",
+  "resource_id": "39fd7c66-2bfc-5dc2-8f92-b4563ee8afe3",
+  "title": "INVARIANT-CATALOG-1",
+  "version": 8
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 0,
+  "lifecycle": "BACKLOG",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Invariant Catalogue Parity Triage",
+  "path": "control-plane/invariant-catalogue-parity-triage.md",
+  "resource_id": "07ee1931-73d6-5720-ab6a-bb3515342a49",
+  "title": "Invariant Catalogue Parity \u2014 Dangling Triage",
+  "version": 5
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 87,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/SD-WAN Invariants",
+  "path": "control-plane/sd-wan-invariants.md",
+  "resource_id": "3b3b01ad-99da-5005-8290-76b450f08434",
+  "title": "SD-WAN Invariants",
+  "version": 19
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 36,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/SD-WAN & Edge/SD-WAN Architecture",
+  "path": "control-plane/sdwan.md",
+  "resource_id": "7891efa2-5887-50d0-9612-48969374608f",
+  "title": "SD-WAN Architecture v4",
+  "version": 47
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 4,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Site Network Authority",
+  "path": "control-plane/site-network-authority.md",
+  "resource_id": "7bfaba85-1856-5feb-91bd-7d37b7f72f3a",
+  "title": "Site Network Authority",
+  "version": 8
+ },
+ {
+  "evidence_surface": false,
+  "inbound": 1,
+  "lifecycle": "REFERENCE",
+  "nav_children": 0,
+  "nav_path": "Control Plane/Architecture & State/System Map",
+  "path": "control-plane/system-map.md",
+  "resource_id": "808a7248-5362-5019-a556-e5bbce976ce6",
+  "title": "System Map",
+  "version": 13
+ }
+]
