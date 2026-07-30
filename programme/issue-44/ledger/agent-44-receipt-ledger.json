@@ -646,5 +646,29 @@
   "to_nav": "Operations/Security/TLS Certificate Strategy",
   "redirect": true,
   "current": "operations/security/tls-cert-strategy.md"
+ },
+ {
+  "change": "7c95535a-211e-4669-b9c3-6f86c0d1c277",
+  "at": "2026-07-30T12:54:39.269084Z",
+  "title": "Issue #44 structural cohort: control-plane-specs-transit-convergence",
+  "rid": "290db043-435a-5d53-acd8-23e3ec85285e",
+  "from": "control-plane/transit-convergence.md",
+  "from_nav": "Control Plane/Transit Peer Convergence",
+  "to": "control-plane/specs/transit-convergence.md",
+  "to_nav": "Control Plane/Specs/Transit Peer Convergence",
+  "redirect": true,
+  "current": "control-plane/specs/transit-convergence.md"
+ },
+ {
+  "change": "4d55c3a4-5622-4aa3-a720-ea8cf2edaa16",
+  "at": "2026-07-30T13:02:26.869537Z",
+  "title": "Issue #44 structural cohort: control-plane-design-transport-plane-authority",
+  "rid": "388fd4df-3241-547d-b69d-9b6b9b0b2d98",
+  "from": "control-plane/transport-plane-authority.md",
+  "from_nav": "Control Plane/Transport Plane Authority",
+  "to": "control-plane/design/transport-plane-authority.md",
+  "to_nav": "Control Plane/Design/Transport Plane Authority",
+  "redirect": true,
+  "current": "control-plane/design/transport-plane-authority.md"
  }
 ]

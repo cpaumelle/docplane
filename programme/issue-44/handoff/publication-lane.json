@@ -1,9 +1,9 @@
 {
- "certification_version": 104,
+ "certification_version": 109,
  "evidence_commit": "ee97ceab",
- "holder": "agent-44",
- "live_snapshot": "2026-07-30T12:46:30Z (pages total=947 active=513, open_changes=0)",
- "notes": "Agent 44 holds the lane for the flat control-plane transit/gateway cohort (Agent 45 provisional grouping 1). ccm-* excluded: it remains Agent 45 prepared work and has not been released.",
- "since": "2026-07-30T12:46:30Z",
- "state": "held"
+ "holder": null,
+ "live_snapshot": "2026-07-30T13:07:11Z (pages total=947 active=513, open_changes=0)",
+ "notes": "Agent 44 published control-plane-specs-transit-convergence (7c95535a/be903189) and control-plane-design-transport-plane-authority (4d55c3a4/6acbc0b9). Zero open changes; both rehearsals abandoned with zero residual. Existence-aware audit: 9 broken targets, unchanged from the accepted baseline (8 evidence-surface preservations + Pi4 #78); zero new broken targets. Agent 45 must refresh its prepared ccm-* cohort and may take the lane.",
+ "since": "2026-07-30T13:07:11Z",
+ "state": "released"
 }
