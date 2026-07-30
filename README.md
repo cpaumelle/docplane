@@ -147,4 +147,8 @@ curl -fsS -X POST \
 - `dashboard/` — human control surface; owns no document state
 - `mcp/` — MCP tools using the same contributor API
 - `mkdocs/` — rendered-site configuration
+- `migration/` — corpus migration libraries: redaction/import transforms and
+  `links.py` (link discovery, bounded link-only rewriting, route derivation)
+- `scripts/docplane_links.py` — CLI for planning, applying and scanning link
+  repairs around page moves; dry-run by default, JSON receipts for CI
 - `docs/architecture/` — product architecture and deployment-security contracts

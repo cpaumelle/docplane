@@ -1,0 +1,60 @@
+name: corpus-link-tooling
+
+# Regression suite for corpus link discovery, rewriting and route derivation.
+#
+# Path-scoped to the link tooling surface so it runs only when the library, its
+# CLI, its tests, this workflow, or the tooling contract doc change.
+
+on:
+  pull_request:
+    paths:
+      - "migration/links.py"
+      - "migration/tests/test_links.py"
+      - "scripts/docplane_links.py"
+      - "docs/architecture/CORPUS_LINK_TOOLING.md"
+      - ".github/workflows/corpus-link-tooling.yml"
+  push:
+    branches: [main]
+    paths:
+      - "migration/links.py"
+      - "migration/tests/test_links.py"
+      - "scripts/docplane_links.py"
+      - "docs/architecture/CORPUS_LINK_TOOLING.md"
+      - ".github/workflows/corpus-link-tooling.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  link-tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pytest
+        run: python -m pip install pytest==8.3.5
+      - name: Compile library and CLI
+        run: python -m compileall -q migration/links.py scripts/docplane_links.py
+      - name: Regression suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python -m pytest -q migration/tests/test_links.py
+      - name: Historical-defect cases must exist and pass
+        # These four names encode defects that reached production. Renaming or
+        # deleting one silently removes the only guard against it, so the job
+        # asserts they ran rather than trusting the suite to stay honest.
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: >-
+          python -m pytest -q migration/tests/test_links.py
+          --no-header -k "separate_lines or beyond_destinations or
+          separator_cannot_become_a_navigation_leaf or derived_from_depth"
+          | tee /dev/stderr | grep -qE "4 passed"
+      - name: CLI is dry-run by default and fails closed
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: >-
+          python -m pytest -q migration/tests/test_links.py
+          -k "cli_apply_defaults_to_dry_run or cli_fails_closed or cli_rejects"
