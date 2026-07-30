@@ -104,11 +104,31 @@ def _initiative(row) -> dict[str, Any]:
             value[key] = str(value[key])
     value["uri"] = f"docplane://initiatives/{value['initiative_id']}"
     if value.get("soak_monitoring_ref"):
-        # Honest boundary until the meter list (Sprint 6) gives monitoring
-        # rules stable identities: a named reference admits SOAKING but is
-        # NOT verified monitoring identity and never satisfies observe=UPDATED.
+        # Default stamp; _stamp_soak_resolution upgrades it to
+        # RESOLVED_MONITOR_RULE when the reference matches an ACTIVE meter-
+        # list rule entity. A resolved ref is verified monitoring identity;
+        # an unresolved one admits SOAKING but never satisfies
+        # observe=UPDATED.
         value["soak_monitoring_ref_status"] = "UNRESOLVED_NAMED_REFERENCE"
     return value
+
+
+def _stamp_soak_resolution(conn, values: list[dict[str, Any]]) -> None:
+    """Resolve soak monitoring references against the meter list (Sprint 6):
+    a reference equal to an ACTIVE MONITOR_RULE entity_key is a stable,
+    verified monitoring identity, not free text."""
+    refs = sorted({value["soak_monitoring_ref"] for value in values if value.get("soak_monitoring_ref")})
+    if not refs:
+        return
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT entity_key FROM model.entities WHERE entity_kind = 'MONITOR_RULE' AND status = 'ACTIVE' AND entity_key = ANY(%s)",
+        (refs,),
+    )
+    resolved = {row[0] for row in cur.fetchall()}
+    for value in values:
+        if value.get("soak_monitoring_ref") in resolved:
+            value["soak_monitoring_ref_status"] = "RESOLVED_MONITOR_RULE"
 
 
 def _load(conn, initiative_id: UUID | str, *, for_update: bool = False) -> dict[str, Any]:
@@ -117,7 +137,9 @@ def _load(conn, initiative_id: UUID | str, *, for_update: bool = False) -> dict[
     row = cur.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "INITIATIVE_NOT_FOUND"})
-    return _initiative(row)
+    value = _initiative(row)
+    _stamp_soak_resolution(conn, [value])
+    return value
 
 
 @router.get("/api/v1/workspaces")
@@ -260,7 +282,8 @@ def list_initiatives(
         cur = conn.cursor()
         cur.execute(_initiative_select() + where + " ORDER BY i.updated_at DESC LIMIT %s", params)
         rows = cur.fetchall()
-    values = [_initiative(row) for row in rows]
+        values = [_initiative(row) for row in rows]
+        _stamp_soak_resolution(conn, values)
     return {"initiatives": values, "count": len(values)}
 
 

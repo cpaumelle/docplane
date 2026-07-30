@@ -274,6 +274,52 @@ def _latest_generation(cur, artifact_id: str) -> dict[str, Any] | None:
     return dict(zip(("outcome", "source_fingerprint", "observed_at"), row)) if row else None
 
 
+@router.get("/api/v1/observe/coverage")
+def observe_coverage(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
+    """The meter-list coverage view (Sprint 6, exemplar B): gaps derived from
+    the model graph, never stubs. A service is unwatched when no ACTIVE
+    MONITOR_RULE has a WATCHES link to it; a rule lacks a description when
+    its harvested has_description attribute is false or absent."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT s.entity_key,
+                   count(l.from_entity_id) FILTER (
+                       WHERE r.entity_kind = 'MONITOR_RULE' AND r.status = 'ACTIVE'
+                   ) AS watching_rules
+              FROM model.entities s
+              LEFT JOIN model.entity_links l
+                     ON l.to_entity_id = s.entity_id AND l.relation = 'WATCHES'
+              LEFT JOIN model.entities r ON r.entity_id = l.from_entity_id
+             WHERE s.entity_kind = 'SERVICE' AND s.status = 'ACTIVE'
+             GROUP BY s.entity_key
+             ORDER BY s.entity_key
+            """
+        )
+        services = [{"entity_key": row[0], "watching_rules": int(row[1])} for row in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT entity_key FROM model.entities
+             WHERE entity_kind = 'MONITOR_RULE' AND status = 'ACTIVE'
+               AND COALESCE((attributes->>'has_description')::boolean, false) = false
+             ORDER BY entity_key
+            """
+        )
+        rules_without_description = [row[0] for row in cur.fetchall()]
+        cur.execute(
+            "SELECT count(*) FROM model.entities WHERE entity_kind = 'MONITOR_RULE' AND status = 'ACTIVE'"
+        )
+        rule_count = int(cur.fetchone()[0])
+    unwatched = [item["entity_key"] for item in services if item["watching_rules"] == 0]
+    return {
+        "services": services,
+        "unwatched_services": unwatched,
+        "rule_count": rule_count,
+        "rules_without_description": rules_without_description,
+    }
+
+
 @router.get("/api/v1/model/entities/{entity_id}/status")
 def entity_status(entity_id: UUID, principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
     with get_conn() as conn:

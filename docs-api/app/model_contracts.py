@@ -92,6 +92,18 @@ CARD_CONTRACTS: dict[str, dict[str, Any]] = {
         "required": {},
         "optional": {"database": _STR, "table_count": _STR_OR_INT},
     },
+    "MONITOR_RULE": {
+        # Sprint 6 meter list: one entity per Prometheus alerting/recording
+        # rule, WATCHES-wired to the service it observes. Attributes mirror
+        # the rule file, harvested by the importer — not typed by hand.
+        "ratified": False,
+        "required": {},
+        "optional": {
+            "rule_kind": _STR, "expr": _STR, "severity": _STR,
+            "pending_for": _STR, "source_file": _STR, "group": _STR,
+            "has_description": {"type": "boolean"},
+        },
+    },
     "DEVICE_MODEL": {
         # Exactly at the three-instance threshold in the corpus harvest.
         "ratified": False,
