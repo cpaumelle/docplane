@@ -85,6 +85,9 @@ def test_review_reasons_are_bounded_deterministic_and_evidenced():
     assert candidate["resources"]
     assert all(item["resource_id"] and item["revision"] for item in candidate["resources"])
     assert all(reason["explanation"] for reason in candidate["reasons"])
+    assert candidate["protected"] is False
+    assert model["review_contract"]["protected_surfaces"] == []
+    assert model["review_contract"]["exclusions"] == []
 
 
 def test_lifecycle_is_explicitly_legacy_and_not_canonical():

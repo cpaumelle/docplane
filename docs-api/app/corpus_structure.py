@@ -27,7 +27,6 @@ _FIELD_RE = re.compile(r"\*\*Lifecycle:\*\*\s*([A-Za-z_-]+)", re.IGNORECASE)
 _COMMENT_RE = re.compile(r"<!--\s*lifecycle:\s*([A-Za-z_-]+)\s*-->", re.IGNORECASE)
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _STEM_RE = re.compile(r"^[a-z0-9]+", re.IGNORECASE)
-_PROTECTED_PREFIXES = ("architecture/", "policies/")
 DIRECT_PAGE_THRESHOLD = 10
 
 
@@ -197,10 +196,8 @@ def build(
             "knowledge_class": dict(sorted(knowledge.items())),
             "legacy_lifecycle_signal": dict(sorted(lifecycle.items())),
             "maintenance": dict(sorted(flags.items())),
-            "protected": any(
-                directory == prefix.rstrip("/") or directory.startswith(prefix)
-                for prefix in _PROTECTED_PREFIXES
-            ),
+            "protected": False,
+            "protection_basis": [],
         }
         directory_rows.append(row)
 
@@ -355,7 +352,7 @@ def build(
                 reason["code"] for candidate in candidates for reason in candidate["reasons"]
             }),
             "maintenance_policy": "shared-maintenance-policy-v1",
-            "protected_prefixes": list(_PROTECTED_PREFIXES),
+            "protected_surfaces": [],
             "exclusions": [],
             "legacy_lifecycle_canonical": False,
         },

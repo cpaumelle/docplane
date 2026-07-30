@@ -30,6 +30,9 @@ Explore and Review are the Know-domain Corpus Observatory:
 Structural signals support contributor judgement; they never authorise mutation.
 Classification and overdue policy have one owner in the maintenance API and its shared
 server-side policy module. Observatory code consumes that policy rather than redefining it.
+Protection and exclusion arrays are explicit in the response. They remain empty unless an
+authoritative server-side governance contract publishes them; path names are never treated
+as implicit protection policy.
 
 The markdown-parsed lifecycle field is displayed only as **Legacy lifecycle signal**. It is
 non-canonical pending metadata audit and backfill. Governed workspace, knowledge class,
