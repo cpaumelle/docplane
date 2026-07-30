@@ -62,6 +62,8 @@ compose down -v --remove-orphans >/dev/null 2>&1 || true
 compose up --build -d postgres docs-api dashboard docs-web >/dev/null
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS "$API/healthz" >/dev/null || fail "docs-api never became healthy"
+for _ in $(seq 1 30); do curl -fsS "$FRONT/dashboard/healthz" >/dev/null 2>&1 && break; sleep 1; done
+curl -fsS "$FRONT/dashboard/healthz" >/dev/null || fail "routed dashboard never became healthy"
 
 log "2. routed HEAD and Link discovery work before any credential exists"
 HEADERS=$(mktemp)
@@ -103,6 +105,7 @@ const storage = new Storage();
 let issued = null;
 let capability = null;
 let acquisitionEndpoint = null;
+let lastState = null;
 const calls = [];
 const request = async (path, options = {}) => {
   calls.push(path);
@@ -117,9 +120,10 @@ const request = async (path, options = {}) => {
   const auth = createAuthentication({
     request,
     storage,
+    onState: (state, detail) => { lastState = {state, message: detail?.message, error: detail?.error?.message, status: detail?.error?.status}; },
     onConnected: (value) => { capability = value; },
   });
-  if (!await auth.initialize()) throw new Error("dashboard bootstrap did not connect");
+  if (!await auth.initialize()) throw new Error(`dashboard bootstrap did not connect: ${JSON.stringify(lastState)}`);
   const overview = await request("/api/control-plane/overview", {
     headers: {Authorization: `Bearer ${auth.token()}`},
   });
@@ -203,6 +207,8 @@ sed -i 's/^DOCPLANE_ACCESS_PROFILE=.*/DOCPLANE_ACCESS_PROFILE=managed/' "$ENV_FI
 export DOCPLANE_ACCESS_PROFILE=managed
 compose up -d postgres docs-api dashboard docs-web >/dev/null
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
+for _ in $(seq 1 30); do curl -fsS "$FRONT/dashboard/healthz" >/dev/null 2>&1 && break; sleep 1; done
+curl -fsS "$FRONT/dashboard/healthz" >/dev/null || fail "managed routed dashboard never became healthy"
 FRONT="$FRONT" node <<'JS'
 require("./dashboard/static/app.js");
 const {createAuthentication} = globalThis.DocPlaneAuth;
