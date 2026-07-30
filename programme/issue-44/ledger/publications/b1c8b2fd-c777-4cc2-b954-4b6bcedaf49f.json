@@ -1,0 +1,38 @@
+{
+ "_unavailable": [],
+ "agent_45_findings": {
+  "i-gen-no-vcs-1.md": "NOT a live broken hyperlink. The target sits inside inline code in a sentence stating the earlier link resolved to nothing. It cannot 404 for a reader. Retargeting it falsified the quotation; that change has been reverted.",
+  "i-transport-hub-1.md": "REPAIRED, both occurrences: L34 ../transport-plane-authority.md -> /control-plane/design/transport-plane-authority/ and L48 i-iface-naming-1.md -> /control-plane/topology-invariants/i-iface-naming-1/ (a third occurrence, unreported, from partial sibling migration 74d8e737)"
+ },
+ "final_audit": {
+  "current_broken_occurrences": 11,
+  "distinct_owned_keys": 8,
+  "gate": "PASSED",
+  "note": "11 occurrences vs 10 entries because one owned key matches two lines on the same page",
+  "owned_baseline_entries": 10,
+  "unowned": 0
+ },
+ "immutable": true,
+ "kind": "repair-only (no moves)",
+ "owner": "agent-44",
+ "publications": [
+  {
+   "drift": "clean",
+   "publication_id": "b1c8b2fd-c777-4cc2-b954-4b6bcedaf49f",
+   "rehearsal": "c3f9a435 validated 10/10, ABANDONED, residual 0",
+   "what": "repaired 11 references across 10 pages to root-absolute canonical paths"
+  },
+  {
+   "corrective": "re-run from a file, never a heredoc",
+   "publication_id": "740a6899-d60c-413f-941b-86966ef5c334",
+   "what": "NO-OP. A shell heredoc was unquoted, so bash performed command substitution on the backticks and Python received mangled strings. The document was republished unchanged; version advanced, content did not."
+  },
+  {
+   "publication_id": "ea4d357a-047c-4ea1-a8a9-15532f1eaa09",
+   "verified": "original present=True, corrupted present=False",
+   "what": "REVERT: restored the falsified historical quotation in control-plane/invariants/i-gen-no-vcs-1.md (4272 -> 4253 bytes, original)"
+  }
+ ],
+ "schema": "issue-44/publication-record/v1",
+ "session": "repair-2: links broken inside protected contexts"
+}
