@@ -138,8 +138,10 @@ pleasant dashboard act.
   expected output, success check, rollback); coverage counts only
   contract-meeting, verified runbooks; `RUNBOOK_EXERCISED` observations
   record real use; expiry decays unexercised runbooks back to gaps.
-- One-time cleanup: archive surviving legacy stub runbooks (governed
-  archive operations, batched, #43/#44-aware).
+- Stub cleanup: the corpus harvest confirmed the legacy `runbooks/` stub
+  tree (162 pages) is already fully archived and the 35 active runbooks are
+  substantial; remaining debt is coverage and alert→runbook linking, not
+  stubs.
 - Acceptance: coverage numbers are honest (no stub counts), a rule edit
   stales its explanation, a deferred runbook disposition appears as a gap.
 
@@ -165,10 +167,14 @@ pleasant dashboard act.
 
 - ADR discipline for `DECISION` pages: immutable once published, `SUPERSEDES`
   typed links, chain navigation in the dashboard.
-- Invariants register: ID-addressable entries (`INV-n`), each linking its
-  establishing ADR and its enforcement pointer (test/CI/validation);
-  entries without enforcement are visibly flagged for demotion. Existing
-  review machinery drives periodic register review.
+- Invariants register: consolidation, not greenfield — 43 invariant pages
+  already exist under `control-plane/invariants/` and
+  `control-plane/topology-invariants/` with a stable `i-<topic>-<n>` ID
+  convention, which the register adopts. The work is unifying them into one
+  ID-addressable register, linking each to its establishing ADR, and
+  auditing enforcement pointers (test/CI/validation); entries without
+  enforcement are visibly flagged for demotion. Existing review machinery
+  drives periodic register review.
 - Search/discovery: index `workspace_key`, `knowledge_class`, `provenance`;
   results carry `domain` and group by domain; `domain=` filter;
   `/.well-known/docplane.json` advertises the domains; `docplane://` URIs

@@ -145,7 +145,11 @@ concurrency, `attributes jsonb` for kind-specific detail (bounded,
 secret-scanned, fail-closed). Each kind's required attributes are published
 as a JSON Schema checklist and enforced at the API — the same proven pattern
 as `/api/v1/operation-contracts`. Adding a kind is a data change, not a
-migration.
+migration. The harvested starting set (see the
+[corpus harvest report](CARD_TYPE_HARVEST_REPORT.md)): `SYSTEM`, `SERVICE`,
+`NODE`, `VM`, `SITE`, `NETWORK`, `DATABASE`, `SCHEMA`, `API`, `ROUTE`,
+`DEVICE_MODEL`, `INTERFACE`, `ARTIFACT` — with `SITE` and `VM` added on
+harvest evidence the original draft missed.
 
 **Card types are harvested, not invented.** A survey initiative runs over
 what the fabric already says about itself — compose files, systemd units,
