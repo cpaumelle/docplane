@@ -335,6 +335,18 @@ def build(
             "sections": len(sections),
             "directories": len(directories),
         },
+        "facets": {
+            "knowledge_class": sorted({
+                str(page["knowledge_class"]) for page in normalized
+                if page.get("knowledge_class")
+            }),
+            "identifier_family": sorted({
+                match.group(0).lower()
+                for page in normalized
+                if (match := _STEM_RE.match(posixpath.basename(page["path"])))
+            }),
+            "status": sorted({str(page.get("status")) for page in normalized}),
+        },
         "sections": sections,
         "directories": directory_rows,
         "review_candidates": candidates,
@@ -372,6 +384,11 @@ def build(
                 "review_due_at": page.get("review_due_at"),
                 "metadata_review_required": page.get("metadata_review_required"),
                 "updated_at": page.get("updated_at"),
+                "identifier_family": (
+                    match.group(0).lower()
+                    if (match := _STEM_RE.match(posixpath.basename(page["path"])))
+                    else None
+                ),
                 "lifecycle": page.get("lifecycle")
                 if page.get("status") == "active"
                 else "ARCHIVED",

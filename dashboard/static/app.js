@@ -7,6 +7,7 @@ let observatory = null;
 let exploredPages = [];
 let pageCursor = null;
 let candidateCursor = null;
+let exploreFilterTimer = null;
 
 function headers(extra = {}) {
   const token = authentication?.token();
@@ -346,18 +347,20 @@ function renderDirectories() {
     </button>`).join("") : `<p class="muted">No directories in this snapshot.</p>`;
   document.querySelectorAll(".directory").forEach((button) => button.addEventListener("click", () => {
     $("explore-query").value = button.dataset.path;
-    renderPages();
+    loadPageBatch(true);
   }));
 }
 
 function renderPages() {
   const query = $("explore-query").value.trim().toLowerCase();
   const knowledge = $("explore-class").value;
+  const family = $("explore-family").value;
   const archive = $("explore-archive").value;
   const dated = $("explore-dated").checked;
   const rows = exploredPages.filter((page) =>
     (!query || `${page.path} ${page.title || ""}`.toLowerCase().includes(query))
     && (!knowledge || page.knowledge_class === knowledge)
+    && (!family || page.identifier_family === family)
     && (!archive || page.status === archive)
     && (!dated || /\d{4}-\d{2}-\d{2}/.test(page.path))
   );
@@ -374,14 +377,17 @@ function renderPages() {
 
 async function loadPageBatch(reset = false) {
   if (reset) { exploredPages = []; pageCursor = null; }
-  const suffix = pageCursor ? `&after=${encodeURIComponent(pageCursor)}` : "";
-  const data = await api(`/api/control-plane/observatory/pages?limit=100${suffix}`);
+  const params = new URLSearchParams({limit: "100"});
+  if (pageCursor) params.set("after", pageCursor);
+  if ($("explore-query").value.trim()) params.set("q", $("explore-query").value.trim());
+  if ($("explore-class").value) params.set("knowledge_class", $("explore-class").value);
+  if ($("explore-family").value) params.set("identifier_family", $("explore-family").value);
+  if ($("explore-archive").value) params.set("archive_state", $("explore-archive").value);
+  if ($("explore-dated").checked) params.set("dated_only", "true");
+  const data = await api(`/api/control-plane/observatory/pages?${params}`);
   exploredPages.push(...(data.pages?.items || []));
   pageCursor = data.pages?.next_after || null;
   $("explore-more").hidden = !data.pages?.has_more;
-  const classes = [...new Set(exploredPages.map((page) => page.knowledge_class).filter(Boolean))].sort();
-  const selected = $("explore-class").value;
-  $("explore-class").innerHTML = `<option value="">All</option>` + classes.map((value) => `<option ${value === selected ? "selected" : ""}>${esc(value)}</option>`).join("");
   renderPages();
 }
 
@@ -390,6 +396,8 @@ async function loadExplore() {
   try {
     observatory = await api("/api/control-plane/observatory?candidate_limit=50");
     candidateCursor = observatory.review_candidates?.next_after || null;
+    $("explore-class").innerHTML = `<option value="">All</option>` + (observatory.facets?.knowledge_class || []).map((value) => `<option>${esc(value)}</option>`).join("");
+    $("explore-family").innerHTML = `<option value="">All</option>` + (observatory.facets?.identifier_family || []).map((value) => `<option>${esc(value)}</option>`).join("");
     renderDirectories();
     await loadPageBatch(true);
   } catch (error) {
@@ -573,7 +581,10 @@ if (typeof document !== "undefined") {
   $("refresh-work").addEventListener("click", loadWork);
   $("refresh-explore").addEventListener("click", loadExplore);
   $("refresh-review").addEventListener("click", loadReview);
-  ["explore-query", "explore-class", "explore-archive", "explore-dated"].forEach((id) => $(id).addEventListener("input", renderPages));
+  ["explore-query", "explore-class", "explore-family", "explore-archive", "explore-dated"].forEach((id) => $(id).addEventListener("input", () => {
+    clearTimeout(exploreFilterTimer);
+    exploreFilterTimer = setTimeout(() => loadPageBatch(true).catch((error) => { $("explore-pages").textContent = error.message; }), 180);
+  }));
   $("explore-more").addEventListener("click", () => loadPageBatch(false).catch((error) => { $("explore-pages").textContent = error.message; }));
   $("review-more").addEventListener("click", async () => {
     if (!candidateCursor) return;

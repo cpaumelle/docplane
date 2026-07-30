@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import base64
 import binascii
+import re
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -37,6 +38,7 @@ router = APIRouter(tags=["docplane-v1"])
 
 OBSERVATORY_EXPORT_MAX_RESOURCES = 5000
 OBSERVATORY_EXPORT_MAX_BYTES = 10 * 1024 * 1024
+_DATED_PATH = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def _json(value: Any) -> psycopg2.extras.Json:
@@ -798,12 +800,32 @@ def dashboard_observatory(
 def dashboard_observatory_pages(
     limit: int = Query(default=100, ge=1, le=200),
     after: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=300),
+    knowledge_class: str | None = Query(default=None, max_length=100),
+    identifier_family: str | None = Query(default=None, max_length=100),
+    archive_state: str | None = Query(default=None, pattern="^(active|archived)$"),
+    dated_only: bool = Query(default=False),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     snapshot = _observatory_snapshot()
+    pages = snapshot["pages"]
+    if q:
+        needle = q.casefold()
+        pages = [
+            page for page in pages
+            if needle in f"{page['path']} {page.get('title') or ''}".casefold()
+        ]
+    if knowledge_class:
+        pages = [page for page in pages if page.get("knowledge_class") == knowledge_class]
+    if identifier_family:
+        pages = [page for page in pages if page.get("identifier_family") == identifier_family]
+    if archive_state:
+        pages = [page for page in pages if page.get("status") == archive_state]
+    if dated_only:
+        pages = [page for page in pages if _DATED_PATH.search(page["path"])]
     return {
         "fingerprint": snapshot["fingerprint"],
-        "pages": _page(snapshot["pages"], after, limit),
+        "pages": _page(pages, after, limit),
     }
 
 

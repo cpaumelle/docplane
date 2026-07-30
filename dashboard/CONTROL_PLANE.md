@@ -47,8 +47,9 @@ Both paginated collections use the `docplane-named-after-v1` dialect:
 - `has_more`: whether another page exists;
 - `next_after`: opaque value passed to the matching `after` parameter.
 
-Page responses default to 100 and permit at most 200 records. Candidate responses default
-to 50 and permit at most 200.
+Page responses default to 100 and permit at most 200 records. Path/title, identifier-family,
+dated-file, archive-state and governed-classification filters are applied by the API to the
+full snapshot before pagination. Candidate responses default to 50 and permit at most 200.
 
 The authenticated export is produced by the API, not assembled by downloading page bodies
 in the browser. Its manifest records resource IDs, paths and revisions. Export is limited

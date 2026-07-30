@@ -41,11 +41,19 @@ def test_observatory_routes_forward_named_cursor_and_identity():
     )
 
     response = client.get(
-        "/api/control-plane/observatory/pages?limit=200&after=next",
+        "/api/control-plane/observatory/pages?limit=200&after=next&q=prox&knowledge_class=OPERATION&identifier_family=runbook&archive_state=active&dated_only=true",
         headers=headers,
     )
     assert response.status_code == 200
-    assert dashboard_app.client.calls[-1][2] == {"limit": 200, "after": "next"}
+    assert dashboard_app.client.calls[-1][2] == {
+        "limit": 200,
+        "dated_only": True,
+        "after": "next",
+        "q": "prox",
+        "knowledge_class": "OPERATION",
+        "identifier_family": "runbook",
+        "archive_state": "active",
+    }
 
 
 def test_observatory_export_is_authenticated_and_server_generated():
