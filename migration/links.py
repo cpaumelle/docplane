@@ -65,6 +65,7 @@ __all__ = [
     "find_duplicate_routes",
     "find_page_section_conflicts",
     "find_links",
+    "inline_code_spans",
     "mask_links",
     "nav_leaf",
     "nav_path_from_leaf",
@@ -91,6 +92,10 @@ NAV_SEPARATOR = "/"
 
 _FENCE = re.compile(r"^\s*(```|~~~)")
 
+#: A backtick span renders as literal text, so a link inside one is not a
+#: hyperlink - it is a quotation of a link. Rewriting it changes prose.
+_INLINE_CODE = re.compile(r"`[^`\n]*`")
+
 #: Path shapes that record references deliberately and must not be rewritten.
 EVIDENCE_SURFACE = re.compile(
     r"(^|/)(evidence|receipts?|registers?|history|changelog|incidents?|archive|superseded)(/|-|\.md$)"
@@ -115,6 +120,7 @@ class PreservationReason(str, Enum):
     """Why a reference was deliberately not rewritten."""
 
     FENCED_CODE = "fenced_code"
+    INLINE_CODE = "inline_code"
     BLOCKQUOTE = "blockquote"
     EVIDENCE_SURFACE = "evidence_surface"
 
@@ -245,6 +251,16 @@ def protected_lines(text: str) -> dict[int, PreservationReason]:
             "unterminated %r code fence opened at line %d" % (fence_marker, fence_line + 1)
         )
     return out
+
+
+def inline_code_spans(text: str) -> list[tuple[int, int]]:
+    """Character ranges of inline code spans.
+
+    A link inside backticks is not a live hyperlink; it is quoted text. Rewriting
+    one silently edits prose - and worse, can falsify a historical note that
+    quotes a link precisely because it used to be wrong.
+    """
+    return [(m.start(), m.end()) for m in _INLINE_CODE.finditer(text)]
 
 
 def is_evidence_surface(page_path: str) -> bool:
@@ -407,6 +423,7 @@ def plan_rewrites(page_path: str, text: str, mapping: dict[str, str]) -> Rewrite
     cannot be determined.
     """
     protected = protected_lines(text)
+    spans = inline_code_spans(text)
     evidence = is_evidence_surface(page_path)
     edits: list[tuple[int, int, str]] = []
     rewrites: list[Rewrite] = []
@@ -420,6 +437,8 @@ def plan_rewrites(page_path: str, text: str, mapping: dict[str, str]) -> Rewrite
             if line in protected:
                 reason = protected[line]
                 break
+        if reason is None and any(s <= ref.start and ref.end <= e for s, e in spans):
+            reason = PreservationReason.INLINE_CODE
         if reason is None and evidence:
             reason = PreservationReason.EVIDENCE_SURFACE
         if reason is not None:
@@ -472,6 +491,7 @@ def scan_stale_references(corpus: dict[str, str], old_paths):
     for path in sorted(corpus):
         text = corpus[path]
         protected = protected_lines(text)
+        spans = inline_code_spans(text)
         evidence = is_evidence_surface(path)
         for ref in find_links(path, text):
             if ref.resolved is None or ref.resolved not in mapping:
@@ -481,6 +501,8 @@ def scan_stale_references(corpus: dict[str, str], old_paths):
                 if line in protected:
                     reason = protected[line]
                     break
+            if reason is None and any(s <= ref.start and ref.end <= e for s, e in spans):
+                reason = PreservationReason.INLINE_CODE
             if reason is None and evidence:
                 reason = PreservationReason.EVIDENCE_SURFACE
             if reason is None:
@@ -515,6 +537,7 @@ def plan_source_move(old_page_path: str, new_page_path: str, text: str) -> Rewri
     if old_page_path == new_page_path:
         raise ValueError("source move must change the page path")
     protected = protected_lines(text)
+    spans = inline_code_spans(text)
     edits: list[tuple[int, int, str]] = []
     rewrites: list[Rewrite] = []
     preservations: list[Preservation] = []
@@ -530,6 +553,8 @@ def plan_source_move(old_page_path: str, new_page_path: str, text: str) -> Rewri
             if line in protected:
                 reason = protected[line]
                 break
+        if reason is None and any(s <= ref.start and ref.end <= e for s, e in spans):
+            reason = PreservationReason.INLINE_CODE
         if reason is not None:
             preservations.append(
                 Preservation(new_page_path, ref.line, ref.target, ref.resolved, reason)
