@@ -28,6 +28,8 @@ class AccessPolicy:
     profile: str
     self_service: bool
     self_issue_ttl_seconds: int
+    source_burst_limit: int
+    source_burst_window_seconds: int
     source_limit_per_hour: int
     global_limit_per_hour: int
 
@@ -40,6 +42,19 @@ def current_access_policy() -> AccessPolicy:
         profile=profile,
         self_service=profile == "private_fabric",
         self_issue_ttl_seconds=ttl,
-        source_limit_per_hour=_bounded_int("DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR",10,minimum=1,maximum=1000),
-        global_limit_per_hour=_bounded_int("DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR",120,minimum=1,maximum=10000),
+        source_burst_limit=_bounded_int(
+            "DOCPLANE_SELF_ISSUE_SOURCE_BURST_LIMIT", 12, minimum=1, maximum=1000
+        ),
+        source_burst_window_seconds=_bounded_int(
+            "DOCPLANE_SELF_ISSUE_SOURCE_BURST_WINDOW_SECONDS",
+            60,
+            minimum=1,
+            maximum=3600,
+        ),
+        source_limit_per_hour=_bounded_int(
+            "DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR", 30, minimum=1, maximum=1000
+        ),
+        global_limit_per_hour=_bounded_int(
+            "DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR", 300, minimum=1, maximum=10000
+        ),
     )

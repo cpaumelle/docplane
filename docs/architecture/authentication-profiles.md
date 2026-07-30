@@ -24,6 +24,28 @@ A cold agent can discover the contract, call `POST /api/v1/auth/self-issue` thro
 
 Issued authority is constrained by code: AGENT only, CONTRIBUTOR only, mandatory expiry no longer than 24 hours, token hash storage only, audited source evidence, and bounded per-source/global issuance rates. The caller cannot request HUMAN, AUTOMATION, administrator, or permanent authority.
 
+### Self-issue rate-limit contract
+
+The trusted front supplies the observed source address and docs-api stores only
+its SHA-256 fingerprint. Limits are isolated by that fingerprint; activity from
+one routed source does not consume another source's allowance. The repository
+defaults allow:
+
+- a burst of 12 credentials per observed source in 60 seconds;
+- a sustained 30 credentials per observed source in 3,600 seconds;
+- 300 credentials globally in 3,600 seconds.
+
+All windows are rolling windows, not wall-clock buckets. A rejection is HTTP
+429 with `Retry-After` set to the seconds until the oldest issuance in the
+limiting window expires. The structured `detail` includes
+`SELF_ISSUE_RATE_LIMITED`, `scope`, `limit`, `window_seconds` and
+`retry_after_seconds`. `X-RateLimit-Limit` and `X-RateLimit-Remaining: 0` are
+also returned.
+
+Successful issuance is logged as `event=self_issue_issued`; throttling is logged
+as `event=self_issue_rate_limited` with scope, counts, window and a truncated
+source fingerprint. Neither log contains a clear bearer or token hash.
+
 ## Trust boundary
 
 `private_fabric` deliberately treats reachability of the routed internal hostname as the admission decision. This is the same high-level boundary used by the legacy CharlieHub Docs API, upgraded from a shared retrievable key to short-lived, individually attributable capabilities.
@@ -46,11 +68,15 @@ DOCPLANE_ACCESS_PROFILE=managed
 # Internal-only deployment
 # DOCPLANE_ACCESS_PROFILE=private_fabric
 # DOCPLANE_SELF_ISSUE_TTL_SECONDS=86400
-# DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR=10
-# DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR=120
+# DOCPLANE_SELF_ISSUE_SOURCE_BURST_LIMIT=12
+# DOCPLANE_SELF_ISSUE_SOURCE_BURST_WINDOW_SECONDS=60
+# DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR=30
+# DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR=300
 ```
 
-The TTL is bounded between 300 and 86400 seconds. Rate-limit settings are bounded in code.
+The TTL is bounded between 300 and 86400 seconds. Rate-limit settings are
+bounded in code. Discovery publishes the effective values so clients do not
+need to infer deployment-local tuning.
 
 ## Machine-readable behavior
 

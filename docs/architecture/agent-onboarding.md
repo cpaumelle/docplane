@@ -54,6 +54,14 @@ test -n "$TOKEN" && test "$TOKEN" != null
 
 DocPlane requires no bootstrap secret or server-side approval in this profile. The caller's own safety framework may still pause credential issuance for confirmation. Verify the routed endpoint, AGENT/CONTRIBUTOR scope and expiry before approving that caller-side gate.
 
+Cache and reuse the returned bearer until it expires or is rejected; schema
+discovery, conflict inspection and recovery do not require a new principal for
+each request. If issuance returns HTTP 429, read
+`detail.retry_after_seconds` or the equivalent `Retry-After` header and wait
+that exact interval. Do not retry in a tight loop. Discovery publishes the
+effective burst, sustained and global windows under
+`authentication.token_acquisition.rate_limit`.
+
 ### Managed profile
 
 When discovery advertises `self_service: false`, follow the operator-issued procedure it returns. Never request or expose the bootstrap credential.

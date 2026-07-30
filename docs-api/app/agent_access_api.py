@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -17,6 +18,8 @@ from app.event_store import append_event
 
 router = APIRouter(tags=["docplane-auth"])
 _SELF_ISSUE_MODE = "private_fabric_self_service"
+_HOUR_SECONDS = 60 * 60
+log = logging.getLogger(__name__)
 
 
 def _json(value: Any) -> psycopg2.extras.Json:
@@ -36,31 +39,114 @@ def _request_evidence(request: Request, admitted_source: str | None) -> dict[str
     }
 
 
-def _rate_limit(cur, *, fingerprint: str, source_limit: int, global_limit: int) -> None:
+def _usage(
+    cur,
+    *,
+    window_seconds: int,
+    fingerprint: str | None = None,
+) -> tuple[int, int]:
+    source_filter = ""
+    params: list[Any] = [window_seconds, _SELF_ISSUE_MODE]
+    if fingerprint is not None:
+        source_filter = "AND metadata->>'source_fingerprint' = %s"
+        params.append(fingerprint)
+    params.append(window_seconds)
+    cur.execute(
+        f"""
+        SELECT count(*),
+               COALESCE(
+                   GREATEST(
+                       1,
+                       CEIL(EXTRACT(EPOCH FROM (
+                           min(created_at) + make_interval(secs => %s) - now()
+                       )))::integer
+                   ),
+                   1
+               )
+          FROM docplane.principals
+         WHERE principal_kind = 'AGENT'
+           AND metadata->>'issuance_mode' = %s
+           {source_filter}
+           AND created_at > now() - make_interval(secs => %s)
+        """,
+        tuple(params),
+    )
+    count, retry_after = cur.fetchone()
+    return int(count), int(retry_after)
+
+
+def _enforce_limit(
+    *,
+    scope: str,
+    count: int,
+    limit: int,
+    window_seconds: int,
+    retry_after: int,
+    fingerprint: str,
+) -> None:
+    if count < limit:
+        return
+    log.warning(
+        "event=self_issue_rate_limited scope=%s count=%d limit=%d "
+        "window_seconds=%d retry_after_seconds=%d source_fingerprint=%s",
+        scope,
+        count,
+        limit,
+        window_seconds,
+        retry_after,
+        fingerprint[:12],
+    )
+    raise HTTPException(
+        status_code=429,
+        detail={
+            "code": "SELF_ISSUE_RATE_LIMITED",
+            "message": "The private-fabric credential issuance limit was reached.",
+            "remedy": (
+                "Reuse an existing unexpired token. If none is available, retry after "
+                f"{retry_after} seconds as directed by the Retry-After header."
+            ),
+            "scope": scope,
+            "limit": limit,
+            "window_seconds": window_seconds,
+            "retry_after_seconds": retry_after,
+        },
+        headers={
+            "Retry-After": str(retry_after),
+            "X-RateLimit-Limit": str(limit),
+            "X-RateLimit-Remaining": "0",
+        },
+    )
+
+
+def _rate_limit(
+    cur,
+    *,
+    fingerprint: str,
+    source_burst_limit: int,
+    source_burst_window_seconds: int,
+    source_limit: int,
+    global_limit: int,
+) -> None:
     cur.execute("SELECT pg_advisory_xact_lock(hashtext('docplane-private-fabric-self-issue'))")
-    cur.execute(
-        """
-        SELECT count(*) FROM docplane.principals
-         WHERE principal_kind = 'AGENT'
-           AND metadata->>'issuance_mode' = %s
-           AND created_at > now() - interval '1 hour'
-        """,
-        (_SELF_ISSUE_MODE,),
+    checks = (
+        ("source_burst", source_burst_limit, source_burst_window_seconds, fingerprint),
+        ("source_sustained", source_limit, _HOUR_SECONDS, fingerprint),
+        ("global_sustained", global_limit, _HOUR_SECONDS, None),
     )
-    if int(cur.fetchone()[0]) >= global_limit:
-        raise HTTPException(status_code=429, detail={"code":"SELF_ISSUE_RATE_LIMITED","message":"The private-fabric credential issuance ceiling was reached.","remedy":"Reuse an existing unexpired token or retry after the one-hour window."}, headers={"Retry-After":"3600"})
-    cur.execute(
-        """
-        SELECT count(*) FROM docplane.principals
-         WHERE principal_kind = 'AGENT'
-           AND metadata->>'issuance_mode' = %s
-           AND metadata->>'source_fingerprint' = %s
-           AND created_at > now() - interval '1 hour'
-        """,
-        (_SELF_ISSUE_MODE, fingerprint),
-    )
-    if int(cur.fetchone()[0]) >= source_limit:
-        raise HTTPException(status_code=429, detail={"code":"SELF_ISSUE_RATE_LIMITED","message":"This observed fabric source reached its credential issuance ceiling.","remedy":"Reuse an existing unexpired token or retry after the one-hour window."}, headers={"Retry-After":"3600"})
+    for scope, limit, window_seconds, scoped_fingerprint in checks:
+        count, retry_after = _usage(
+            cur,
+            window_seconds=window_seconds,
+            fingerprint=scoped_fingerprint,
+        )
+        _enforce_limit(
+            scope=scope,
+            count=count,
+            limit=limit,
+            window_seconds=window_seconds,
+            retry_after=retry_after,
+            fingerprint=fingerprint,
+        )
 
 
 @router.post("/api/v1/auth/self-issue", response_model=SelfIssuedPrincipalToken, status_code=status.HTTP_201_CREATED)
@@ -86,7 +172,14 @@ def self_issue_agent_token(
 
     with get_conn() as conn:
         cur = conn.cursor()
-        _rate_limit(cur, fingerprint=evidence["source_fingerprint"], source_limit=policy.source_limit_per_hour, global_limit=policy.global_limit_per_hour)
+        _rate_limit(
+            cur,
+            fingerprint=evidence["source_fingerprint"],
+            source_burst_limit=policy.source_burst_limit,
+            source_burst_window_seconds=policy.source_burst_window_seconds,
+            source_limit=policy.source_limit_per_hour,
+            global_limit=policy.global_limit_per_hour,
+        )
         cur.execute("""INSERT INTO docplane.principals (principal_kind, display_name, status, metadata) VALUES ('AGENT', %s, 'ACTIVE', %s) RETURNING principal_id::text""", (display_name, _json(metadata)))
         principal_id = cur.fetchone()[0]
         cur.execute("""INSERT INTO docplane.api_tokens (principal_id, token_hash, token_prefix, description, expires_at) VALUES (%s, %s, %s, %s, %s) RETURNING token_id::text""", (principal_id,digest,prefix,"Private-fabric self-issued AGENT contributor token",expires_at))
@@ -95,4 +188,10 @@ def self_issue_agent_token(
         append_event(conn,event_type="AGENT_CREDENTIAL_SELF_ISSUED",channel="API",producer_id="docplane-auth-self-issue",idempotency_key=principal_id,principal=principal,client_identity=display_name,resource_type="principal",resource_id=principal_id,metadata={"access_profile":policy.profile,"expires_at":expires_at.isoformat(),"token_prefix":prefix,**evidence})
         conn.commit()
 
+    log.info(
+        "event=self_issue_issued principal_id=%s source_fingerprint=%s expires_at=%s",
+        principal_id,
+        evidence["source_fingerprint"][:12],
+        expires_at.isoformat(),
+    )
     return SelfIssuedPrincipalToken(principal_id=principal_id,display_name=display_name,principal_kind="AGENT",token=clear,token_prefix=prefix,expires_at=expires_at,access_profile=policy.profile,issued_via="fabric_reachability")

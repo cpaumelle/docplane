@@ -42,7 +42,9 @@ MCP_API_KEY=$(rand)
 DOCPLANE_TOKEN=
 DOCPLANE_ACCESS_PROFILE=private_fabric
 DOCPLANE_SELF_ISSUE_TTL_SECONDS=3600
-DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR=1
+DOCPLANE_SELF_ISSUE_SOURCE_BURST_LIMIT=1
+DOCPLANE_SELF_ISSUE_SOURCE_BURST_WINDOW_SECONDS=60
+DOCPLANE_SELF_ISSUE_SOURCE_LIMIT_PER_HOUR=30
 DOCPLANE_SELF_ISSUE_GLOBAL_LIMIT_PER_HOUR=10
 DOCPLANE_API_PORT=127.0.0.1:${API_PORT}
 DOCPLANE_DASHBOARD_PORT=127.0.0.1:${DASH_PORT}
@@ -140,8 +142,27 @@ JS
 )
 TOKEN=$(printf '%s' "$BOOTSTRAP" | python3 -c 'import json,sys; b=json.load(sys.stdin); assert b["principal"]["principal_kind"]=="AGENT" and b["principal"]["role"]=="CONTRIBUTOR"; assert b["issued"]["access_profile"]=="private_fabric" and b["issued"]["issued_via"]=="fabric_reachability" and b["issued"]["expires_at"]; print(b["token"])')
 [ -n "$TOKEN" ] || fail "self-issue returned no token"
-SECOND=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$FRONT/api/v1/auth/self-issue" -d '{"display_name":"duplicate-agent"}')
+RATE_BODY=$(mktemp)
+RATE_HEADERS=$(mktemp)
+SECOND=$(curl -s -D "$RATE_HEADERS" -o "$RATE_BODY" -w '%{http_code}' -X POST -H 'Content-Type: application/json' "$FRONT/api/v1/auth/self-issue" -d '{"display_name":"duplicate-agent"}')
 [ "$SECOND" = "429" ] || fail "per-source issuance limit returned $SECOND, expected 429"
+python3 - "$RATE_BODY" "$RATE_HEADERS" <<'PY'
+import json, pathlib, sys
+body = json.loads(pathlib.Path(sys.argv[1]).read_text())["detail"]
+headers = pathlib.Path(sys.argv[2]).read_text().splitlines()
+retry_header = next(
+    line.split(":", 1)[1].strip()
+    for line in headers
+    if line.lower().startswith("retry-after:")
+)
+assert body["code"] == "SELF_ISSUE_RATE_LIMITED"
+assert body["scope"] == "source_burst"
+assert body["limit"] == 1
+assert body["window_seconds"] == 60
+assert 1 <= body["retry_after_seconds"] <= 60
+assert retry_header == str(body["retry_after_seconds"])
+PY
+rm -f "$RATE_BODY" "$RATE_HEADERS"
 AUTH=(-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json')
 curl -fsSI -H "Authorization: Bearer $TOKEN" "$FRONT/api/v1/pages?limit=1" >/dev/null || fail "authenticated HEAD pages failed"
 
