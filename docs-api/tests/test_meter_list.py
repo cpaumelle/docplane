@@ -306,7 +306,7 @@ def test_second_run_updates_edited_rules_and_replaces_stale_watches(tmp_path):
 
     # Convergence: a third run over the same rule set is a graph no-op.
     third = _reconcile(fake, tmp_path, edited)
-    assert all(third[key] == 0 for key in ("created", "updated", "retired", "links_added", "links_removed"))
+    assert all(third[key] == 0 for key in ("created", "updated", "retired", "reactivated", "links_added", "links_removed"))
 
 
 def test_rules_removed_from_git_are_retired(tmp_path):

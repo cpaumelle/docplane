@@ -269,14 +269,20 @@ def reconcile_entities(
     lifecycle verbs are versioned CAS calls keyed by fingerprint, so a
     resumed run converges — the Sprint 5 resume lesson, now for every verb.
     Returns the source entity id plus a reconciliation summary."""
-    services = {
-        entity["entity_key"]: entity
-        for entity in client.call("GET", "/api/v1/model/entities?entity_kind=SERVICE&limit=1000").get("entities", [])
-    }
-    rules = {
-        entity["entity_key"]: entity
-        for entity in client.call("GET", "/api/v1/model/entities?entity_kind=MONITOR_RULE&status=all&limit=1000").get("entities", [])
-    }
+    def list_all(query: str) -> list[dict[str, Any]]:
+        # A reconciler must never act on a truncated world-view: a hidden
+        # entity would read as "new" (create → 409 crash) or escape
+        # retirement. Fail closed instead of converging on partial state.
+        listing = client.call("GET", f"/api/v1/model/entities?{query}&limit=1000")
+        if listing.get("truncated"):
+            raise RuntimeError(
+                f"entity listing truncated ({listing.get('count')}/{listing.get('total')} for {query}) — "
+                "refusing to reconcile against a partial meter list"
+            )
+        return listing.get("entities", [])
+
+    services = {entity["entity_key"]: entity for entity in list_all("entity_kind=SERVICE")}
+    rules = {entity["entity_key"]: entity for entity in list_all("entity_kind=MONITOR_RULE&status=all")}
     summary = {"created": 0, "updated": 0, "retired": 0, "reactivated": 0, "links_added": 0, "links_removed": 0}
 
     def ensure_service(key: str, display: str) -> str:
