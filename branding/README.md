@@ -6,6 +6,20 @@ gitignored and mounted into the docs-web container over the neutral defaults:
 
 - brand.css   -- redefine the --brand-* / role tokens (see mkdocs/overrides/assets/theme.css).
                  Example: :root{ --brand-500:#1E7D6E; --brand-700:#15564B; --action:var(--brand-500); }
+
+                 The same file rebrands the CATEGORY IDENTITY palette -- the
+                 four-domain wayfinding colours (work / know / model / observe)
+                 behind page badges and dashboard chips on every surface. The
+                 canonical definition is the --cat-* triplets in theme.css
+                 (hue, wash, ink per domain); override them together, keeping
+                 badge ink at >=4.5:1 contrast on its wash. Example:
+                 :root{
+                   --cat-observe:#1E7D6E; --cat-observe-wash:#E6F2EF; --cat-observe-ink:#15564B;
+                   --cat-work:#C9A227;    --cat-work-wash:#F8F1DA;    --cat-work-ink:#79611A;
+                 }
+                 These are identity colours, never status: --state-* stays
+                 reserved for signal, and category colours must not be used
+                 to mean healthy/broken.
 - logo.svg    -- header mark (single-colour currentColor reads best; the header renders it light).
 - favicon.svg -- browser favicon.
 

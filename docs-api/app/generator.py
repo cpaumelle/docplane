@@ -1,6 +1,7 @@
 """Render the authoritative PostgreSQL corpus into an atomic MkDocs release."""
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -155,30 +156,79 @@ def validate_redirects(redirects: dict[str, str], pages: list[dict]) -> dict[str
     return dict(sorted(redirects.items()))
 
 
+# The canonical page → domain derivation for the four-domain model. Everything
+# that badges, groups or filters pages by domain must call (or mirror) this —
+# the dashboard keeps a lockstep copy in static/app.js pageDomain().
+# Precedence: WORK_NOTE pages are the work domain's page form wherever they
+# live; the observe/ and model/ surface sections carry their domain; every
+# other page is the know corpus.
+_SURFACE_SECTIONS = {"observe": "observe", "model": "model"}
+_DOMAIN_LABELS = {"work": "Work", "know": "Know", "model": "Model", "observe": "Observe"}
+
+
+def page_domain(page: dict) -> str:
+    if (page.get("knowledge_class") or "").strip().upper() == "WORK_NOTE":
+        return "work"
+    head = str(page.get("path") or "").split("/", 1)[0]
+    return _SURFACE_SECTIONS.get(head, "know")
+
+
+def _badge_markup(page: dict) -> str:
+    """One line of raw HTML: the coloured domain badge plus quiet facet chips
+    (knowledge class; GENERATED provenance). Styled by the shared category
+    tokens in mkdocs/overrides/assets/theme.css; one line so re-augmenting can
+    strip and re-insert it idempotently."""
+    domain = page_domain(page)
+    chips = [f'<span class="dp-badge" data-domain="{domain}">{_DOMAIN_LABELS[domain]}</span>']
+    knowledge_class = (page.get("knowledge_class") or "").strip()
+    if knowledge_class and knowledge_class.upper() != "WORK_NOTE":
+        label = html.escape(knowledge_class.replace("_", " ").title())
+        chips.append(f'<span class="dp-chip">{label}</span>')
+    if page.get("provenance") == "GENERATED":
+        chips.append('<span class="dp-chip dp-chip--generated">Generated</span>')
+    return '<p class="dp-badges">' + "".join(chips) + "</p>"
+
+
 def _augment_content(page: dict) -> str:
-    content = str(page["content"])
-    lines = [line for line in content.splitlines() if line.strip() != GENERATOR_STAMP]
-    content = "\n".join(lines).rstrip() + "\n"
+    # Strip everything this function itself injects (stamp, badge row, marker)
+    # so re-augmenting rendered output converges instead of accumulating.
+    lines = [
+        line for line in str(page["content"]).splitlines()
+        if line.strip() != GENERATOR_STAMP
+        and not line.lstrip().startswith('<p class="dp-badges">')
+        and not re.match(r"^\*[Ll]ast updated:.*\*$", line.strip())
+    ]
+    badges = _badge_markup(page)
     updated_at = page.get("updated_at")
     version = page.get("version")
+    marker = None
     if updated_at:
         if isinstance(updated_at, datetime):
             rendered = updated_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         else:
             rendered = str(updated_at).replace("T", " ")[:16] + " UTC"
         marker = f"*Last updated: {rendered}{f' · v{version}' if version else ''}*"
-        body = content.splitlines()
-        body = [line for line in body if not re.match(r"^\*[Ll]ast updated:.*\*$", line.strip())]
-        inserted = False
-        output: list[str] = []
-        for line in body:
-            output.append(line)
-            if not inserted and line.startswith("# "):
-                output.extend(["", marker, ""])
-                inserted = True
-        if not inserted:
-            output = [marker, ""] + output
-        content = "\n".join(output).rstrip() + "\n"
+    head = ["", badges] + (["", marker] if marker else []) + [""]
+    inserted = False
+    output: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        output.append(line)
+        index += 1
+        if not inserted and line.startswith("# "):
+            # Canonicalise the head region: blank lines directly under the H1
+            # are replaced by exactly the inserted block, keeping the function
+            # a fixed point on its own output.
+            while index < len(lines) and lines[index].strip() == "":
+                index += 1
+            output.extend(head)
+            inserted = True
+    if not inserted:
+        while output and output[0].strip() == "":
+            output.pop(0)
+        output = head[1:] + output
+    content = "\n".join(output).rstrip() + "\n"
     return f"{GENERATOR_STAMP}\n{content}"
 
 

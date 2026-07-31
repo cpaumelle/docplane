@@ -389,6 +389,14 @@ function renderDirectories() {
   }));
 }
 
+// Mirrors docs-api app.generator.page_domain — the canonical page → domain
+// derivation for the four-domain model. Keep in lockstep with it.
+function pageDomain(page) {
+  if ((page.knowledge_class || "").trim().toUpperCase() === "WORK_NOTE") return "work";
+  const head = (page.path || "").split("/")[0];
+  return head === "observe" || head === "model" ? head : "know";
+}
+
 function renderPages() {
   const rows = exploredPages;
   $("explore-pages-title").textContent = exploreSearchActive()
@@ -397,7 +405,9 @@ function renderPages() {
   $("explore-count").textContent = pageTotal === null ? "" : `${rows.length} of ${pageTotal}`;
   $("explore-pages").innerHTML = rows.length ? rows.map((page) => {
     const verification = (page.verification_state || "UNVERIFIED").toUpperCase();
+    const domain = pageDomain(page);
     const chips = [
+      `<span class="dp-badge" data-domain="${esc(domain)}">${esc(domain)}</span>`,
       page.knowledge_class ? `<span class="chip">${esc(page.knowledge_class)}</span>` : "",
       `<span class="chip chip--${verification === "VERIFIED" ? "ok" : "quiet"}">${esc(verification.toLowerCase())}</span>`,
       page.status === "archived" ? `<span class="chip chip--warn">archived</span>` : "",

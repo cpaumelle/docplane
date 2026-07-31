@@ -23,6 +23,20 @@
   /* functional states (never decoration) */
   --state-ok:#1f9d6b; --state-warn:#c9821f; --state-bad:#d1493b;
 
+  /* ── Category identity — the four-domain wayfinding palette ──────────────
+   * Defined ONCE here for every DocPlane surface (docs pages, dashboard, any
+   * future app). One hue per domain of the four-domain model (work / know /
+   * model / observe). These are IDENTITY colours — stable wayfinding, never
+   * status: functional --state-* stays reserved for signal, and category
+   * colours must never be used to say healthy/broken. Each domain carries a
+   * triplet: the full hue (badge dot, accents), a wash (badge background)
+   * and an ink (badge text, needs ≥4.5:1 contrast on the wash). Adopters
+   * rebrand these in /assets/brand.css exactly like --brand-*. */
+  --cat-work:#8a6a1e;    --cat-work-wash:#f7f1e0;    --cat-work-ink:#6b5117;
+  --cat-know:#2b6cb0;    --cat-know-wash:#e9f1fa;    --cat-know-ink:#1f5187;
+  --cat-model:#6d4fa6;   --cat-model-wash:#f1edf9;   --cat-model-ink:#523c7e;
+  --cat-observe:#177f6d; --cat-observe-wash:#e7f5f1; --cat-observe-ink:#0f5f51;
+
   /* ── Semantic tokens — light surfaces (default) ────────────────────────── */
   --bg-page:      var(--pearl);
   --bg-surface:   var(--white);
@@ -53,6 +67,36 @@
   --font-mono:    "IBM Plex Mono", "SF Mono", Menlo, "Cascadia Mono", monospace;
 }
 
+/* ── Category badges & facet chips — one anatomy for every surface ────────
+ * The coloured pill states the page's domain; quiet chips carry orthogonal
+ * facets (knowledge class, GENERATED provenance). Rule: ONE coloured identity
+ * badge per page — never two categories, never status colour. Docs pages get
+ * the row injected under the H1 by docs-api; the dashboard renders the same
+ * markup in its listings. */
+.dp-badges { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; margin:.35rem 0 .9rem; }
+.dp-badge {
+  display:inline-flex; align-items:center; gap:.38rem;
+  padding:.18rem .6rem; border-radius:var(--radius-pill);
+  font-family:var(--font-sans); font-size:.72rem; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; line-height:1.5;
+  background:var(--cat-know-wash); color:var(--cat-know-ink);
+}
+.dp-badge::before { content:""; flex:none; width:.5em; height:.5em; border-radius:50%; background:var(--cat-know); }
+.dp-badge[data-domain="work"]    { background:var(--cat-work-wash);    color:var(--cat-work-ink); }
+.dp-badge[data-domain="work"]::before    { background:var(--cat-work); }
+.dp-badge[data-domain="model"]   { background:var(--cat-model-wash);   color:var(--cat-model-ink); }
+.dp-badge[data-domain="model"]::before   { background:var(--cat-model); }
+.dp-badge[data-domain="observe"] { background:var(--cat-observe-wash); color:var(--cat-observe-ink); }
+.dp-badge[data-domain="observe"]::before { background:var(--cat-observe); }
+.dp-chip {
+  display:inline-flex; align-items:center;
+  padding:.18rem .55rem; border-radius:var(--radius-pill);
+  font-family:var(--font-sans); font-size:.72rem; font-weight:500;
+  letter-spacing:.04em; text-transform:uppercase; line-height:1.5;
+  background:var(--bg-sunken); color:var(--text-muted); border:1px solid var(--border);
+}
+.dp-chip--generated { border-style:dashed; }
+
 /* Dark surface opt-in (immersive panels): add class `surface-dark`. */
 .surface-dark, [data-surface="dark"] {
   --bg-page:      var(--brand-900);
@@ -66,3 +110,8 @@
   --action:       var(--brand-500);
   --action-hover: var(--brand-300);
 }
+
+/* On dark surfaces badge washes go translucent so they sit on any panel; the
+ * domain dot keeps the full category hue for identity. */
+.surface-dark .dp-badge, [data-surface="dark"] .dp-badge { background:rgba(255,255,255,.10); color:var(--text-strong); }
+.surface-dark .dp-chip,  [data-surface="dark"] .dp-chip  { background:rgba(255,255,255,.06); color:var(--text-muted); border-color:transparent; }
