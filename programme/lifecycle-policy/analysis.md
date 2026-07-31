@@ -318,3 +318,75 @@ or open pages in a domain root is itself a legitimate (if separate) finding. Zer
 need to physically move under this recommendation. Future reorganisation programmes
 should count their denominator as **direct pages with `status=active` AND no
 `ARCHIVED`-marker mismatch** — not raw direct-page count — once §6's reason code exists.
+
+
+## Addendum (2026-07-31) — canary preflight result: both candidates rejected
+
+Policy decision approved (this document, PR #111 merged `8b5b414`); follow-ups #112
+(link-safety/route semantics) and #113 (scoring) opened. Proceeding to the two-page
+zero-inbound canary surfaced a real content-level abort condition — reported here
+rather than overridden.
+
+### Manual content preflight on the two proposed candidates
+
+`operations/paris-cutover-readiness-assessment.md` (`45b0c207-fb53-5e19-b5ae-cd50de4fb8aa`)
+and `operations/paris-identity-inventory-analysis.md`
+(`0df2184e-1e62-503b-866c-5b8b967ac4df`) both confirm **zero live inbound references**
+from other active pages (unchanged from §7's finding — re-verified fresh, not stale).
+
+Reading both full bodies, however, surfaces a distinct problem neither the link graph
+nor the lifecycle marker alone would catch: **both pages are explicit, hand-authored
+redirect stubs.** Each carries identical boilerplate: *"Retained as a stub so existing
+links resolve... Do not cite this page as authority."* One points to
+`paris-cutover-runbook-v1.md#phase-0-readiness-assessment...`, the other to
+`pi4-gateway-appliance-v1-inventory.md#scenario-2-identity-disposition...` and
+`paris-pi4-identity-inventory.md`. This phrase is unique to these two pages corpus-wide
+(checked: no other page uses it).
+
+Their stated purpose is explicitly **public-route preservation** — not a dependency on
+any other DocPlane page (already confirmed zero), but on the *route itself* continuing
+to resolve for inbound links this corpus's own `find_links` sweep cannot see: external
+bookmarks, historical chat/commit references, or links from outside the corpus. `find_links`
+only covers references authored inside the corpus; it was never capable of detecting
+this class of dependency, and reading the page bodies was the only way to catch it.
+
+This is precisely the abort condition specified in §4 of the approved plan: *"no
+evidence-preservation dependency requiring the public route."* Both candidates fail it.
+`ARCHIVE_PAGE` today creates no tombstone and no redirect (§1) — archiving either page
+would produce a silent 404 for exactly the audience its own content says it's being
+kept to serve. Archiving these two pages would not just risk breaking a link; it would
+directly contradict the disposition their author already recorded in the page itself.
+
+**No `ARCHIVE_PAGE` operation was executed.** Both pages remain `status=active`,
+unchanged, at revision as fetched.
+
+### Consequence for the canary
+
+The 28-page safe pool (§7) has exactly these 2 pages as its only zero-inbound members;
+the other 26 all have live internal inbound references and are correctly held back
+already (remediation ledger below). There is currently no `operations/` page that is
+simultaneously (a) zero internal inbound, (b) genuinely disposable at the route level,
+and (c) marked `ARCHIVED`. The canary cannot proceed against `operations/` on the
+current pool without either revising these two pages' disposition or accepting the
+residual external-route risk explicitly.
+
+This is itself useful evidence for #112: a page can pass every corpus-internal safety
+check and still have a public-route dependency invisible to the link graph. #112's scope
+should explicitly cover this case (e.g., a page-level "route must remain resolvable"
+flag, distinct from ordinary inbound-reference counting) alongside the inbound-link
+validation already scoped there.
+
+## Remediation ledger — the 26 held-back `operations/` pages
+
+Full detail (resource ID, inbound sources, declared lifecycle) at
+`programme/lifecycle-policy/manifest/remediation-ledger-26.json`. All 26 remain
+`status=active`, untouched. Summary: **25 of 26 are referenced from
+`operations/index.md`'s own catalogue** (the section landing page cataloguing
+everything under `operations/`); the remaining cross-references are scattered across
+`control-plane/`, `network/`, `services/`, `reference/`, and a handful of sibling
+`operations/` pages (`completed.md`, `engineering-backlog.md`, `in-flight.md`,
+`soaks.md`, `w4-1-x-docs-refresh-hold-point.md`). None has been assigned a disposition
+yet (repoint / retain-access / tombstone-link / historical-citation / authoring-decision)
+— that decision is blocked on #112 landing (or, per-page, on an explicit override
+decision), consistent with "bulk archival may begin only after Issue A supplies safe
+semantics or every inbound edge has been deliberately resolved."
