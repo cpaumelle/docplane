@@ -1,0 +1,78 @@
+{
+  "contract_version": "knowledge-class-examples-v1",
+  "purpose": "Generic example corpus demonstrating the eight knowledge classes and the suggest → curate → apply classification workflow.",
+  "pages": [
+    {
+      "file": "pages/architecture-service-topology.md",
+      "path": "architecture/service-topology.md",
+      "title": "Service topology",
+      "nav_path": "Architecture/Service topology",
+      "knowledge_class": "ARCHITECTURE",
+      "demonstrates": "birth classification via CREATE_PAGE.knowledge_class"
+    },
+    {
+      "file": "pages/design-notification-routing.md",
+      "path": "design/notification-routing.md",
+      "title": "Notification routing",
+      "nav_path": "Design/Notification routing",
+      "knowledge_class": "DESIGN",
+      "demonstrates": "birth classification; a proposal that is not yet a DECISION"
+    },
+    {
+      "file": "pages/evidence-restore-drill-report.md",
+      "path": "evidence/restore-drill-q2.md",
+      "title": "Restore drill report — Q2",
+      "nav_path": "Evidence/Restore drill Q2",
+      "knowledge_class": "EVIDENCE",
+      "demonstrates": "birth classification; an immutable record of what happened"
+    },
+    {
+      "file": "pages/decisions-adr-0001-single-writer.md",
+      "path": "decisions/adr-0001-single-writer.md",
+      "title": "ADR-0001: One writer per record",
+      "nav_path": "Decisions/ADR-0001 single writer",
+      "knowledge_class": null,
+      "demonstrates": "suggester tier 2 content-shape: ADR anatomy proposes DECISION at 0.85, out-ranking the decisions/ path convention"
+    },
+    {
+      "file": "pages/operations-restore-from-backup.md",
+      "path": "operations/restore-from-backup.md",
+      "title": "Restore the database from backup",
+      "nav_path": "Operations/Restore from backup",
+      "knowledge_class": null,
+      "demonstrates": "suggester tier 2 content-shape: runbook contract headings propose OPERATION at 0.8"
+    },
+    {
+      "file": "pages/policies-credential-handling.md",
+      "path": "policies/credential-handling.md",
+      "title": "Credential handling",
+      "nav_path": "Policies/Credential handling",
+      "knowledge_class": null,
+      "demonstrates": "suggester tier 2 content-shape: INV-n register entries propose POLICY at 0.75"
+    },
+    {
+      "file": "pages/reference-environment-matrix.md",
+      "path": "reference/environment-matrix.md",
+      "title": "Environment matrix",
+      "nav_path": "Reference/Environment matrix",
+      "knowledge_class": null,
+      "demonstrates": "suggester tier 3 path-prefix: the reference/ section convention proposes REFERENCE at 0.6"
+    },
+    {
+      "file": "pages/notes-search-upgrade-scratchpad.md",
+      "path": "notes/search-upgrade-scratchpad.md",
+      "title": "Search upgrade scratchpad",
+      "nav_path": "Notes/Search upgrade scratchpad",
+      "knowledge_class": null,
+      "demonstrates": "suggester tier 1 legacy-lifecycle: the inline **Lifecycle:** ACTIVE field proposes WORK_NOTE at 0.9"
+    },
+    {
+      "file": "pages/misc-team-glossary.md",
+      "path": "misc/team-glossary.md",
+      "title": "Team glossary",
+      "nav_path": "Misc/Team glossary",
+      "knowledge_class": null,
+      "demonstrates": "no_signal: no tier matches; classified deliberately by hand (REFERENCE fits) via Explore"
+    }
+  ]
+}
