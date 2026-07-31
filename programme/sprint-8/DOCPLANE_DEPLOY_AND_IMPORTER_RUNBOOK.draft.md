@@ -29,6 +29,10 @@ are derived consumers. If a step seems to require inverting that arrow, stop.
       (Sprint 6 pattern: `docplane-api:rollback-pre-<change>-<date>`).
 - [ ] Migration ledger is **contiguous** before you start (`000–NNN`, no gaps);
       the ledger is append-only and byte-identical for already-applied files.
+      Check from inside the running container — the production host is not a
+      Python environment and never runs migrate.py directly:
+      `docker compose exec docs-api python /app/migrate.py status --dir /app/db/migrations`
+      `[operator-verify]` compose invocation on the deployment host.
 - [ ] You know whether this deploy carries a migration, a generator contract
       bump (importer `GENERATOR_VERSION`), or both — read the PR's operator
       notes; they are part of the merge contract.
@@ -37,16 +41,26 @@ are derived consumers. If a step seems to require inverting that arrow, stop.
 
 1. **Fast-forward the production checkout** to the merged main commit and
    record the SHA in your session notes.
-2. **Apply migrations** (only if the deploy carries one):
-   `python docs-api/migrate.py apply --dir db/migrations`
-   Expected: only new numbers apply; prior entries byte-identical. A run with
-   no new migration must report nothing to do — the ledger stays contiguous.
+2. **Migrations are container-owned — there is no host-side apply step.**
+   The docs-api entrypoint runs `python /app/migrate.py apply` in a retry
+   loop on every container start, before serving traffic (see
+   `docs-api/entrypoint.sh`); the image carries `db/migrations` baked in.
+   Deploying the rebuilt image IS the migration step. Verified against
+   reality 2026-07-31: the production host has no `python` binary at all —
+   any runbook step invoking migrate.py on the host is wrong by
+   construction.
 3. **Rebuild and recreate the changed images** (docs-api, dashboard, docs-web
    as the diff requires), tagging the outgoing api image with the rollback
    pattern first. Leave PostgreSQL and untouched services alone.
 4. **Health checks**: container healthy with restart count 0 and correct OCI
    revision; API discovery (`/.well-known/docplane.json`), dashboard, and
    `/healthz` all answering. `[operator-verify]` compose service names.
+   Then **confirm the ledger**: a healthy freshly-started docs-api has by
+   definition applied all migrations; verify with
+   `docker compose exec docs-api python /app/migrate.py status --dir /app/db/migrations`
+   (expect contiguous through the new head, prior entries byte-identical;
+   `verify` cross-checks recorded digests). A deploy with no new migration
+   must show an unchanged ledger.
 5. **Re-render the publication** so pages pick up generator/UI changes:
    `POST /api/v1/publication/retry`
    Success: release completes and certification identities match (working ==
@@ -105,6 +119,16 @@ are derived consumers. If a step seems to require inverting that arrow, stop.
   version. Never hand-edit derived entities, pages, or Work items.
 
 ## Known failure modes (all observed in real sessions)
+
+- **docs-api restart-looping after an image recreate** = a migration is
+  failing: the entrypoint retries `migrate.py apply` 30 times and then exits,
+  so compose restarts the container. Read the container logs for the failing
+  migration number; do not bypass the entrypoint. Rollback = recreate from
+  the rollback tag (whose baked ledger matches the applied schema).
+- **`python: command not found` on the deploy host** (2026-07-31 rollout
+  stop): expected — the host is not a Python environment. Every migrate.py
+  invocation belongs inside the docs-api container; the apply itself is
+  automatic at container start.
 
 - **Importer refuses with a path-contract violation** (Sprint 6: dotted source
   key vs `publication._PATH_RE`). The refusal is the system working — fix in
