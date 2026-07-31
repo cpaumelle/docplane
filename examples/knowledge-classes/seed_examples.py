@@ -93,6 +93,9 @@ def main() -> int:
             "title": page["title"],
             "nav_path": page["nav_path"],
             "content": (HERE / page["file"]).read_text(encoding="utf-8"),
+            # The classify verb enforces WORK_NOTE ⇔ WORK workspace, so the
+            # scratchpad must be born in the work workspace to be classifiable.
+            "workspace_key": page.get("workspace_key", WORKSPACE_KEY),
         }
         if page["knowledge_class"]:
             payload["knowledge_class"] = page["knowledge_class"]

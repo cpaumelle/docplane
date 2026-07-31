@@ -51,6 +51,14 @@ which beats path convention. The glossary is included precisely because
 no tier catches it: curation, not the tool, is the authority, and some
 pages are only ever classified by a person reading them.
 
+One coherence rule to know: the classify verb enforces `WORK_NOTE` ⇔
+WORK workspace, in both directions. The scratchpad is therefore seeded
+into the `work` system workspace; every other example lives in
+`reference`. A `WORK_NOTE` proposal for a page in the wrong workspace
+is rejected with `WORKSPACE_KNOWLEDGE_CLASS_MISMATCH` — move the page
+(or reconsider the class) rather than fighting the rule: it is the
+work/know domain boundary doing its job.
+
 ## Seed the corpus
 
 Credentials ride the environment, never argv:

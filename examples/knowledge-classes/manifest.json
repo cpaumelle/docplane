@@ -63,8 +63,9 @@
       "path": "notes/search-upgrade-scratchpad.md",
       "title": "Search upgrade scratchpad",
       "nav_path": "Notes/Search upgrade scratchpad",
+      "workspace_key": "work",
       "knowledge_class": null,
-      "demonstrates": "suggester tier 1 legacy-lifecycle: the inline **Lifecycle:** ACTIVE field proposes WORK_NOTE at 0.9"
+      "demonstrates": "suggester tier 1 legacy-lifecycle: the inline **Lifecycle:** ACTIVE field proposes WORK_NOTE at 0.9; lives in the work workspace because the classify verb enforces WORK_NOTE ⇔ WORK workspace"
     },
     {
       "file": "pages/misc-team-glossary.md",
