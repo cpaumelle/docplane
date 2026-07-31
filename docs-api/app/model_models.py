@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 EntityKind = Literal[
     "SYSTEM", "SERVICE", "NODE", "VM", "SITE", "NETWORK", "DATABASE",
     "SCHEMA", "API", "ROUTE", "DEVICE_MODEL", "INTERFACE", "ARTIFACT",
+    "MONITOR_RULE",
 ]
 
 EntityRelation = Literal[
@@ -56,6 +57,12 @@ class EntityRetire(BaseModel):
 
 
 class EntityLinkCreate(BaseModel):
+    relation: EntityRelation
+    to_entity_id: UUID
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class EntityLinkRemove(BaseModel):
     relation: EntityRelation
     to_entity_id: UUID
     note: str | None = Field(default=None, max_length=2000)

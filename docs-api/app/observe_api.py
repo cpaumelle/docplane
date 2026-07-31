@@ -274,6 +274,110 @@ def _latest_generation(cur, artifact_id: str) -> dict[str, Any] | None:
     return dict(zip(("outcome", "source_fingerprint", "observed_at"), row)) if row else None
 
 
+# The page-classification CHECK declares the escalation scale; gaps rank by
+# it descending so the most critical unwatched service surfaces first.
+_CRITICALITY_RANK = {"NORMAL": 0, "IMPORTANT": 1, "OPERATIONAL_CRITICAL": 2, "POLICY_REQUIRED": 3}
+
+# Severities that page a human (hub2 convention). A paging alert without a
+# runbook_url annotation is an operational gap; informational severities
+# merely benefit from one.
+_PAGING_SEVERITIES = ("critical", "page")
+
+
+@router.get("/api/v1/observe/coverage")
+def observe_coverage(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
+    """The meter-list coverage view (Sprint 6, exemplar B): gaps derived from
+    the model graph, never stubs. A service is unwatched when no ACTIVE
+    MONITOR_RULE has a WATCHES link to it; a rule lacks a description when
+    its harvested has_description attribute is false or absent; a paging
+    alert lacks a runbook when its rule file carries no runbook_url
+    annotation. Service criticality derives from the pages the entity
+    DESCRIBES — the graph, not a parallel register — and ranks the gaps.
+
+    The response's scope block versions this surface explicitly: runbook
+    gaps here are annotation-presence only. Counting only contract-meeting,
+    exercised runbooks and feeding gaps into the work inbox are the
+    runbook-discipline follow-up (implementation plan, Sprint 6)."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT s.entity_key,
+                   count(l.from_entity_id) FILTER (
+                       WHERE r.entity_kind = 'MONITOR_RULE' AND r.status = 'ACTIVE'
+                   ) AS watching_rules,
+                   (SELECT p.criticality
+                      FROM model.entity_page_links pl
+                      JOIN docs.pages p ON p.resource_id = pl.page_resource_id
+                     WHERE pl.entity_id = s.entity_id AND pl.relation = 'DESCRIBES'
+                     ORDER BY CASE p.criticality
+                                  WHEN 'POLICY_REQUIRED' THEN 3
+                                  WHEN 'OPERATIONAL_CRITICAL' THEN 2
+                                  WHEN 'IMPORTANT' THEN 1
+                                  ELSE 0
+                              END DESC
+                     LIMIT 1) AS criticality
+              FROM model.entities s
+              LEFT JOIN model.entity_links l
+                     ON l.to_entity_id = s.entity_id AND l.relation = 'WATCHES'
+              LEFT JOIN model.entities r ON r.entity_id = l.from_entity_id
+             WHERE s.entity_kind = 'SERVICE' AND s.status = 'ACTIVE'
+             GROUP BY s.entity_id, s.entity_key
+             ORDER BY s.entity_key
+            """
+        )
+        services = [
+            {"entity_key": row[0], "watching_rules": int(row[1]), "criticality": row[2]}
+            for row in cur.fetchall()
+        ]
+        cur.execute(
+            """
+            SELECT entity_key FROM model.entities
+             WHERE entity_kind = 'MONITOR_RULE' AND status = 'ACTIVE'
+               AND COALESCE((attributes->>'has_description')::boolean, false) = false
+             ORDER BY entity_key
+            """
+        )
+        rules_without_description = [row[0] for row in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT entity_key FROM model.entities
+             WHERE entity_kind = 'MONITOR_RULE' AND status = 'ACTIVE'
+               AND attributes->>'rule_kind' = 'alert'
+               AND attributes->>'severity' = ANY(%s)
+               AND COALESCE(attributes->>'runbook_url', '') = ''
+             ORDER BY entity_key
+            """,
+            (list(_PAGING_SEVERITIES),),
+        )
+        paging_alerts_without_runbook = [row[0] for row in cur.fetchall()]
+        cur.execute(
+            "SELECT count(*) FROM model.entities WHERE entity_kind = 'MONITOR_RULE' AND status = 'ACTIVE'"
+        )
+        rule_count = int(cur.fetchone()[0])
+    unwatched = sorted(
+        (item for item in services if item["watching_rules"] == 0),
+        key=lambda item: (-_CRITICALITY_RANK.get(item["criticality"] or "", 0), item["entity_key"]),
+    )
+    return {
+        "services": services,
+        "unwatched_services": [item["entity_key"] for item in unwatched],
+        "rule_count": rule_count,
+        "rules_without_description": rules_without_description,
+        "paging_alerts_without_runbook": paging_alerts_without_runbook,
+        "paging_severities": list(_PAGING_SEVERITIES),
+        "scope": {
+            "implemented": [
+                "unwatched_services",
+                "rules_without_description",
+                "paging_alerts_without_runbook",
+                "criticality_ranking",
+            ],
+            "follow_up": ["verified_runbook_gating", "work_inbox_feed"],
+        },
+    }
+
+
 @router.get("/api/v1/model/entities/{entity_id}/status")
 def entity_status(entity_id: UUID, principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
     with get_conn() as conn:

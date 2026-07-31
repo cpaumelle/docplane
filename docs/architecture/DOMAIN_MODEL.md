@@ -144,8 +144,12 @@ the unique mutable handle (like `path`), `version` for optimistic
 concurrency, `attributes jsonb` for kind-specific detail (bounded,
 secret-scanned, fail-closed). Each kind's required attributes are published
 as a JSON Schema checklist and enforced at the API — the same proven pattern
-as `/api/v1/operation-contracts`. Adding a kind is a data change, not a
-migration. The harvested starting set (see the
+as `/api/v1/operation-contracts`. The kind vocabulary itself is enforced by
+a database CHECK constraint, so adding a kind is an additive migration
+extending that CHECK plus a card-contract entry — the compatibility
+contract's textbook additive case (migration `008_monitor_rule_kind.sql` is
+the exemplar; an earlier draft of this document called it a data change,
+which implementation evidence overtook). The harvested starting set (see the
 [corpus harvest report](CARD_TYPE_HARVEST_REPORT.md)): `SYSTEM`, `SERVICE`,
 `NODE`, `VM`, `SITE`, `NETWORK`, `DATABASE`, `SCHEMA`, `API`, `ROUTE`,
 `DEVICE_MODEL`, `INTERFACE`, `ARTIFACT` — with `SITE` and `VM` added on
