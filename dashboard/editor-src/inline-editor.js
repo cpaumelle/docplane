@@ -3,6 +3,7 @@ import "@toast-ui/editor/dist/toastui-editor.css";
 import "./inline-editor.css";
 
 const TOKEN_KEY = "docplane-token";
+const NAME_KEY = "docplane-editor-name";
 const RETURN_SCROLL_KEY = "docplane-inline-return-scroll";
 
 function randomKey(prefix) {
@@ -27,6 +28,28 @@ function errorMessage(payload, status) {
   return upstream.message || upstream.remedy || upstream.code || detail.code || `HTTP ${status}`;
 }
 
+async function selfIssue(displayName) {
+  // Fabric reachability IS the edit authority (routed front sets the
+  // admission header); the name exists for the audit trail only.
+  const response = await fetch("/api/v1/auth/self-issue", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...(displayName ? { display_name: displayName } : {}),
+      client_context: "DocPlane inline page editor"
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(errorMessage(payload, response.status));
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  sessionStorage.setItem(TOKEN_KEY, payload.token);
+  return payload.token;
+}
+
 async function api(path, options = {}) {
   const token = sessionStorage.getItem(TOKEN_KEY) || "";
   const response = await fetch(path, {
@@ -38,6 +61,19 @@ async function api(path, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    // An expired session token renews itself silently mid-edit using the
+    // remembered name — 401 only: a 403 is an authorization verdict (e.g.
+    // GENERATED page protection) that a fresh token would not change.
+    const savedName = (localStorage.getItem(NAME_KEY) || "").trim();
+    if (response.status === 401 && savedName && !options._retriedAuth) {
+      sessionStorage.removeItem(TOKEN_KEY);
+      try {
+        await selfIssue(savedName);
+        return api(path, { ...options, _retriedAuth: true });
+      } catch (issueError) {
+        // fall through to the original error
+      }
+    }
     const error = new Error(errorMessage(payload, response.status));
     error.status = response.status;
     error.payload = payload;
@@ -64,23 +100,86 @@ async function requestToken() {
   const existing = sessionStorage.getItem(TOKEN_KEY);
   if (existing) return existing;
 
+  // Fabric contract: reachability grants edit authority. With a remembered
+  // name the credential renews silently; the dialog appears once per browser
+  // to collect the name for the audit trail (or a managed token as fallback).
+  const savedName = (localStorage.getItem(NAME_KEY) || "").trim();
+  if (savedName) {
+    try {
+      return await selfIssue(savedName);
+    } catch (error) {
+      return authDialog(error);
+    }
+  }
+  return authDialog(null);
+}
+
+function authDialog(initialError) {
   return new Promise((resolve, reject) => {
-    const dialog = dialogShell("dp-inline-auth", "Sign in to edit this page");
+    const dialog = dialogShell("dp-inline-auth", "Editing on the fabric");
     const body = dialog.querySelector(".dp-inline-dialog__body");
     const actions = dialog.querySelector(".dp-inline-dialog__actions");
     body.innerHTML = `
-      <p>Reading remains open across the fabric. Editing requires your individual DocPlane contributor token.</p>
-      <label class="dp-inline-field">Contributor token
-        <input type="password" autocomplete="off" placeholder="dp_…" autofocus>
-      </label>
+      <div data-mode="name">
+        <p>Reading is open across the fabric — and being on the fabric already grants you editing. Add your name once so changes are recorded against it in the audit trail; this browser remembers it.</p>
+        <label class="dp-inline-field">Your name
+          <input type="text" data-field="name" autocomplete="name" placeholder="e.g. Charlie Paumelle" autofocus>
+        </label>
+      </div>
+      <div data-mode="token" hidden>
+        <p>Enter your individual DocPlane contributor token.</p>
+        <label class="dp-inline-field">Contributor token
+          <input type="password" data-field="token" autocomplete="off" placeholder="dp_…">
+        </label>
+      </div>
       <p class="dp-inline-dialog__status" role="status"></p>`;
-    actions.innerHTML = `<button value="cancel">Cancel</button><button type="button" class="primary">Continue</button>`;
-    const input = body.querySelector("input");
+    actions.innerHTML = `
+      <button type="button" class="dp-inline-linklike" data-action="toggle-mode">Use a contributor token instead</button>
+      <button value="cancel">Cancel</button>
+      <button type="button" class="primary">Continue</button>`;
+
+    const namePane = body.querySelector('[data-mode="name"]');
+    const tokenPane = body.querySelector('[data-mode="token"]');
+    const nameInput = body.querySelector('[data-field="name"]');
+    const tokenInput = body.querySelector('[data-field="token"]');
     const status = body.querySelector(".dp-inline-dialog__status");
     const submit = actions.querySelector(".primary");
+    const toggle = actions.querySelector('[data-action="toggle-mode"]');
+    let mode = "name";
 
-    async function verify() {
-      const token = input.value.trim();
+    nameInput.value = (localStorage.getItem(NAME_KEY) || "").trim();
+    if (initialError) status.textContent = initialError.message;
+    if (initialError && initialError.status === 404) setMode("token");
+
+    function setMode(next) {
+      mode = next;
+      namePane.hidden = next !== "name";
+      tokenPane.hidden = next !== "token";
+      toggle.textContent = next === "name" ? "Use a contributor token instead" : "Use my name instead";
+      (next === "name" ? nameInput : tokenInput).focus();
+    }
+
+    async function submitName() {
+      const name = nameInput.value.trim();
+      if (!name) return;
+      submit.disabled = true;
+      status.textContent = "Issuing your fabric credential…";
+      try {
+        localStorage.setItem(NAME_KEY, name);
+        const token = await selfIssue(name);
+        dialog.close("ok");
+        resolve(token);
+      } catch (error) {
+        submit.disabled = false;
+        status.textContent = error.message;
+        // Self-issuance disabled for this deployment: only a managed token works.
+        if (error.status === 404) setMode("token");
+        else nameInput.focus();
+      }
+    }
+
+    async function submitToken() {
+      const token = tokenInput.value.trim();
       if (!token) return;
       submit.disabled = true;
       status.textContent = "Checking contributor authority…";
@@ -93,12 +192,14 @@ async function requestToken() {
         sessionStorage.removeItem(TOKEN_KEY);
         submit.disabled = false;
         status.textContent = error.message;
-        input.focus();
+        tokenInput.focus();
       }
     }
 
+    const verify = () => (mode === "name" ? submitName() : submitToken());
     submit.addEventListener("click", verify);
-    input.addEventListener("keydown", (event) => {
+    toggle.addEventListener("click", () => setMode(mode === "name" ? "token" : "name"));
+    body.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
         verify();
