@@ -111,6 +111,13 @@ Default local surfaces:
 - Generated documentation and routed API: `http://localhost:8080`
 - MCP: `http://localhost:8049/mcp`
 
+### Example corpus
+
+A fresh installation starts empty. To see the knowledge-class system —
+the eight classes, birth classification, the suggest → curate → apply
+backfill workflow and its audit surfaces — seed the generic example
+corpus in [`examples/knowledge-classes/`](examples/knowledge-classes/README.md).
+
 ## Direct publication example
 
 ```bash
