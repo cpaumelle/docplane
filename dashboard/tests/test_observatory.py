@@ -120,3 +120,6 @@ def test_explore_is_a_drill_down_browser_not_a_flat_dump():
     assert 'params.set("path_prefix", explorePath)' in javascript
     assert 'params.set("depth", "direct")' in javascript
     assert "exploredPages.filter" not in javascript
+    assert 'id="explore-classification-summary"' in html
+    assert '<option value="__missing__">(missing)</option>' in javascript
+    assert "missing_by_section" in javascript

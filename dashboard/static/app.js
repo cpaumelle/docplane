@@ -505,7 +505,11 @@ async function loadExplore() {
   try {
     observatory = await api("/api/control-plane/observatory?candidate_limit=50");
     candidateCursor = observatory.review_candidates?.next_after || null;
-    $("explore-class").innerHTML = `<option value="">All</option>` + (observatory.facets?.knowledge_class || []).map((value) => `<option>${esc(value)}</option>`).join("");
+    const classification = observatory.summary?.classification || {};
+    const missingBySection = Object.entries(classification.missing_by_section || {})
+      .map(([section, count]) => `${section}: ${count}`).join(" · ");
+    $("explore-classification-summary").textContent = `Unclassified: ${classification.missing ?? 0}${missingBySection ? ` · ${missingBySection}` : ""}`;
+    $("explore-class").innerHTML = `<option value="">All</option><option value="__missing__">(missing)</option>` + (observatory.facets?.knowledge_class || []).map((value) => `<option>${esc(value)}</option>`).join("");
     $("explore-family").innerHTML = `<option value="">All</option>` + (observatory.facets?.identifier_family || []).map((value) => `<option>${esc(value)}</option>`).join("");
     await refreshExploreListing();
   } catch (error) {

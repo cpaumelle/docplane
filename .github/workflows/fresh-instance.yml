@@ -90,6 +90,8 @@ jobs:
             docs-api/tests/test_page_badges.py \
             docs-api/tests/test_domain_nav.py \
             docs-api/tests/test_knowledge_class_suggest.py \
+            docs-api/tests/test_knowledge_class_apply.py \
+            docs-api/tests/test_knowledge_class_migration.py \
             docs-api/tests/test_redirect_serving.py \
             docs-api/tests/test_work_capture_contract.py \
             docs-api/tests/test_model_contract.py \

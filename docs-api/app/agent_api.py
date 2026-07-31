@@ -827,7 +827,10 @@ def _filter_observatory_pages(
         if depth == "direct":
             pages = [page for page in pages if "/" not in page["path"][len(base):]]
     if knowledge_class:
-        pages = [page for page in pages if page.get("knowledge_class") == knowledge_class]
+        if knowledge_class == "__missing__":
+            pages = [page for page in pages if not page.get("knowledge_class")]
+        else:
+            pages = [page for page in pages if page.get("knowledge_class") == knowledge_class]
     if identifier_family:
         pages = [page for page in pages if page.get("identifier_family") == identifier_family]
     if archive_state:

@@ -89,6 +89,7 @@ def build(
                 "subdirectories": set(),
                 "max_depth": 0,
                 "lifecycle": collections.Counter(),
+                "knowledge_class": collections.Counter(),
                 "archived": 0,
             },
         )
@@ -99,6 +100,7 @@ def build(
         elif "/" in page["path"]:
             row["subdirectories"].add(page["path"].split("/")[1])
         row["lifecycle"][page["lifecycle"] or "(missing)"] += 1
+        row["knowledge_class"][page.get("knowledge_class") or "(missing)"] += 1
 
     for page in archived:
         name = _section(page["path"])
@@ -111,6 +113,7 @@ def build(
                 "subdirectories": set(),
                 "max_depth": 0,
                 "lifecycle": collections.Counter(),
+                "knowledge_class": collections.Counter(),
                 "archived": 0,
             },
         )
@@ -128,6 +131,7 @@ def build(
                 "subdirectories": sorted(row["subdirectories"]),
                 "max_depth": row["max_depth"],
                 "lifecycle": dict(sorted(row["lifecycle"].items())),
+                "knowledge_class": dict(sorted(row["knowledge_class"].items())),
                 "archived_pages": row["archived"],
             }
         )
@@ -331,6 +335,15 @@ def build(
             "archived_pages": len(archived),
             "sections": len(sections),
             "directories": len(directories),
+            "classification": {
+                "classified": sum(1 for page in active if page.get("knowledge_class")),
+                "missing": sum(1 for page in active if not page.get("knowledge_class")),
+                "missing_by_section": {
+                    row["name"]: row["knowledge_class"].get("(missing)", 0)
+                    for row in sections
+                    if row["knowledge_class"].get("(missing)", 0)
+                },
+            },
         },
         "facets": {
             "knowledge_class": sorted({

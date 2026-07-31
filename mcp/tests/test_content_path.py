@@ -109,3 +109,24 @@ def test_valid_file_is_loaded_and_flows_into_the_change(monkeypatch, tmp_path):
     assert result == {"published": True}
     operation = next(body for method, path, body in seen["calls"] if path.endswith("/operations"))
     assert operation["payload"]["content"] == "# Large page\n" * 3
+
+
+def test_new_page_can_be_classified_at_birth(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_request(method, path, *, body=None, idempotency_key=None):
+        if method == "GET":
+            return 200, {"pages": []}
+        if path == "/api/v1/changes":
+            return 201, {"change_id": "change-1"}
+        if path.endswith("/operations"):
+            seen["operation"] = body
+            return 201, {"ok": True}
+        if path.endswith("/validate"):
+            return 200, {"validation_summary": {"passed": True}}
+        return 200, {"published": True}
+
+    monkeypatch.setattr(docs_tools, "_request", fake_request)
+    result = call(tmp_path, monkeypatch, content="# Page", knowledge_class="OPERATION")
+    assert result == {"published": True}
+    assert seen["operation"]["payload"]["knowledge_class"] == "OPERATION"

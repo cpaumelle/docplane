@@ -205,6 +205,10 @@ def build_report(pages: list[dict[str, Any]]) -> dict[str, Any]:
         entry = {"path": path, **proposal}
         if page.get("resource_id"):
             entry["resource_id"] = str(page["resource_id"])
+        if page.get("metadata_version") is not None:
+            # Bind the curated proposal to the trust-metadata snapshot. The
+            # apply driver passes this to the existing optimistic-lock verb.
+            entry["metadata_version"] = int(page["metadata_version"])
         suggestions.append(entry)
     return {
         "contract_version": CONTRACT_VERSION,

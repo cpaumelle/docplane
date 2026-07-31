@@ -61,6 +61,26 @@ def test_observatory_exposes_authoritative_directory_metrics_and_resources():
     assert model["pages"][0]["revision"]
 
 
+def test_classification_audit_counts_sections_and_filters_missing_additively():
+    pages = [
+        page("operations/a.md", knowledge_class="OPERATION"),
+        page("operations/b.md", knowledge_class=None),
+        page("reference/a.md", knowledge_class=None),
+    ]
+    model = build(pages, now=NOW)
+    assert model["summary"]["classification"] == {
+        "classified": 1,
+        "missing": 2,
+        "missing_by_section": {"operations": 1, "reference": 1},
+    }
+    operations = next(row for row in model["sections"] if row["name"] == "operations")
+    assert operations["knowledge_class"] == {"(missing)": 1, "OPERATION": 1}
+    assert [item["path"] for item in _filter_observatory_pages(pages, knowledge_class="__missing__")] == [
+        "operations/b.md", "reference/a.md",
+    ]
+    assert [item["path"] for item in _filter_observatory_pages(pages, knowledge_class="OPERATION")] == ["operations/a.md"]
+
+
 def test_review_reasons_are_bounded_deterministic_and_evidenced():
     pages = [
         page(

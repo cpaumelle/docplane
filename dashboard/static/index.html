@@ -69,6 +69,7 @@
       <section id="view-explore" class="view">
         <div class="heading"><div><h1>Explore the corpus</h1><p>Browse directory by directory; search flat only when you ask to.</p></div><div class="actions"><button id="export-observatory">Export manifest</button><button id="refresh-explore">Refresh</button></div></div>
         <article class="panel explore-controls">
+          <p id="explore-classification-summary" class="signal-note">Classification audit loads with the corpus snapshot.</p>
           <div class="filters">
             <label>Search everywhere<input id="explore-query" placeholder="Path or title — replaces browsing while active"></label>
             <label>Classification<select id="explore-class"><option value="">All</option></select></label>
@@ -117,7 +118,7 @@
         <div class="heading"><div><h1>Author and publish</h1><p>Every approved principal is a contributor. Exact revisions and version history protect concurrent work.</p></div><span id="authoring-status" class="status">Select a page</span></div>
         <div class="grid two">
           <article class="panel"><h2>Find content</h2><label>Search<input id="authoring-query" placeholder="Title, path or content"></label><button id="authoring-search">Search</button><div id="authoring-results" class="list muted">Search before editing.</div></article>
-          <article class="panel"><h2>Selected page</h2><strong id="authoring-page-title">None</strong><p id="authoring-page-meta" class="muted"></p><div id="authoring-outline" class="list"></div></article>
+          <article class="panel"><h2>Selected page</h2><strong id="authoring-page-title">None</strong><p id="authoring-page-meta" class="muted"></p><label>Knowledge class<select id="authoring-knowledge-class" disabled><option value="">(unclassified)</option><option>ARCHITECTURE</option><option>OPERATION</option><option>REFERENCE</option><option>POLICY</option><option>DECISION</option><option>EVIDENCE</option><option>DESIGN</option><option>WORK_NOTE</option></select></label><div id="authoring-outline" class="list"></div></article>
         </div>
         <div class="grid editor-layout">
           <article class="panel editor-panel">

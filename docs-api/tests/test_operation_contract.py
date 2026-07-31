@@ -21,6 +21,10 @@ def test_operation_contract_endpoint_covers_every_runtime_operation():
     assert create["binding"]["page_resource_id"] == "omit"
     assert create["payload_schema"]["required"] == ["path", "title", "nav_path", "content"]
     assert create["request_example"]["payload"]["path"] == "reference/example.md"
+    assert set(create["payload_schema"]["properties"]["knowledge_class"]["enum"]) == {
+        None, "ARCHITECTURE", "OPERATION", "REFERENCE", "POLICY",
+        "DECISION", "EVIDENCE", "DESIGN", "WORK_NOTE",
+    }
 
     section = body["operations"]["REPLACE_SECTION"]
     assert section["binding"]["page_resource_id"] == "required"

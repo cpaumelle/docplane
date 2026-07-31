@@ -12,6 +12,10 @@ from common import DOCPLANE_API_URL, DOCPLANE_TOKEN
 # Bound for content_path reads: generous for documentation, small enough that
 # a mistaken path (a log, a dump) fails loudly instead of publishing garbage.
 CONTENT_PATH_MAX_BYTES = 5 * 1024 * 1024
+KNOWLEDGE_CLASSES = {
+    "ARCHITECTURE", "OPERATION", "REFERENCE", "POLICY",
+    "DECISION", "EVIDENCE", "DESIGN", "WORK_NOTE",
+}
 
 
 def _key(prefix: str) -> str:
@@ -114,7 +118,53 @@ def register(mcp) -> None:
         return body.get("pages", []) if code == 200 else [_error(code, body)]
 
     @mcp.tool()
-    def write_doc(path: str, title: str, nav_path: str, content: str = "", purpose: str = "", content_path: str = "") -> dict:
+    def know_classify_doc(path: str, knowledge_class: str, reason: str, idempotency_key: str = "") -> dict:
+        """Classify a canonical page through the optimistic-locked trust verb.
+
+        Reads current trust metadata, changes only knowledge_class, and
+        surfaces stale-metadata conflicts from DocPlane without retrying over
+        concurrent edits. Supply idempotency_key to replay the same intent.
+        """
+        proposed = knowledge_class.strip().upper()
+        if proposed not in KNOWLEDGE_CLASSES:
+            return {"error": "unknown knowledge_class", "allowed": sorted(KNOWLEDGE_CLASSES)}
+        if not reason.strip():
+            return {"error": "reason is required"}
+        existing = _find_path(path, include_archived=True)
+        if existing is None:
+            return {"error": "page not found", "path": path}
+        code, trust = _request("GET", f"/api/v1/pages/{existing['resource_id']}/trust")
+        if code != 200:
+            return _error(code, trust)
+        if trust.get("knowledge_class") == proposed:
+            return {
+                "status": "UNCHANGED",
+                "resource_id": existing["resource_id"],
+                "path": existing["path"],
+                "knowledge_class": proposed,
+                "metadata_version": trust["metadata_version"],
+            }
+        body = {
+            "expected_metadata_version": trust["metadata_version"],
+            "workspace_id": trust["workspace_id"],
+            "publication_state": trust["publication_state"],
+            "knowledge_class": proposed,
+            "criticality": trust["criticality"],
+            "owner_principal_id": trust.get("owner_principal_id"),
+            "review_due_at": trust.get("review_due_at"),
+            "provenance": trust.get("provenance"),
+            "reason": f"{reason.strip()} (from MCP)",
+        }
+        code, response = _request(
+            "POST",
+            f"/api/v1/pages/{existing['resource_id']}/classification",
+            body=body,
+            idempotency_key=idempotency_key.strip() or _key("classify"),
+        )
+        return response if code == 200 else _error(code, response)
+
+    @mcp.tool()
+    def write_doc(path: str, title: str, nav_path: str, content: str = "", purpose: str = "", content_path: str = "", knowledge_class: str = "") -> dict:
         """Create or replace a Markdown page and publish it directly with exact-revision safety.
 
         Provide the document either inline via `content` or — for large pages —
@@ -125,6 +175,9 @@ def register(mcp) -> None:
         required."""
         if not purpose.strip():
             return {"error": "purpose is required"}
+        proposed_class = knowledge_class.strip().upper()
+        if proposed_class and proposed_class not in KNOWLEDGE_CLASSES:
+            return {"error": "unknown knowledge_class", "allowed": sorted(KNOWLEDGE_CLASSES)}
         if bool(content) == bool(content_path):
             return {"error": "provide exactly one of content or content_path"}
         if content_path:
@@ -150,9 +203,14 @@ def register(mcp) -> None:
                 "payload": {"content": content, "title": title, "nav_path": nav_path},
             }
         else:
+            payload = {"path": path, "title": title, "nav_path": nav_path, "content": content, "workspace_key": "reference"}
+            if proposed_class:
+                # CREATE_PAGE owns birth metadata. Existing pages use the
+                # separately audited know_classify_doc trust verb.
+                payload["knowledge_class"] = proposed_class
             operation = {
                 "operation_type": "CREATE_PAGE",
-                "payload": {"path": path, "title": title, "nav_path": nav_path, "content": content, "workspace_key": "reference"},
+                "payload": payload,
             }
         change_id = change["change_id"]
         code, body = _request("POST", f"/api/v1/changes/{change_id}/operations", body=operation, idempotency_key=_key("operation"))
