@@ -346,8 +346,49 @@ def build_nav(pages: list[dict], *, strict: bool = True, section_order: dict[str
             if strict:
                 raise
             conflicts.append({"kind": exc.kind, "segment": exc.segment, "detail": exc.message, "paths": [path]})
-    nav = ([{"Home": home}] if home else []) + _serialize(tree, top_level=True, section_order=section_order)
+    serialized = _serialize(tree, top_level=True, section_order=section_order)
+    nav = ([{"Home": home}] if home else []) + _group_nav_by_domain(tree, serialized)
     return nav if strict else (nav, conflicts)
+
+
+def _subtree_first_path(value) -> str | None:
+    if isinstance(value, str):
+        return value
+    for key in value:
+        found = _subtree_first_path(value[key])
+        if found:
+            return found
+    return None
+
+
+_DOMAIN_NAV_ORDER = ("know", "model", "observe", "work")
+
+
+def _group_nav_by_domain(tree: dict, serialized: list) -> list:
+    """Wrap top-level nav sections in the four domain groups (S9-C).
+
+    A section's domain follows page_domain()'s path rule via its first leaf
+    (mixed-domain sections take the first leaf's verdict — sections should
+    not mix domains, and the deterministic rule keeps nav stable if one
+    briefly does). Section order is preserved within each group, so the
+    governed docs.sections ordering still applies inside Know. A section
+    whose own label IS the domain name splices its children into the group
+    instead of nesting Observe under Observe. Empty domains are omitted;
+    grouping only changes sidebar structure, never paths or URLs."""
+    grouped: dict[str, list] = {domain: [] for domain in _DOMAIN_NAV_ORDER}
+    for entry in serialized:
+        label = next(iter(entry))
+        first = _subtree_first_path(tree[label])
+        domain = _SURFACE_SECTIONS.get(str(first or "").split("/", 1)[0], "know")
+        if _normalize_segment(label) == domain:
+            grouped[domain].extend(entry[label])
+        else:
+            grouped[domain].append(entry)
+    return [
+        {_DOMAIN_LABELS[domain]: grouped[domain]}
+        for domain in _DOMAIN_NAV_ORDER
+        if grouped[domain]
+    ]
 
 
 def distinct_section_paths(pages: list[dict]) -> list[str]:
