@@ -57,6 +57,36 @@
   .dp-abtn { padding:.3rem .5rem; } /* ≥24px touch target with line-height */
 }
 
+/* ── Callouts (S9-D) ────────────────────────────────────────────────────
+ * Material's admonitions ship as heavy tinted boxes; DocPlane calms them to
+ * a surface card with a 3px state rail — colour carries the type, the body
+ * stays neutral ground. State colours mean state here (ok/warn/bad); note-
+ * like types ride the brand accent, question/quote stay neutral, so callout
+ * colour never competes with category identity. Selectors are written at
+ * the same specificity as Material's per-type rules; extra_css loads after
+ * the theme, so these win by order without !important. Applies equally to
+ * pymdownx.details collapsibles. */
+.md-typeset :is(.admonition, details) {
+  --dp-callout:var(--accent);
+  border:1px solid var(--border);
+  border-left:3px solid var(--dp-callout);
+  border-radius:10px;
+  background:var(--bg-surface);
+  box-shadow:none;
+}
+.md-typeset :is(.admonition, details):is(.tip, .hint, .important, .success, .check, .done) { --dp-callout:var(--state-ok); }
+.md-typeset :is(.admonition, details):is(.warning, .caution, .attention) { --dp-callout:var(--state-warn); }
+.md-typeset :is(.admonition, details):is(.danger, .error, .failure, .fail, .missing, .bug) { --dp-callout:var(--state-bad); }
+.md-typeset :is(.admonition, details):is(.question, .help, .faq, .quote, .cite) { --dp-callout:var(--storm); }
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary) {
+  background:transparent;
+  color:var(--text-strong);
+  font-weight:650;
+}
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary)::before {
+  background-color:var(--dp-callout);
+}
+
 /* ── Domain nav bands (S9-C) ────────────────────────────────────────────
  * The four top-level sidebar groups (emitted by build_nav) wear a solid
  * colour band with white type and the domain glyph — decorated by the
