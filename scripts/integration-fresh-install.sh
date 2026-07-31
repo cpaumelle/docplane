@@ -224,7 +224,34 @@ compose up -d --force-recreate site-init >/dev/null 2>&1 || true
 RETRY=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-retry' "$FRONT/api/v1/publication/retry" -d '{}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
 [ "$RETRY" = "COMPLETED" ] || fail "routed publication retry returned $RETRY"
 
-log "14. managed routed front does not self-issue"
+log "14. knowledge-class suggest -> curate -> apply converges"
+CLASS_CHANGE=$(curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-class-change' "$API/api/v1/changes" -d '{"title":"Classification seed","purpose":"fresh-install knowledge-class round trip","workspace_key":"reference"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["change_id"])')
+curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-class-op' "$API/api/v1/changes/$CLASS_CHANGE/operations" -d '{"operation_type":"CREATE_PAGE","payload":{"path":"operations/itest-classify.md","title":"Classification Integration","nav_path":"Operations/Classification integration","content":"# Classification Integration\n\n## Preconditions\n\nReady.\n\n## Procedure\n\nApply.\n\n## Rollback\n\nRevert.\n","workspace_key":"reference"}}' >/dev/null
+curl -fsS -X POST "${AUTH[@]}" "$API/api/v1/changes/$CLASS_CHANGE/validate" -d '{}' >/dev/null
+curl -fsS -X POST "${AUTH[@]}" -H 'Idempotency-Key: itest-class-publish' "$API/api/v1/changes/$CLASS_CHANGE/publish" -d '{}' >/dev/null
+SUGGESTIONS=$(mktemp)
+CURATED=$(mktemp)
+DOCPLANE_API="$API" DOCPLANE_TOKEN="$TOKEN" python3 scripts/knowledge_class_suggest.py --out "$SUGGESTIONS" >/dev/null
+python3 - "$SUGGESTIONS" "$CURATED" <<'PY'
+import json,pathlib,sys
+report=json.loads(pathlib.Path(sys.argv[1]).read_text())
+report["suggestions"]=[item for item in report["suggestions"] if item["path"]=="operations/itest-classify.md"]
+assert len(report["suggestions"])==1 and report["suggestions"][0]["proposed"]=="OPERATION"
+pathlib.Path(sys.argv[2]).write_text(json.dumps(report))
+PY
+FIRST_APPLY=$(DOCPLANE_API="$API" DOCPLANE_TOKEN="$TOKEN" python3 scripts/knowledge_class_apply.py "$CURATED")
+SECOND_APPLY=$(DOCPLANE_API="$API" DOCPLANE_TOKEN="$TOKEN" python3 scripts/knowledge_class_apply.py "$CURATED")
+python3 - "$FIRST_APPLY" "$SECOND_APPLY" <<'PY'
+import json,sys
+first,second=map(json.loads,sys.argv[1:])
+assert first["counts"]=={"applied":1,"already_matched":0,"optimistic_lock_skips":0,"remaining":0}
+assert second["counts"]=={"applied":0,"already_matched":1,"optimistic_lock_skips":0,"remaining":0}
+PY
+rm -f "$SUGGESTIONS" "$CURATED"
+compose exec -T postgres psql -U docs -d docs -Atc "SELECT count(*) FROM pg_constraint WHERE conname='pages_knowledge_class_check'" | grep -qx 1 || fail "migration 010 CHECK missing"
+curl -fsS "${AUTH[@]}" "$API/api/v1/pages?path=operations/itest-classify.md" | grep -q '"knowledge_class":"OPERATION"' || fail "curated class was not applied"
+
+log "15. managed routed front does not self-issue"
 compose down -v --remove-orphans >/dev/null
 sed -i 's/^DOCPLANE_ACCESS_PROFILE=.*/DOCPLANE_ACCESS_PROFILE=managed/' "$ENV_FILE"
 export DOCPLANE_ACCESS_PROFILE=managed

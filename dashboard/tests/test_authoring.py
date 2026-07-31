@@ -49,6 +49,16 @@ app.include_router(authoring.router)
 client = TestClient(app)
 
 
+def test_authoring_exposes_governed_nullable_knowledge_class_select():
+    html = (ROOT / "dashboard/static/index.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "dashboard/static/authoring.js").read_text(encoding="utf-8")
+    assert 'id="authoring-knowledge-class"' in html
+    assert '<option value="">(unclassified)</option>' in html
+    assert "/classification`" in javascript
+    assert "from Authoring" in javascript
+    assert "expected_metadata_version:trust.metadata_version" in javascript
+
+
 def setup_function():
     authoring.client = FakeControlPlane()
 

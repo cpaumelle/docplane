@@ -24,6 +24,10 @@ from app.markdown_sections import find_section
 from app.runtime import deploy_current_state, state_identity
 
 _PATH_RE = re.compile(r"^[a-z0-9/_-]+\.md$")
+_KNOWLEDGE_CLASSES = {
+    "ARCHITECTURE", "OPERATION", "REFERENCE", "POLICY",
+    "DECISION", "EVIDENCE", "DESIGN", "WORK_NOTE",
+}
 _OPERATION_TYPES = {
     "CREATE_PAGE",
     "REPLACE_DOCUMENT",
@@ -307,6 +311,9 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
             if op_type == "CREATE_PAGE":
                 _require_payload(operation, "path", "title", "nav_path", "content")
                 path = str(payload["path"])
+                knowledge_class = payload.get("knowledge_class")
+                if knowledge_class is not None and knowledge_class not in _KNOWLEDGE_CLASSES:
+                    raise ValueError("KNOWLEDGE_CLASS_INVALID:" + str(knowledge_class))
                 if not _PATH_RE.fullmatch(path):
                     raise ValueError("PATH_INVALID")
                 if any(candidate["path"] == path and candidate["status"] != "archived" for candidate in pages):
@@ -325,7 +332,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     "workspace_id": _workspace_id(conn, workspace_key),
                     "workspace_key": workspace_key,
                     "publication_state": "PUBLISHED",
-                    "knowledge_class": payload.get("knowledge_class"),
+                    "knowledge_class": knowledge_class,
                     "verification_state": "UNVERIFIED",
                     "owner_principal_id": None,
                     "review_due_at": None,
@@ -352,6 +359,8 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                 unexpected = set(payload) - allowed
                 if unexpected:
                     raise ValueError("METADATA_FIELD_UNSUPPORTED:" + ",".join(sorted(unexpected)))
+                if "knowledge_class" in payload and payload["knowledge_class"] is not None and payload["knowledge_class"] not in _KNOWLEDGE_CLASSES:
+                    raise ValueError("KNOWLEDGE_CLASS_INVALID:" + str(payload["knowledge_class"]))
                 for field in ("title", "nav_path", "knowledge_class", "criticality"):
                     if field in payload:
                         page[field] = payload[field]

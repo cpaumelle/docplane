@@ -44,9 +44,41 @@
     page=await api(`/api/control-plane/authoring/pages/${id}`); original=page.content; change=null; setValue(original);
     $("authoring-page-title").textContent=page.title;
     $("authoring-page-meta").textContent=`${page.path} · ${page.workspace_key} · v${page.version} · ${page.revision}`;
+    $("authoring-knowledge-class").value=page.knowledge_class||"";
+    $("authoring-knowledge-class").disabled=false;
     $("authoring-outline").innerHTML=(page.outline||[]).map((item)=>`<div>${" ".repeat(Math.max(0,item.level-1)*2)}${escape(item.title)} <code>${escape(item.heading_id)}</code></div>`).join("");
     $("authoring-change-id").textContent="not created"; $("authoring-validation").textContent="Not validated."; $("authoring-purpose").value=""; status("Editing revision-bound source");
     await Promise.all([diff(), loadHistory()]); enable();
+  }
+  async function classifyFromAuthoring() {
+    if (!page) return;
+    const selected=$("authoring-knowledge-class").value||null;
+    const previous=page.knowledge_class||null;
+    if (selected===previous) return;
+    const control=$("authoring-knowledge-class"); control.disabled=true;
+    try {
+      const trust=await api(`/api/v1/pages/${page.resource_id}/trust`);
+      const updated=await api(`/api/v1/pages/${page.resource_id}/classification`,{
+        method:"POST",headers:{"Content-Type":"application/json","Idempotency-Key":key("authoring-classify")},
+        body:JSON.stringify({
+          expected_metadata_version:trust.metadata_version,
+          workspace_id:trust.workspace_id,
+          publication_state:trust.publication_state,
+          knowledge_class:selected,
+          criticality:trust.criticality,
+          owner_principal_id:trust.owner_principal_id,
+          review_due_at:trust.review_due_at,
+          provenance:trust.provenance,
+          reason:`Reclassified ${previous||"(unset)"} → ${selected||"(unset)"} from Authoring`,
+        }),
+      });
+      page.knowledge_class=updated.knowledge_class;
+      page.metadata_version=updated.metadata_version;
+      status(`Classification saved from Authoring: ${selected||"unclassified"}`);
+    } catch (error) {
+      control.value=previous||"";
+      status(error.payload?.detail?.code||error.message);
+    } finally { control.disabled=false; }
   }
   async function loadHistory() {
     if (!page) return;
@@ -79,6 +111,7 @@
   $("authoring-search").addEventListener("click",()=>search().catch((error)=>status(error.message)));
   $("authoring-editor").addEventListener("input",()=>diff().catch(()=>{}));
   $("authoring-purpose").addEventListener("input",enable);
+  $("authoring-knowledge-class").addEventListener("change",()=>classifyFromAuthoring().catch((error)=>status(error.message)));
   $("authoring-propose").addEventListener("click",()=>propose().catch((error)=>status(error.message)));
   $("authoring-validate").addEventListener("click",()=>validate().catch((error)=>status(error.message)));
   $("authoring-publish").addEventListener("click",()=>publish().catch((error)=>status(error.message)));

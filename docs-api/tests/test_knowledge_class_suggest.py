@@ -92,3 +92,12 @@ def test_report_is_total_sorted_and_write_free():
     assert report["conflicts"][0]["path"] == "sites/dinard.md"
     assert pages == snapshot  # proposes only — never mutates its input
     assert build_report(pages) == report  # deterministic
+
+
+def test_api_report_carries_metadata_version_for_optimistic_apply():
+    report = build_report([_page(
+        path="operations/backup.md",
+        resource_id="page-1",
+        metadata_version=7,
+    )])
+    assert report["suggestions"][0]["metadata_version"] == 7

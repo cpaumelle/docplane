@@ -26,6 +26,10 @@ _PATH_SCHEMA: dict[str, Any] = {
     "examples": ["reference/example.md"],
 }
 _STRING_SCHEMA: dict[str, Any] = {"type": "string"}
+_KNOWLEDGE_CLASS_SCHEMA: dict[str, Any] = {
+    "type": ["string", "null"],
+    "enum": [None, "ARCHITECTURE", "OPERATION", "REFERENCE", "POLICY", "DECISION", "EVIDENCE", "DESIGN", "WORK_NOTE"],
+}
 
 
 def _object_schema(
@@ -54,7 +58,7 @@ _PAYLOAD_SCHEMAS: dict[str, dict[str, Any]] = {
             "content": _STRING_SCHEMA,
             "workspace_key": {"type": "string", "pattern": r"^[a-z0-9][a-z0-9_-]{0,62}$"},
             "resource_id": {"type": "string", "format": "uuid"},
-            "knowledge_class": {"type": ["string", "null"]},
+            "knowledge_class": _KNOWLEDGE_CLASS_SCHEMA,
             "criticality": {"type": "string", "default": "NORMAL"},
         },
         required=["path", "title", "nav_path", "content"],
@@ -74,7 +78,7 @@ _PAYLOAD_SCHEMAS: dict[str, dict[str, Any]] = {
             "title": {"type": "string", "minLength": 1},
             "nav_path": {"type": "string", "minLength": 1},
             "workspace_key": {"type": "string", "pattern": r"^[a-z0-9][a-z0-9_-]{0,62}$"},
-            "knowledge_class": {"type": ["string", "null"]},
+            "knowledge_class": _KNOWLEDGE_CLASS_SCHEMA,
             "criticality": {"type": "string"},
         },
         description="Patch only the listed metadata fields; content and path are not changed.",

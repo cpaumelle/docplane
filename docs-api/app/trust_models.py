@@ -20,7 +20,7 @@ class PageClassificationUpdate(BaseModel):
         "POLICY",
         "EVIDENCE",
         "WORK_NOTE",
-    ]
+    ] | None
     criticality: Literal["NORMAL", "IMPORTANT", "OPERATIONAL_CRITICAL", "POLICY_REQUIRED"] = (
         "NORMAL"
     )
