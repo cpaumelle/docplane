@@ -143,6 +143,12 @@ button.crumb:hover { background:var(--bg-sunken); }
 .chip--ok { background:#e6f6ef; color:var(--state-ok); }
 .chip--warn { background:#faf1e0; color:var(--state-warn); }
 .chip--quiet { background:var(--bg-sunken); color:var(--text-faint); }
+/* The knowledge-class chip is a select in disguise: same chip anatomy, plus
+ * a cursor and native menu. Unset pages read as an invitation, not a value. */
+select.chip-class { appearance:none; -webkit-appearance:none; border:1px solid var(--border); width:auto; cursor:pointer; padding:.1rem .5rem; line-height:1.4; }
+select.chip-class:hover { border-color:var(--action); color:var(--text-strong); }
+select.chip-class:disabled { opacity:.5; cursor:progress; }
+select.chip-class.chip-class--unset { color:var(--text-faint); border-style:dashed; }
 .candidate ul { margin:.4rem 0; padding-left:1.25rem; }
 .candidate--protected { border-left:4px solid var(--state-warn); }
 .signal-note { margin-top:1rem; padding:.75rem 1rem; background:var(--brand-50); border-radius:var(--radius-input); }

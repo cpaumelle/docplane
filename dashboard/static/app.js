@@ -406,9 +406,14 @@ function renderPages() {
   $("explore-pages").innerHTML = rows.length ? rows.map((page) => {
     const verification = (page.verification_state || "UNVERIFIED").toUpperCase();
     const domain = pageDomain(page);
+    // The class chip IS the switcher: a select styled as the chip, driving
+    // the governed trust classify verb (optimistic-locked, audited).
+    const classOptions = KNOWLEDGE_CLASSES.map((value) =>
+      `<option value="${value}"${page.knowledge_class === value ? " selected" : ""}>${value.toLowerCase().replace(/_/g, " ")}</option>`).join("");
     const chips = [
       `<span class="dp-badge" data-domain="${esc(domain)}">${esc(domain)}</span>`,
-      page.knowledge_class ? `<span class="chip">${esc(page.knowledge_class)}</span>` : "",
+      `<select class="chip chip-class${page.knowledge_class ? "" : " chip-class--unset"}" data-id="${esc(page.resource_id)}" title="Knowledge class — changing it records a governed reclassification">
+         <option value=""${page.knowledge_class ? "" : " selected"} disabled hidden>set class…</option>${classOptions}</select>`,
       `<span class="chip chip--${verification === "VERIFIED" ? "ok" : "quiet"}">${esc(verification.toLowerCase())}</span>`,
       page.status === "archived" ? `<span class="chip chip--warn">archived</span>` : "",
     ].join("");
@@ -421,6 +426,49 @@ function renderPages() {
   }).join("") : `<p class="muted">${exploreSearchActive() ? "No pages match this search." : "No pages directly in this directory."}</p>`;
   $("explore-pages").querySelectorAll(".page-history").forEach((button) => button.addEventListener("click", () => navigate("history")));
   $("explore-pages").querySelectorAll(".page-verify").forEach((button) => button.addEventListener("click", () => requestVerification({page_resource_id: button.dataset.id}, button.dataset.path)));
+  $("explore-pages").querySelectorAll(".chip-class").forEach((select) => select.addEventListener("change", () => reclassifyPage(select.dataset.id, select.value, select)));
+}
+
+const KNOWLEDGE_CLASSES = ["ARCHITECTURE", "OPERATION", "REFERENCE", "POLICY", "DECISION", "EVIDENCE", "DESIGN", "WORK_NOTE"];
+
+async function reclassifyPage(resourceId, knowledgeClass, select) {
+  // Echo the page's current trust metadata with only the class changed —
+  // the classify verb replaces the whole set under an optimistic lock, so a
+  // stale row loses cleanly (409) instead of clobbering concurrent edits.
+  const page = exploredPages.find((item) => item.resource_id === resourceId);
+  if (!page || !knowledgeClass || page.knowledge_class === knowledgeClass) return;
+  select.disabled = true;
+  try {
+    const trust = await api(`/api/v1/pages/${resourceId}/trust`);
+    await api(`/api/v1/pages/${resourceId}/classification`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID()},
+      body: JSON.stringify({
+        expected_metadata_version: trust.metadata_version,
+        workspace_id: trust.workspace_id,
+        publication_state: trust.publication_state,
+        knowledge_class: knowledgeClass,
+        criticality: trust.criticality,
+        owner_principal_id: trust.owner_principal_id,
+        review_due_at: trust.review_due_at,
+        provenance: trust.provenance,
+        reason: `Reclassified ${page.knowledge_class || "(unset)"} → ${knowledgeClass} from Explore`,
+      }),
+    });
+    page.knowledge_class = knowledgeClass;
+    page.verification_state = trust.verification_state;
+  } catch (error) {
+    const detail = error.payload?.detail || {};
+    const explanation = detail.code === "WORKSPACE_KNOWLEDGE_CLASS_MISMATCH"
+      ? "WORK_NOTE is reserved for pages in a WORK workspace (and vice versa)."
+      : detail.code === "PAGE_METADATA_VERSION_STALE"
+        ? "Page metadata changed underneath you — the list will refresh."
+        : (error.message || "Reclassification failed.");
+    window.alert(explanation);
+  } finally {
+    select.disabled = false;
+    if (exploreSearchActive()) renderPages(); else refreshExploreListing();
+  }
 }
 
 async function loadPageBatch(reset = false) {
