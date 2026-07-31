@@ -1,0 +1,63 @@
+{
+  "programme": "operations-reorg",
+  "baseline": {
+    "fetched_at": "2026-07-31",
+    "corpus_fingerprint": "88c807de1f160b46",
+    "operations_total": 121,
+    "operations_direct": 66,
+    "operations_nested": 55,
+    "structural_score_before": {"operations": {"score": 69, "severity": "HIGH"}, "operations/runbooks": {"score": 37, "severity": "HIGH"}}
+  },
+  "session_1": {
+    "description": "Direct-root reduction, self-contained",
+    "moves": [
+      {"resource_id": "2a029393-1c40-5b90-aaa8-5711fa4881a9", "from": "operations/b5a-fr-discovery-2026-05-29.md", "to": "operations/investigations/b5a-fr-discovery-2026-05-29.md"},
+      {"resource_id": "c4340c98-570c-51ff-a06d-5b2bc2274ce9", "from": "operations/cp-net-1-phase3-host-resolver.md", "to": "operations/runbooks/cp-net-1-phase3-host-resolver.md"},
+      {"resource_id": "f7c79739-a048-5af6-92e7-51b8f48d848f", "from": "operations/f-bootstrap-dispatch-1-fresh-edge-transit-dispatch.md", "to": "operations/follow-ups/f-bootstrap-dispatch-1-fresh-edge-transit-dispatch.md"}
+    ],
+    "new_pages": [
+      {"path": "operations/follow-ups/index.md", "purpose": "landing page, bundled because follow-ups/ crosses the 3-member missing_index threshold with the f-bootstrap-dispatch-1 move"},
+      {"path": "operations/runbooks/unifi-express-l3-adoption.md", "purpose": "extracted reusable mca-ctrl L3-adoption procedure from operations/unifi-express-performance.md"}
+    ],
+    "content_edits": [
+      {"resource_id": "7a1bca9f-e092-568d-9561-1da04ed31c94", "path": "operations/unifi-express-performance.md", "edit": "replace extracted procedure section with a pointer to the new runbooks/unifi-express-l3-adoption.md page; re-tag disposition archived; path unchanged; content-conservation hash proof required"}
+    ],
+    "held_out": [
+      {"resource_id": "85246812-6ddc-580f-927a-f2a5472ce7b3", "path": "operations/control-plane-enforcement.md", "reason": "disputed canonicality, see plan §2a; fix its broken control-plane/authority-model.md link independently of placement"}
+    ]
+  },
+  "session_2": {
+    "description": "Nested taxonomy cleanup, does not reduce direct-root count",
+    "cohort_B_security": [
+      {"from": "operations/runbooks/break-glass-procedure.md", "to": "operations/security/break-glass-procedure.md"},
+      {"from": "operations/runbooks/wg-key-rotation-split-recovery.md", "to": "operations/security/wg-key-rotation-split-recovery.md"}
+    ],
+    "cohort_C_incidents": [
+      {"from": "operations/postmortems/2026-07-uk-wg-site-key-split.md", "to": "operations/incidents/2026-07-uk-wg-site-key-split.md"},
+      {"from": "operations/investigations/transit-apply-syncconf-on-absent.md", "to": "operations/incidents/transit-apply-syncconf-on-absent.md", "metadata_edit": "knowledge_class=EVIDENCE"}
+    ],
+    "cohort_A_network_fabric": {
+      "moves": [
+        {"from": "operations/runbooks/edge-cache-bootstrap.md", "to": "operations/network-fabric/edge-transit/edge-cache-bootstrap.md"},
+        {"from": "operations/runbooks/fr-ccm-lan-onboarding.md", "to": "operations/network-fabric/edge-transit/fr-ccm-lan-onboarding.md"},
+        {"from": "operations/runbooks/france-manual-failback.md", "to": "operations/network-fabric/edge-transit/france-manual-failback.md"},
+        {"from": "operations/runbooks/hub2-transit-bootstrap.md", "to": "operations/network-fabric/edge-transit/hub2-transit-bootstrap.md"}
+      ],
+      "new_pages": [{"path": "operations/network-fabric/edge-transit/index.md", "purpose": "mandatory landing page, bundled atomically - 4 pages would otherwise trigger missing_index"}],
+      "bundled_fix": "hub2-transit-bootstrap.md's retired docs.charliehub.net citation repointed to docplane.charliehub.internal"
+    }
+  },
+  "session_3_deferred": [
+    "control-plane-enforcement.md (pending §2a resolution)",
+    "invariant-roadmap.md (needs methodology/status-table split before any move)",
+    "w4-1-5c-g1a-evidence.md / w4-1-5c-g1a-execution-plan.md (navigation_metadata_reconciliation only)",
+    "docplane-redaction-remediation-register.md new-subsection proposal (1 page, below 3-page bar)",
+    "5-then-recalculated missing-index.md subsections",
+    "Security & Access vs Security nav-label inconsistency",
+    "Tracker-set inconsistent nav tagging",
+    "archive/root-placement policy issue (must open before closing this programme)"
+  ],
+  "score_forecast": {
+    "after_session_1_and_2": {"operations": {"direct_pages": 63, "score": 66, "severity": "HIGH"}, "operations/runbooks": {"direct_pages": 31, "score": 32, "severity": "HIGH"}, "operations/follow-ups": {"direct_pages": 4}, "operations/network-fabric/edge-transit": {"direct_pages": 5, "review_candidate": false}}
+  }
+}
