@@ -80,8 +80,8 @@ def test_rendering_is_deterministic_stamped_and_flags_description_gaps(tmp_path)
     pages = meter_list.render_pages("hub2.prometheus", structure, fp)
     assert pages == meter_list.render_pages("hub2.prometheus", structure, fp)
     assert [page["path"] for page in pages] == [
-        "observe/meter-list/hub2.prometheus/index.md",
-        "observe/meter-list/hub2.prometheus/backup-alerts.md",
+        "observe/meter-list/hub2-prometheus/index.md",
+        "observe/meter-list/hub2-prometheus/backup-alerts.md",
     ]
     body = pages[1]["content"]
     assert fp[:16] in body
@@ -130,10 +130,47 @@ def test_navigation_is_collision_free_under_the_deployed_validator(tmp_path):
     tree: dict = {}
     for page in [meter_list.presence_page(), *meter_list.render_pages("hub2.prometheus", structure, fp)]:
         _insert(tree, page["nav_path"].split(" / "), page["path"])
+    # Nav keeps the true dotted identity for humans; paths carry the slug.
     source_node = tree["Observe"]["Meter list"]["hub2.prometheus"]
     assert isinstance(source_node, dict)
-    assert source_node["Overview"] == "observe/meter-list/hub2.prometheus/index.md"
+    assert source_node["Overview"] == "observe/meter-list/hub2-prometheus/index.md"
     assert tree["Observe"]["Meter list"]["Overview"] == "observe/meter-list/index.md"
+
+
+def test_every_rendered_path_satisfies_the_deployed_path_contract(tmp_path):
+    """The Sprint 6 fabric canary lesson: nav was validated under the
+    deployed validator, but page PATHS never were — and the deployed path
+    contract forbids dots outside the .md suffix, refusing all 36 pages of
+    the first live run (source key hub2.prometheus). Validate every
+    rendered path against the real publication regex, with the exact
+    dotted source key the fabric uses AND a dotted file stem."""
+    from app.publication import _PATH_RE
+
+    (tmp_path / "ceph.rules.yml").write_text(RULES_YML, encoding="utf-8")
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    fp = meter_list.fingerprint(structure)
+    pages = meter_list.render_pages("hub2.prometheus", structure, fp)
+    for page in [meter_list.presence_page(), *pages]:
+        assert _PATH_RE.fullmatch(page["path"]), page["path"]
+    # The dotted identities survive where they belong: entity keys and nav.
+    assert meter_list._slug("hub2.prometheus") == "hub2.prometheus"
+    assert {page["path"] for page in pages} == {
+        "observe/meter-list/hub2-prometheus/index.md",
+        "observe/meter-list/hub2-prometheus/backup-alerts.md",
+        "observe/meter-list/hub2-prometheus/ceph-rules.md",
+    }
+    # Index links point at the slugged paths, relative to the source dir.
+    index = pages[0]["content"]
+    assert "(hub2-prometheus/ceph-rules.md)" in index
+    assert "`ceph.rules`" in index
+
+
+def test_colliding_file_stem_slugs_are_refused(tmp_path):
+    (tmp_path / "foo.rules.yml").write_text(RULES_YML, encoding="utf-8")
+    (tmp_path / "foo-rules.yml").write_text(RULES_YML, encoding="utf-8")
+    structure = meter_list.parse_rules(tmp_path)
+    with pytest.raises(RuntimeError, match="both slug to page path segment"):
+        meter_list.render_pages("hub2.prometheus", structure, meter_list.fingerprint(structure))
 
 
 def test_importer_payloads_validate_against_the_deployed_api_models(tmp_path):

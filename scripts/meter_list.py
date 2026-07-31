@@ -48,15 +48,28 @@ from migration.redaction import redact  # noqa: E402
 from schema_catalogue import ApiError, Client  # noqa: E402  (shared API client)
 
 GENERATOR_NAME = "docplane-meter-list"
-GENERATOR_VERSION = "1.1.0"
+GENERATOR_VERSION = "1.2.0"
 SECTION = "observe/meter-list"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
 _SLUG_RE = re.compile(r"[^a-z0-9_.-]+")
+_PATH_SLUG_RE = re.compile(r"[^a-z0-9_-]+")
 
 
 def _slug(value: str) -> str:
+    """Entity-key charset: dots are legal (hub2.prometheus, rule.job-up-ratio)."""
     slug = _SLUG_RE.sub("-", value.strip().lower()).strip("-.")
+    return slug[:120] or "unnamed"
+
+
+def _path_slug(value: str) -> str:
+    """Page-path segment charset. The deployed path contract
+    (publication._PATH_RE) forbids dots everywhere except the .md suffix,
+    so identities that legally carry dots — the hub2.prometheus source key,
+    a foo.rules file stem — must be slugged separately for paths. The
+    entity key stays the stable identity; the path slug is display routing.
+    Found by the Sprint 6 fabric canary: PATH_INVALID on all 36 pages."""
+    slug = _PATH_SLUG_RE.sub("-", value.strip().lower()).strip("-")
     return slug[:120] or "unnamed"
 
 
@@ -146,12 +159,25 @@ def render_pages(source_key: str, structure: dict[str, Any], structure_hash: str
         f"rule-set fingerprint `{structure_hash[:16]}` · the rule files in git are "
         "authoritative. Edit rules there, never here."
     )
+    source_slug = _path_slug(source_key)
+    # Path-slugging is lossy (foo.rules and foo-rules collide); a silent
+    # collision would make two rule files fight over one page, so refuse.
+    stem_slugs: dict[str, str] = {}
+    for file_stem in sorted(structure):
+        slug = _path_slug(file_stem)
+        if slug in stem_slugs:
+            raise RuntimeError(
+                f"rule files {stem_slugs[slug]!r} and {file_stem!r} both slug to page path segment {slug!r} — rename one"
+            )
+        stem_slugs[slug] = file_stem
+
     pages: list[dict[str, str]] = []
     index_lines = []
     for file_stem in sorted(structure):
         groups = structure[file_stem]
+        stem_slug = _path_slug(file_stem)
         rule_count = sum(len(rules) for rules in groups.values())
-        index_lines.append(f"- [`{file_stem}`]({source_key}/{file_stem}.md) — {rule_count} rules")
+        index_lines.append(f"- [`{file_stem}`]({source_slug}/{stem_slug}.md) — {rule_count} rules")
         body = [f"# Meter list — `{file_stem}`", "", stamp, ""]
         for group_name in sorted(groups):
             body += [f"## Group `{group_name}`", ""]
@@ -159,8 +185,10 @@ def render_pages(source_key: str, structure: dict[str, Any], structure_hash: str
                 body += _rule_section(rule)
         pages.append(
             {
-                "path": f"{SECTION}/{source_key}/{file_stem}.md",
+                "path": f"{SECTION}/{source_slug}/{stem_slug}.md",
                 "title": f"Meter list — {file_stem}",
+                # Nav is display, not path: the true dotted identities stay
+                # visible to humans even where the path charset can't carry them.
                 "nav_path": f"Observe / Meter list / {source_key} / {file_stem}",
                 "content": "\n".join(body).rstrip() + "\n",
             }
@@ -179,7 +207,7 @@ def render_pages(source_key: str, structure: dict[str, Any], structure_hash: str
     pages.insert(
         0,
         {
-            "path": f"{SECTION}/{source_key}/index.md",
+            "path": f"{SECTION}/{source_slug}/index.md",
             "title": f"{source_key} meter list",
             # The source node parents the per-file pages, so its landing page
             # takes the corpus's Overview-leaf idiom (Sprint 5 nav lesson).
@@ -414,8 +442,12 @@ def main(argv: list[str] | None = None) -> int:
     structure_hash = fingerprint(structure)
     pages = render_pages(source_key, structure, structure_hash)
     total_rules = sum(len(rules) for groups in structure.values() for rules in groups.values())
+    unwired = sum(1 for _, _, rule in iter_rules(structure) if not rule.get("service"))
     print(f"fingerprint {structure_hash}")
-    print(f"parsed {total_rules} rules from {len(structure)} files; rendered {len(pages)} pages")
+    print(
+        f"parsed {total_rules} rules from {len(structure)} files; rendered {len(pages)} pages; "
+        f"{unwired} rules carry no service label and get no WATCHES wire"
+    )
 
     if args.dry_run:
         for page in pages:
