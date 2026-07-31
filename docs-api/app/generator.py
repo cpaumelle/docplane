@@ -1,6 +1,7 @@
 """Render the authoritative PostgreSQL corpus into an atomic MkDocs release."""
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -155,10 +156,75 @@ def validate_redirects(redirects: dict[str, str], pages: list[dict]) -> dict[str
     return dict(sorted(redirects.items()))
 
 
-def _augment_content(page: dict) -> str:
-    content = str(page["content"])
-    lines = [line for line in content.splitlines() if line.strip() != GENERATOR_STAMP]
-    content = "\n".join(lines).rstrip() + "\n"
+# The canonical page → domain derivation for the four-domain model. Everything
+# that badges, groups or filters pages by domain must call (or mirror) this —
+# the dashboard keeps a lockstep copy in static/app.js pageDomain().
+# Precedence: WORK_NOTE pages are the work domain's page form wherever they
+# live; the observe/ and model/ surface sections carry their domain; every
+# other page is the know corpus.
+_SURFACE_SECTIONS = {"observe": "observe", "model": "model"}
+_DOMAIN_LABELS = {"work": "Work", "know": "Know", "model": "Model", "observe": "Observe"}
+
+# One glyph per domain, shared across every surface (badges here; the
+# dashboard and future palette/search reuse the same set): book = know,
+# gears = model, graph = observe, hammer = work. Inline stroke SVGs so pages
+# stay self-contained — styled by .dp-badge svg in theme.css.
+_SVG_ATTRS = (
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"'
+)
+_DOMAIN_ICONS = {
+    "know": (
+        f'<svg {_SVG_ATTRS}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>'
+        '<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>'
+    ),
+    "model": (
+        f'<svg {_SVG_ATTRS.replace("2.2", "2")}><circle cx="12" cy="12" r="3"/>'
+        '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06'
+        'a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09'
+        'A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83'
+        'l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09'
+        'A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0'
+        'l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09'
+        'a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83'
+        'l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2'
+        'h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+    ),
+    "observe": f'<svg {_SVG_ATTRS}><path d="M18 20V10M12 20V4M6 20v-6"/></svg>',
+    "work": (
+        f'<svg {_SVG_ATTRS.replace("2.2", "2")}>'
+        '<path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/>'
+        '<path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756'
+        'L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg>'
+    ),
+}
+
+
+def page_domain(page: dict) -> str:
+    if (page.get("knowledge_class") or "").strip().upper() == "WORK_NOTE":
+        return "work"
+    head = str(page.get("path") or "").split("/", 1)[0]
+    return _SURFACE_SECTIONS.get(head, "know")
+
+
+def _badge_markup(page: dict) -> str:
+    """One line of raw HTML — the page's meta strip: coloured domain badge
+    (icon anatomy), quiet facet chips (knowledge class; GENERATED provenance)
+    and the updated/version meta. Styled by the shared category tokens in
+    mkdocs/overrides/assets/theme.css; the wrapper's data-domain drives the
+    domain page tint and the reader's context bar. One line so re-augmenting
+    can strip and re-insert it idempotently."""
+    domain = page_domain(page)
+    chips = [
+        f'<span class="dp-badge dp-badge--ic" data-domain="{domain}">'
+        f"{_DOMAIN_ICONS[domain]}{_DOMAIN_LABELS[domain]}</span>"
+    ]
+    knowledge_class = (page.get("knowledge_class") or "").strip()
+    if knowledge_class and knowledge_class.upper() != "WORK_NOTE":
+        label = html.escape(knowledge_class.replace("_", " ").title())
+        chips.append(f'<span class="dp-chip">{label}</span>')
+    if page.get("provenance") == "GENERATED":
+        chips.append('<span class="dp-chip dp-chip--generated">Generated</span>')
     updated_at = page.get("updated_at")
     version = page.get("version")
     if updated_at:
@@ -166,19 +232,45 @@ def _augment_content(page: dict) -> str:
             rendered = updated_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         else:
             rendered = str(updated_at).replace("T", " ")[:16] + " UTC"
-        marker = f"*Last updated: {rendered}{f' · v{version}' if version else ''}*"
-        body = content.splitlines()
-        body = [line for line in body if not re.match(r"^\*[Ll]ast updated:.*\*$", line.strip())]
-        inserted = False
-        output: list[str] = []
-        for line in body:
-            output.append(line)
-            if not inserted and line.startswith("# "):
-                output.extend(["", marker, ""])
-                inserted = True
-        if not inserted:
-            output = [marker, ""] + output
-        content = "\n".join(output).rstrip() + "\n"
+        chips.append(
+            '<span class="dp-meta">Updated '
+            f"{rendered}{f' · v{version}' if version else ''}</span>"
+        )
+    return f'<p class="dp-badges" data-domain="{domain}">' + "".join(chips) + "</p>"
+
+
+def _augment_content(page: dict) -> str:
+    # Strip everything this function itself injects (stamp, meta strip) plus
+    # the legacy italic "Last updated" marker, so re-augmenting rendered
+    # output converges instead of accumulating.
+    lines = [
+        line for line in str(page["content"]).splitlines()
+        if line.strip() != GENERATOR_STAMP
+        and not line.lstrip().startswith('<p class="dp-badges"')
+        and not re.match(r"^\*[Ll]ast updated:.*\*$", line.strip())
+    ]
+    badges = _badge_markup(page)
+    head = ["", badges, ""]
+    inserted = False
+    output: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        output.append(line)
+        index += 1
+        if not inserted and line.startswith("# "):
+            # Canonicalise the head region: blank lines directly under the H1
+            # are replaced by exactly the inserted block, keeping the function
+            # a fixed point on its own output.
+            while index < len(lines) and lines[index].strip() == "":
+                index += 1
+            output.extend(head)
+            inserted = True
+    if not inserted:
+        while output and output[0].strip() == "":
+            output.pop(0)
+        output = head[1:] + output
+    content = "\n".join(output).rstrip() + "\n"
     return f"{GENERATOR_STAMP}\n{content}"
 
 

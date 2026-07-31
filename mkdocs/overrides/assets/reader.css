@@ -1,0 +1,58 @@
+/* DocPlane — reader surface: page action cluster + persistent context bar.
+ *
+ * The context bar is the fix for "the title and actions disappear when you
+ * scroll": once the H1 leaves the viewport, a slim fixed bar under the site
+ * header keeps breadcrumb, title, domain badge and every page action in
+ * reach. Markup is built by the reader script in overrides/main.html; all
+ * colour comes from the shared tokens (theme.css / brand.css overlay).
+ */
+
+/* ── Page action cluster (title row) ────────────────────────────────────── */
+.dp-actions { display:inline-flex; gap:.3rem; margin-left:.6rem; vertical-align:middle; }
+.dp-abtn {
+  display:inline-flex; align-items:center; gap:.32rem;
+  border:1px solid var(--border); background:var(--bg-surface); color:var(--text-muted);
+  border-radius:8px; padding:.26rem .6rem;
+  font:600 .68rem/1.4 var(--font-sans); letter-spacing:.02em;
+  cursor:pointer; white-space:nowrap;
+}
+.dp-abtn:hover { border-color:var(--action); color:var(--text-strong); }
+.dp-abtn:focus-visible { outline:2px solid var(--action); outline-offset:2px; }
+.dp-abtn:disabled { opacity:.55; cursor:default; }
+.dp-abtn--primary { background:var(--action); border-color:var(--action); color:var(--on-action); }
+.dp-abtn--primary:hover { background:var(--action-hover); border-color:var(--action-hover); color:var(--on-action); }
+.dp-abtn svg { width:.95em; height:.95em; }
+
+/* ── Persistent context bar ─────────────────────────────────────────────── */
+.dp-ctxbar {
+  position:fixed; left:0; right:0; z-index:4;
+  top:var(--dp-ctxbar-top, 2.4rem); /* set by the reader script to the real header height */
+  display:flex; align-items:center; gap:.6rem;
+  padding:.4rem 1rem;
+  background:color-mix(in srgb, var(--bg-surface) 90%, transparent);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border);
+  transform:translateY(-110%); opacity:0;
+  transition:transform .18s ease, opacity .18s ease;
+  pointer-events:none;
+}
+.dp-ctxbar.dp-ctxbar--visible { transform:translateY(0); opacity:1; pointer-events:auto; }
+@media (prefers-reduced-motion: reduce) { .dp-ctxbar { transition:none; } }
+.dp-ctxbar__crumbs {
+  font-size:.72rem; color:var(--text-faint); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; max-width:28vw; flex:none;
+}
+.dp-ctxbar__title {
+  font:650 .85rem/1.3 var(--font-sans); color:var(--text-strong);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+}
+.dp-ctxbar .dp-badge { flex:none; }
+.dp-ctxbar .dp-actions { margin-left:auto; flex:none; }
+
+/* The strip itself: keep the injected meta line on the grid Material uses. */
+.md-typeset .dp-badges { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; margin:.4rem 0 1rem; }
+
+@media (max-width:640px) {
+  .dp-ctxbar__crumbs { display:none; }
+  .dp-abtn { padding:.3rem .5rem; } /* ≥24px touch target with line-height */
+}

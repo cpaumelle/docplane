@@ -13,6 +13,14 @@
   --cloud:#e4e8ee; --pearl:#f7f8fa; --white:#ffffff;
   --state-ok:#1f9d6b; --state-warn:#c9821f; --state-bad:#d1493b;
 
+  /* Category identity (four-domain wayfinding) — standalone-dev fallback copy;
+   * the canonical definition lives in mkdocs/overrides/assets/theme.css and is
+   * loaded after this file, so it (and any brand.css overlay) wins. */
+  --cat-work:#8a6a1e;    --cat-work-wash:#f7f1e0;    --cat-work-ink:#6b5117;
+  --cat-know:#2b6cb0;    --cat-know-wash:#e9f1fa;    --cat-know-ink:#1f5187;
+  --cat-model:#6d4fa6;   --cat-model-wash:#f1edf9;   --cat-model-ink:#523c7e;
+  --cat-observe:#177f6d; --cat-observe-wash:#e7f5f1; --cat-observe-ink:#0f5f51;
+
   --bg-page:var(--pearl); --bg-surface:var(--white); --bg-sunken:#eef0f3;
   --border:var(--cloud); --border-hover:#d3d9e1;
   --text-strong:var(--ink); --text:var(--slate); --text-muted:var(--storm); --text-faint:var(--mist);
@@ -122,6 +130,16 @@ button.crumb:hover { background:var(--bg-sunken); }
 .page-line__actions a,.page-line__actions button { border:none; background:transparent; padding:.2rem .45rem; font-size:.8rem; color:var(--link); border-radius:6px; cursor:pointer; }
 .page-line__actions a:hover,.page-line__actions button:hover { background:var(--bg-sunken); text-decoration:none; }
 .chip { display:inline-flex; align-items:center; padding:.1rem .5rem; border-radius:var(--radius-pill); font-size:.72rem; font-weight:500; background:var(--bg-sunken); color:var(--text-muted); white-space:nowrap; }
+/* Category identity badge — standalone-dev fallback copy of the shared
+ * component in mkdocs/overrides/assets/theme.css (canonical, loaded after). */
+.dp-badge { display:inline-flex; align-items:center; gap:.38rem; padding:.1rem .55rem; border-radius:var(--radius-pill); font-size:.68rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase; white-space:nowrap; background:var(--cat-know-wash); color:var(--cat-know-ink); }
+.dp-badge::before { content:""; flex:none; width:.5em; height:.5em; border-radius:50%; background:var(--cat-know); }
+.dp-badge[data-domain="work"]    { background:var(--cat-work-wash);    color:var(--cat-work-ink); }
+.dp-badge[data-domain="work"]::before    { background:var(--cat-work); }
+.dp-badge[data-domain="model"]   { background:var(--cat-model-wash);   color:var(--cat-model-ink); }
+.dp-badge[data-domain="model"]::before   { background:var(--cat-model); }
+.dp-badge[data-domain="observe"] { background:var(--cat-observe-wash); color:var(--cat-observe-ink); }
+.dp-badge[data-domain="observe"]::before { background:var(--cat-observe); }
 .chip--ok { background:#e6f6ef; color:var(--state-ok); }
 .chip--warn { background:#faf1e0; color:var(--state-warn); }
 .chip--quiet { background:var(--bg-sunken); color:var(--text-faint); }

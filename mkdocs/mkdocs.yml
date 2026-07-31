@@ -40,6 +40,7 @@ extra_css:
   - assets/theme.css        # neutral shared design tokens
   - assets/brand-bridge.css # maps Material vars to the tokens
   - assets/header.css       # the ONE shared header (docs + dashboard)
+  - assets/reader.css       # reader surface: action cluster + context bar
   - assets/brand.css        # local brand override slot (neutral by default)
 
 hooks:

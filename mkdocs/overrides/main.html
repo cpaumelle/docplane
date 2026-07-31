@@ -28,8 +28,11 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <script>
-// Reader-page actions. Markdown download and visual editing resolve the same
-// canonical candidates, but editing stays in this page and frame.
+// Reader surface: page action cluster, domain tint stamp, and the persistent
+// context bar (title + breadcrumb + badge + actions stay reachable after the
+// H1 scrolls away). Download/edit resolve the same canonical candidates;
+// Verify mints a verification request through the fabric self-issue auth the
+// inline editor provides (window.DocPlaneInlineEditor.auth/api).
 document.addEventListener('DOMContentLoaded', function() {
   const contentHeader = document.querySelector('.md-content__inner h1');
   if (!contentHeader) return;
@@ -41,18 +44,15 @@ document.addEventListener('DOMContentLoaded', function() {
     : [path + '.md', path + '/index.md'];
   const filename = (path === '' ? 'index' : path.split('/').pop()) + '.md';
 
-  const btn = document.createElement('button');
-  btn.className = 'md-download-source';
-  btn.title = 'Download as Markdown';
-  btn.setAttribute('aria-label', 'Download this page as Markdown');
-  btn.style.cssText = 'background:none;border:none;cursor:pointer;margin-left:.4rem;vertical-align:middle;width:1.2em;height:1.2em;color:inherit;opacity:.6;';
-  btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>';
+  // The generator's meta strip declares the page's domain; the body stamp
+  // drives the domain page tint (theme.css).
+  const strip = document.querySelector('.dp-badges');
+  if (strip && strip.dataset.domain) document.body.dataset.dpDomain = strip.dataset.domain;
 
-  btn.addEventListener('click', async function() {
+  async function download() {
     for (const candidate of candidates) {
-      const rawUrl = '/raw/' + candidate;
       try {
-        const resp = await fetch(rawUrl, { cache: 'no-cache' });
+        const resp = await fetch('/raw/' + candidate, { cache: 'no-cache' });
         if (!resp.ok) continue;
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
@@ -65,17 +65,9 @@ document.addEventListener('DOMContentLoaded', function() {
       } catch (e) { /* try next candidate */ }
     }
     window.open('/raw/' + candidates[0], '_blank');
-  });
+  }
 
-  contentHeader.appendChild(btn);
-
-  const editBtn = document.createElement('button');
-  editBtn.className = 'md-edit-source';
-  editBtn.title = 'Edit this page';
-  editBtn.setAttribute('aria-label', 'Edit this page here');
-  editBtn.style.cssText = 'background:none;border:none;cursor:pointer;margin-left:.4rem;vertical-align:middle;width:1.2em;height:1.2em;color:inherit;opacity:.6;';
-  editBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
-  editBtn.addEventListener('click', function() {
+  function edit(trigger) {
     if (!window.DocPlaneInlineEditor) {
       window.alert('The visual editor is not available. Reload this page and try again.');
       return;
@@ -83,11 +75,95 @@ document.addEventListener('DOMContentLoaded', function() {
     window.DocPlaneInlineEditor.start({
       candidates: candidates,
       articleSelector: '.md-content__inner',
-      trigger: editBtn
+      trigger: trigger
     });
-  });
+  }
 
-  contentHeader.appendChild(editBtn);
+  const verifyButtons = [];
+  async function verify() {
+    const editorApi = window.DocPlaneInlineEditor;
+    if (!editorApi || !editorApi.auth || !editorApi.api) {
+      window.alert('The verification action is unavailable. Reload this page and try again.');
+      return;
+    }
+    verifyButtons.forEach(function(b) { b.disabled = true; });
+    try {
+      await editorApi.auth();
+      let resolved = null;
+      for (const candidate of candidates) {
+        try {
+          resolved = await editorApi.api('/api/control-plane/authoring/lookup?path=' + encodeURIComponent(candidate));
+          break;
+        } catch (e) { /* try next candidate */ }
+      }
+      if (!resolved) throw new Error('This page could not be resolved for verification.');
+      await editorApi.api('/api/v1/verification-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page_resource_id: resolved.resource_id, note: 'Requested from the page reader' })
+      });
+      verifyButtons.forEach(function(b) { b.textContent = 'Verification requested'; });
+    } catch (error) {
+      if (error.message !== 'Editing cancelled') window.alert(error.message);
+      verifyButtons.forEach(function(b) { b.disabled = false; });
+    }
+  }
+
+  const ICONS = {
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 21h16"/></svg>',
+    verify: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/><path d="m14.06 6.19 3.75 3.75"/></svg>'
+  };
+
+  function makeCluster() {
+    const cluster = document.createElement('span');
+    cluster.className = 'dp-actions';
+    const make = function(label, icon, title, handler, primary) {
+      const button = document.createElement('button');
+      button.className = 'dp-abtn' + (primary ? ' dp-abtn--primary' : '');
+      button.title = title;
+      button.innerHTML = ICONS[icon] + label;
+      button.addEventListener('click', function() { handler(button); });
+      cluster.appendChild(button);
+      return button;
+    };
+    make('md', 'download', 'Download this page as Markdown', download, false);
+    verifyButtons.push(make('Verify', 'verify', 'Request verification of this page against the fabric', verify, false));
+    make('Edit', 'edit', 'Edit this page here', function(b) { edit(b); }, true);
+    return cluster;
+  }
+
+  const titleText = contentHeader.textContent.trim();
+  contentHeader.appendChild(makeCluster());
+
+  // Persistent context bar: appears once the H1 leaves the viewport.
+  const bar = document.createElement('div');
+  bar.className = 'dp-ctxbar';
+  const crumbs = document.createElement('span');
+  crumbs.className = 'dp-ctxbar__crumbs';
+  const segments = path === '' ? [] : path.split('/');
+  crumbs.textContent = segments.slice(0, -1)
+    .map(function(s) { return s.replace(/[-_]/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }); })
+    .join(' / ') + (segments.length > 1 ? ' /' : '');
+  const title = document.createElement('span');
+  title.className = 'dp-ctxbar__title';
+  title.textContent = titleText || document.title;
+  bar.append(crumbs, title);
+  const badge = strip ? strip.querySelector('.dp-badge') : null;
+  if (badge) bar.appendChild(badge.cloneNode(true));
+  bar.appendChild(makeCluster());
+  document.body.appendChild(bar);
+
+  const header = document.querySelector('.md-header');
+  function placeBar() {
+    if (header) bar.style.setProperty('--dp-ctxbar-top', header.getBoundingClientRect().height + 'px');
+  }
+  placeBar();
+  window.addEventListener('resize', placeBar);
+
+  new IntersectionObserver(function(entries) {
+    bar.classList.toggle('dp-ctxbar--visible', !entries[0].isIntersecting);
+  }, { rootMargin: '-60px 0px 0px 0px' }).observe(contentHeader);
 });
 </script>
 <script>
