@@ -152,6 +152,19 @@ are derived consumers. If a step seems to require inverting that arrow, stop.
   importer first, then reconcile.
 - **Self-issue rate limited (429)** during API work: reuse an existing
   unexpired token; issuance limits are per source and global per hour.
+- **Bearer exposed in a process list** (2026-07-31 exercise: diagnosing a
+  hung publication client showed the automation bearer in the curl argv).
+  Treat any credential seen in `ps`/`/proc` as exposed: terminate the
+  client, do NOT reuse the token, finish any in-flight work with a freshly
+  issued credential (fabric self-issue exists for exactly this), then
+  rotate the exposed credential through the credential authority in the
+  same session and confirm the old token is rejected (401). Audit the event
+  ledger for uses of the exposed token between exposure and revocation.
+  Prevention: never pass bearers as command-line arguments — argv is
+  world-readable on the host. Use `curl --config <file>` / `-H @file` with
+  a 0600 file, or a client that reads the token from the environment
+  (env vars are not in argv). The importer already does this
+  (DOCPLANE_TOKEN via environment).
 
 ## Scheduling note
 
