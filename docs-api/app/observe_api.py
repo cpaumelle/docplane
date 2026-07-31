@@ -9,6 +9,7 @@ suite is the enforcement pointer for that invariant.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 from uuid import UUID
 
@@ -284,6 +285,297 @@ _CRITICALITY_RANK = {"NORMAL": 0, "IMPORTANT": 1, "OPERATIONAL_CRITICAL": 2, "PO
 _PAGING_SEVERITIES = ("critical", "page")
 
 
+def plan_gap_reconciliation(
+    candidates: list[dict[str, Any]],
+    existing: list[dict[str, Any]],
+    batch_limit: int,
+) -> dict[str, list[dict[str, Any]]]:
+    """Pure convergent projection plan.
+
+    Existing identities reopen regardless of the mint cap; only brand-new
+    triage load is capped. Resolution is exhaustive so the queue never
+    knowingly retains debt that coverage says has disappeared.
+    """
+    wanted = {(item["gap_kind"], item["subject_entity_id"]): item for item in candidates}
+    known = {(item["gap_kind"], item["subject_entity_id"]): item for item in existing}
+    resolve = [item for key, item in known.items() if item["status"] == "OPEN" and key not in wanted]
+    reopen = [
+        wanted[key] for key, item in known.items()
+        if item["status"] == "RESOLVED" and key in wanted
+    ]
+    refresh = [
+        wanted[key] for key, item in known.items()
+        if item["status"] == "OPEN" and key in wanted
+        and (
+            item.get("subject_entity_key") != wanted[key].get("subject_entity_key")
+            or item.get("page_path") != wanted[key].get("page_path")
+            or item.get("briefing") != wanted[key].get("briefing")
+        )
+    ]
+    unseen = [item for key, item in wanted.items() if key not in known]
+    return {
+        "create": unseen[:batch_limit],
+        "reopen": reopen,
+        "refresh": refresh,
+        "resolve": resolve,
+    }
+
+
+def _coverage_gap_candidates(cur) -> list[dict[str, Any]]:
+    """Return gap subjects from the same model attributes as coverage.
+
+    Page paths are importer-owned attributes, not inferred from rendered
+    files. Criticality is inherited from WATCHES-linked services' governed
+    pages and is used only to order the bounded triage projection.
+    """
+    cur.execute(
+        """
+        WITH rule_criticality AS (
+            SELECT r.entity_id,
+                   max(CASE p.criticality
+                         WHEN 'POLICY_REQUIRED' THEN 3
+                         WHEN 'OPERATIONAL_CRITICAL' THEN 2
+                         WHEN 'IMPORTANT' THEN 1
+                         ELSE 0 END) AS rank
+              FROM model.entities r
+              LEFT JOIN model.entity_links watches
+                     ON watches.from_entity_id = r.entity_id
+                    AND watches.relation = 'WATCHES'
+              LEFT JOIN model.entity_page_links pl
+                     ON pl.entity_id = watches.to_entity_id
+                    AND pl.relation = 'DESCRIBES'
+              LEFT JOIN docs.pages p ON p.resource_id = pl.page_resource_id
+             WHERE r.entity_kind = 'MONITOR_RULE' AND r.status = 'ACTIVE'
+             GROUP BY r.entity_id
+        )
+        SELECT r.entity_id::text, r.entity_key, r.display_name,
+               r.attributes->>'source_page_path', r.created_at,
+               coalesce(rc.rank, 0),
+               gap.gap_kind
+          FROM model.entities r
+          JOIN rule_criticality rc ON rc.entity_id = r.entity_id
+          CROSS JOIN LATERAL (
+              SELECT 'MISSING_DESCRIPTION'::text AS gap_kind
+               WHERE coalesce((r.attributes->>'has_description')::boolean, false) = false
+              UNION ALL
+              SELECT 'PAGING_ALERT_MISSING_RUNBOOK'::text
+               WHERE r.attributes->>'rule_kind' = 'alert'
+                 AND r.attributes->>'severity' = ANY(%s)
+                 AND coalesce(r.attributes->>'runbook_url', '') = ''
+          ) gap
+         ORDER BY rc.rank DESC, r.created_at, r.entity_key, gap.gap_kind
+        """,
+        (list(_PAGING_SEVERITIES),),
+    )
+    return [
+        {
+            "subject_entity_id": row[0],
+            "subject_entity_key": row[1],
+            "rule_name": row[2],
+            "page_path": row[3],
+            "first_observed_at": row[4],
+            "criticality_rank": int(row[5]),
+            "gap_kind": row[6],
+            "briefing": {
+                "gap_kind": row[6],
+                "rule": {"entity_id": row[0], "entity_key": row[1], "display_name": row[2]},
+                "page_path": row[3],
+                "authority": "/api/v1/observe/coverage",
+                "runbook_discipline": (
+                    "Triage the gap; do not manufacture a runbook. "
+                    "Runbooks are born from real operational events."
+                ),
+            },
+        }
+        for row in cur.fetchall()
+    ]
+
+
+@router.post("/api/v1/observe/coverage/reconcile-work")
+def reconcile_coverage_work(
+    batch_limit: int | None = Query(default=None, ge=1, le=100),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Project current gaps into a bounded Work queue.
+
+    Coverage remains authoritative for totals. This endpoint creates at most
+    ``batch_limit`` new items, while resolving and reopening known identities
+    exhaustively. Receipt replay makes every retry mutation-free.
+    """
+    key = _key(idempotency_key)
+    effective_limit = batch_limit or int(os.environ.get("DOCPLANE_COVERAGE_GAP_BATCH_LIMIT", "10"))
+    if not 1 <= effective_limit <= 100:
+        raise HTTPException(status_code=422, detail={"code": "COVERAGE_GAP_BATCH_LIMIT_INVALID"})
+    digest = receipt_digest({"route": "coverage-reconcile-work", "batch_limit": effective_limit})
+    with get_conn() as conn:
+        # Serialize the global projection even when the table is initially
+        # empty (SELECT ... FOR UPDATE cannot lock a row that does not exist).
+        lock_cur = conn.cursor()
+        lock_cur.execute("SELECT pg_advisory_xact_lock(hashtext('docplane.coverage-gap-reconcile'))")
+        replayed = load_receipt(conn, principal, key, "COVERAGE_GAP_RECONCILE", digest)
+        if replayed is not None:
+            return replayed
+        cur = conn.cursor()
+        candidates = _coverage_gap_candidates(cur)
+        missing_page_links = sorted(
+            item["subject_entity_key"] for item in candidates if not item["page_path"]
+        )
+        if missing_page_links:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "COVERAGE_GAP_PAGE_LINK_MISSING",
+                    "count": len(missing_page_links),
+                    "subjects": missing_page_links[:20],
+                    "truncated": len(missing_page_links) > 20,
+                    "remedy": "run the current meter-list importer before reconciling Work",
+                },
+            )
+        cur.execute(
+            """
+            SELECT work_item_id::text, gap_kind, subject_entity_id::text,
+                   subject_entity_key, page_path, briefing, status, version
+              FROM work.coverage_gap_items
+             ORDER BY first_seen_at, work_item_id
+             FOR UPDATE
+            """
+        )
+        existing = [
+            dict(zip(
+                ("work_item_id", "gap_kind", "subject_entity_id", "subject_entity_key",
+                 "page_path", "briefing", "status", "version"),
+                row,
+            ))
+            for row in cur.fetchall()
+        ]
+        plan = plan_gap_reconciliation(candidates, existing, effective_limit)
+        known_keys = {(item["gap_kind"], item["subject_entity_id"]) for item in existing}
+        unseen_total = sum(
+            1 for item in candidates
+            if (item["gap_kind"], item["subject_entity_id"]) not in known_keys
+        )
+        created_ids: list[str] = []
+        for item in plan["create"]:
+            cur.execute(
+                """
+                INSERT INTO work.coverage_gap_items
+                    (gap_kind, subject_entity_id, subject_entity_key, page_path,
+                     briefing, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING work_item_id::text
+                """,
+                (
+                    item["gap_kind"], item["subject_entity_id"], item["subject_entity_key"],
+                    item["page_path"], _json(item["briefing"]), principal.principal_id,
+                ),
+            )
+            created_ids.append(cur.fetchone()[0])
+        reopened_ids: list[str] = []
+        for item in plan["reopen"]:
+            cur.execute(
+                """
+                UPDATE work.coverage_gap_items
+                   SET status = 'OPEN', resolved_at = NULL, last_transition_at = now(),
+                       page_path = %s, briefing = %s, version = version + 1
+                 WHERE gap_kind = %s AND subject_entity_id = %s
+                RETURNING work_item_id::text
+                """,
+                (item["page_path"], _json(item["briefing"]), item["gap_kind"], item["subject_entity_id"]),
+            )
+            reopened_ids.append(cur.fetchone()[0])
+        refreshed_ids: list[str] = []
+        for item in plan["refresh"]:
+            cur.execute(
+                """
+                UPDATE work.coverage_gap_items
+                   SET subject_entity_key = %s, page_path = %s, briefing = %s,
+                       last_transition_at = now(), version = version + 1
+                 WHERE gap_kind = %s AND subject_entity_id = %s
+                RETURNING work_item_id::text
+                """,
+                (
+                    item["subject_entity_key"], item["page_path"], _json(item["briefing"]),
+                    item["gap_kind"], item["subject_entity_id"],
+                ),
+            )
+            refreshed_ids.append(cur.fetchone()[0])
+        resolved_ids: list[str] = []
+        for item in plan["resolve"]:
+            cur.execute(
+                """
+                UPDATE work.coverage_gap_items
+                   SET status = 'RESOLVED', resolved_at = now(),
+                       last_transition_at = now(), version = version + 1
+                 WHERE work_item_id = %s
+                RETURNING work_item_id::text
+                """,
+                (item["work_item_id"],),
+            )
+            resolved_ids.append(cur.fetchone()[0])
+        response = {
+            "created": len(created_ids),
+            "reopened": len(reopened_ids),
+            "refreshed": len(refreshed_ids),
+            "resolved": len(resolved_ids),
+            "created_work_item_ids": created_ids,
+            "reopened_work_item_ids": reopened_ids,
+            "refreshed_work_item_ids": refreshed_ids,
+            "resolved_work_item_ids": resolved_ids,
+            "batch_limit": effective_limit,
+            "coverage_gap_total": len(candidates),
+            "remaining_unprojected": max(0, unseen_total - len(created_ids)),
+        }
+        append_event(
+            conn,
+            event_type="COVERAGE_GAPS_RECONCILED",
+            channel="API",
+            producer_id="docplane-observe",
+            idempotency_key=f"COVERAGE_GAPS_RECONCILED:{principal.principal_id}:{key}",
+            principal=principal,
+            workspace_key="work",
+            resource_type="COVERAGE_GAP_RECONCILIATION",
+            resource_id=key,
+            metadata={name: response[name] for name in ("created", "reopened", "refreshed", "resolved", "batch_limit", "coverage_gap_total")},
+        )
+        save_receipt(conn, principal, key, "COVERAGE_GAP_RECONCILE", key, digest, response)
+        conn.commit()
+        return response
+
+
+@router.get("/api/v1/observe/coverage/work-items")
+def list_coverage_work(
+    status: str = Query(default="OPEN", pattern="^(OPEN|RESOLVED|all)$"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    predicate = "" if status == "all" else " WHERE status = %s"
+    params: list[Any] = [] if status == "all" else [status]
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT count(*) FROM work.coverage_gap_items{predicate}", params)
+        total = int(cur.fetchone()[0])
+        cur.execute(
+            """
+            SELECT work_item_id::text, gap_kind, subject_entity_id::text,
+                   subject_entity_key, page_path, briefing, status,
+                   first_seen_at, last_transition_at, resolved_at, version
+              FROM work.coverage_gap_items
+            """ + predicate + " ORDER BY first_seen_at, work_item_id LIMIT %s",
+            [*params, limit],
+        )
+        items = [
+            dict(zip(
+                ("work_item_id", "gap_kind", "subject_entity_id", "subject_entity_key",
+                 "page_path", "briefing", "status", "first_seen_at", "last_transition_at",
+                 "resolved_at", "version"),
+                row,
+            ))
+            for row in cur.fetchall()
+        ]
+    return {"items": items, "count": len(items), "total": total, "truncated": len(items) < total}
+
+
 @router.get("/api/v1/observe/coverage")
 def observe_coverage(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
     """The meter-list coverage view (Sprint 6, exemplar B): gaps derived from
@@ -389,8 +681,16 @@ def observe_coverage(principal: Principal = Depends(require_contributor)) -> dic
                 "paging_alerts_without_runbook",
                 "rules_without_service",
                 "criticality_ranking",
+                "bounded_work_projection",
             ],
+            # Additive compatibility: Sprint 6 clients may key on this token.
+            # It remains in place even though Sprint 8 delivers the bounded
+            # projection; compatibility_status says what changed without
+            # deleting or retyping an existing response value.
             "follow_up": ["verified_runbook_gating", "work_inbox_feed"],
+            "compatibility_status": {
+                "work_inbox_feed": "DELIVERED_AS_BOUNDED_WORK_PROJECTION",
+            },
         },
     }
 

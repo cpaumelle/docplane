@@ -175,22 +175,22 @@ def get_entity(entity_id: UUID, principal: Principal = Depends(require_contribut
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT l.relation, l.to_entity_id::text, e.entity_kind, e.entity_key, l.note, l.created_at
+            SELECT l.relation, l.to_entity_id::text, e.entity_kind, e.entity_key, l.note, l.metadata, l.created_at
               FROM model.entity_links l JOIN model.entities e ON e.entity_id = l.to_entity_id
              WHERE l.from_entity_id = %s ORDER BY l.relation, e.entity_kind, e.entity_key
             """,
             (str(entity_id),),
         )
-        links_out = [dict(zip(("relation", "to_entity_id", "entity_kind", "entity_key", "note", "created_at"), row)) for row in cur.fetchall()]
+        links_out = [dict(zip(("relation", "to_entity_id", "entity_kind", "entity_key", "note", "metadata", "created_at"), row)) for row in cur.fetchall()]
         cur.execute(
             """
-            SELECT l.relation, l.from_entity_id::text, e.entity_kind, e.entity_key, l.note, l.created_at
+            SELECT l.relation, l.from_entity_id::text, e.entity_kind, e.entity_key, l.note, l.metadata, l.created_at
               FROM model.entity_links l JOIN model.entities e ON e.entity_id = l.from_entity_id
              WHERE l.to_entity_id = %s ORDER BY l.relation, e.entity_kind, e.entity_key
             """,
             (str(entity_id),),
         )
-        links_in = [dict(zip(("relation", "from_entity_id", "entity_kind", "entity_key", "note", "created_at"), row)) for row in cur.fetchall()]
+        links_in = [dict(zip(("relation", "from_entity_id", "entity_kind", "entity_key", "note", "metadata", "created_at"), row)) for row in cur.fetchall()]
         cur.execute(
             """
             SELECT l.relation, l.page_resource_id::text, p.path, p.title, l.created_at
@@ -339,6 +339,9 @@ def create_entity_link(
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
     digest = receipt_digest({"route": "entity-link", "entity_id": str(entity_id), **request.model_dump(mode="json")})
+    findings = secret_findings(request.metadata)
+    if findings:
+        raise HTTPException(status_code=422, detail={"code": "MODEL_LINK_METADATA_SECRET_SHAPED", "findings": findings})
     if request.to_entity_id == entity_id:
         raise HTTPException(status_code=422, detail={"code": "MODEL_LINK_SELF"})
     with get_conn() as conn:
@@ -350,11 +353,13 @@ def create_entity_link(
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO model.entity_links (from_entity_id, relation, to_entity_id, note, created_by)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT DO NOTHING
+            INSERT INTO model.entity_links (from_entity_id, relation, to_entity_id, note, metadata, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (from_entity_id, relation, to_entity_id)
+            DO UPDATE SET metadata = EXCLUDED.metadata
+             WHERE EXCLUDED.metadata <> '{}'::jsonb
             """,
-            (str(entity_id), request.relation, str(request.to_entity_id), request.note, principal.principal_id),
+            (str(entity_id), request.relation, str(request.to_entity_id), request.note, _json(request.metadata), principal.principal_id),
         )
         append_event(
             conn,
@@ -365,7 +370,7 @@ def create_entity_link(
             principal=principal,
             resource_type="MODEL_ENTITY",
             resource_id=str(entity_id),
-            metadata={"relation": request.relation, "to_entity_id": str(request.to_entity_id)},
+            metadata={"relation": request.relation, "to_entity_id": str(request.to_entity_id), "link_metadata": request.metadata},
         )
         response = {"from_entity_id": str(entity_id), **request.model_dump(mode="json")}
         save_receipt(conn, principal, key, "MODEL_ENTITY_LINK", str(entity_id), digest, response)

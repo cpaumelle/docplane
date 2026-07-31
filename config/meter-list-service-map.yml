@@ -1,0 +1,5 @@
+# Versioned operator-curated fallback for rules that do not carry an
+# upstream `service` label. Upstream labels are authoritative and always win.
+# Patterns use case-sensitive shell globs against the Prometheus rule name.
+version: 1
+mappings: []

@@ -8,6 +8,7 @@ Sprint 5 canary taught, applied before first fabric contact).
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -256,7 +257,7 @@ class FakeModelClient:
 
     def __init__(self):
         self.entities: dict[str, dict] = {}
-        self.links: set[tuple[str, str, str]] = set()
+        self.links: dict[tuple[str, str, str], dict] = {}
         self.counter = 0
 
     def call(self, method: str, path: str, body: dict | None = None, key: str | None = None) -> dict:
@@ -272,16 +273,16 @@ class FakeModelClient:
         if method == "GET":
             entity = self.entities[path.rsplit("/", 1)[-1]]
             links_out = [
-                {"relation": relation, "to_entity_id": to, "entity_key": self.entities[to]["entity_key"]}
-                for (source, relation, to) in sorted(self.links)
+                {"relation": relation, "to_entity_id": to, "entity_key": self.entities[to]["entity_key"], "metadata": metadata}
+                for (source, relation, to), metadata in sorted(self.links.items())
                 if source == entity["entity_id"]
             ]
             return {**entity, "links_out": links_out}
         if path.endswith("/links/remove"):
-            self.links.discard((path.split("/")[-3], body["relation"], body["to_entity_id"]))
+            self.links.pop((path.split("/")[-3], body["relation"], body["to_entity_id"]), None)
             return {"removed": True}
         if path.endswith("/links"):
-            self.links.add((path.split("/")[-2], body["relation"], body["to_entity_id"]))
+            self.links[(path.split("/")[-2], body["relation"], body["to_entity_id"])] = body.get("metadata", {})
             return {}
         if path.endswith("/update"):
             entity = self.entities[path.split("/")[-2]]
@@ -343,7 +344,63 @@ def test_second_run_updates_edited_rules_and_replaces_stale_watches(tmp_path):
 
     # Convergence: a third run over the same rule set is a graph no-op.
     third = _reconcile(fake, tmp_path, edited)
-    assert all(third[key] == 0 for key in ("created", "updated", "retired", "reactivated", "links_added", "links_removed"))
+    assert all(third[key] == 0 for key in ("created", "updated", "retired", "reactivated", "links_added", "links_updated", "links_removed"))
+
+
+def test_upstream_service_label_wiring_remains_incremental(tmp_path):
+    fake = FakeModelClient()
+    _reconcile(fake, tmp_path, RULES_YML)
+    second = _reconcile(fake, tmp_path, RULES_YML)
+    assert second["links_added"] == second["links_removed"] == 0
+    rule_id = fake.by_key("rule.backuplegfailed")["entity_id"]
+    metadata = next(value for (source, relation, _), value in fake.links.items() if source == rule_id and relation == "WATCHES")
+    assert metadata == {"source": "rule_label"}
+
+
+def test_overlay_wires_only_unlabelled_rules_with_provenance(tmp_path):
+    fake = FakeModelClient()
+    fake.call("POST", "/api/v1/model/entities", {
+        "entity_kind": "SERVICE", "entity_key": "prometheus", "display_name": "Prometheus",
+    })
+    summary = _reconcile(
+        fake, tmp_path, RULES_YML,
+        service_overlay=[{"pattern": "job:*", "service_entity_key": "prometheus"}],
+    )
+    assert summary["warnings"] == []
+    assert fake.watches("rule.job-up-ratio") == ["prometheus"]
+    rule_id = fake.by_key("rule.job-up-ratio")["entity_id"]
+    metadata = next(value for (source, relation, _), value in fake.links.items() if source == rule_id and relation == "WATCHES")
+    assert metadata == {"source": "overlay"}
+    converged = _reconcile(
+        fake, tmp_path, RULES_YML,
+        service_overlay=[{"pattern": "job:*", "service_entity_key": "prometheus"}],
+    )
+    assert all(converged[key] == 0 for key in ("created", "updated", "retired", "reactivated", "links_added", "links_updated", "links_removed"))
+
+
+def test_overlay_unknown_services_and_zero_matches_are_loud(tmp_path):
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    assignments, warnings = meter_list.overlay_assignments(
+        structure,
+        [
+            {"pattern": "DoesNotExist", "service_entity_key": "backup"},
+            {"pattern": "job:*", "service_entity_key": "unknown"},
+        ],
+        {"backup"},
+    )
+    assert assignments == {}
+    assert any("matched zero" in item for item in warnings)
+    assert any("unknown SERVICE" in item for item in warnings)
+
+
+def test_suggestions_are_names_only_and_never_mappings(tmp_path):
+    report = meter_list.service_suggestions(
+        meter_list.parse_rules(_rules_dir(tmp_path)),
+        ["backup", "prometheus"],
+    )
+    assert report["count"] == 1
+    assert report["rules"][0]["rule_name"] == "job:up:ratio"
+    assert "expr" not in json.dumps(report)
 
 
 def test_rules_removed_from_git_are_retired(tmp_path):
@@ -388,3 +445,55 @@ def test_artifact_succession_triggers_on_target_or_contract_change():
     assert meter_list.artifact_needs_succession(artifact, ["a.md"])
     assert meter_list.artifact_needs_succession(artifact, ["a.md", "b.md", "c.md"])
     assert meter_list.artifact_needs_succession({**artifact, "generator_version": "1.0.0"}, ["a.md", "b.md"])
+
+
+def test_scheduled_unchanged_run_does_not_write_work():
+    assert not meter_list.should_reconcile_gap_work(source_changed=False, explicit=False)
+    assert meter_list.should_reconcile_gap_work(source_changed=True, explicit=False)
+    assert meter_list.should_reconcile_gap_work(source_changed=False, explicit=True)
+
+
+def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_path, monkeypatch, capsys):
+    rules_dir = _rules_dir(tmp_path)
+    structure = meter_list.parse_rules(rules_dir)
+    fp = meter_list.fingerprint(structure)
+    paths = sorted(page["path"] for page in meter_list.render_pages("hub2.prometheus", structure, fp))
+    calls = []
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            return {"recorded": [{"replayed": True}]}
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(meter_list, "Client", RecordingClient)
+    monkeypatch.setattr(
+        meter_list,
+        "reconcile_entities",
+        lambda *args, **kwargs: {
+            "source_id": "source", "created": 0, "updated": 0, "retired": 0,
+            "reactivated": 0, "links_added": 0, "links_updated": 0,
+            "links_removed": 0, "warnings": [],
+        },
+    )
+    monkeypatch.setattr(
+        sc,
+        "current_artifact",
+        lambda *args: {
+            "artifact_id": "artifact", "generator_version": meter_list.GENERATOR_VERSION,
+            "target_page_paths": paths,
+        },
+    )
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *args: fp)
+    monkeypatch.setenv("METER_RULES_DIR", str(rules_dir))
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_METER_LIST_TOKEN", "not-printed")
+
+    assert meter_list.main([]) == 0
+    assert "UNCHANGED" in capsys.readouterr().out
+    assert [path for _, path, _, _ in calls] == ["/api/v1/observations"]
+    assert all("/work" not in path for _, path, _, _ in calls)
