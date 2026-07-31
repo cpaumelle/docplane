@@ -56,3 +56,53 @@
   .dp-ctxbar__crumbs { display:none; }
   .dp-abtn { padding:.3rem .5rem; } /* ≥24px touch target with line-height */
 }
+
+/* ── Callouts (S9-D) ────────────────────────────────────────────────────
+ * Material's admonitions ship as heavy tinted boxes; DocPlane calms them to
+ * a surface card with a 3px state rail — colour carries the type, the body
+ * stays neutral ground. State colours mean state here (ok/warn/bad); note-
+ * like types ride the brand accent, question/quote stay neutral, so callout
+ * colour never competes with category identity. Selectors are written at
+ * the same specificity as Material's per-type rules; extra_css loads after
+ * the theme, so these win by order without !important. Applies equally to
+ * pymdownx.details collapsibles. */
+.md-typeset :is(.admonition, details) {
+  --dp-callout:var(--accent);
+  border:1px solid var(--border);
+  border-left:3px solid var(--dp-callout);
+  border-radius:10px;
+  background:var(--bg-surface);
+  box-shadow:none;
+}
+.md-typeset :is(.admonition, details):is(.tip, .hint, .important, .success, .check, .done) { --dp-callout:var(--state-ok); }
+.md-typeset :is(.admonition, details):is(.warning, .caution, .attention) { --dp-callout:var(--state-warn); }
+.md-typeset :is(.admonition, details):is(.danger, .error, .failure, .fail, .missing, .bug) { --dp-callout:var(--state-bad); }
+.md-typeset :is(.admonition, details):is(.question, .help, .faq, .quote, .cite) { --dp-callout:var(--storm); }
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary) {
+  background:transparent;
+  color:var(--text-strong);
+  font-weight:650;
+}
+.md-typeset :is(.admonition, details) > :is(.admonition-title, summary)::before {
+  background-color:var(--dp-callout);
+}
+
+/* ── Domain nav bands (S9-C) ────────────────────────────────────────────
+ * The four top-level sidebar groups (emitted by build_nav) wear a solid
+ * colour band with white type and the domain glyph — decorated by the
+ * reader script in main.html, which matches labels and adds these classes.
+ * A brand overlay may override the band fill independently of the badge
+ * hue via --cat-<domain>-band (e.g. darken a bright gold so white type
+ * keeps ≥4.5:1); it defaults to the domain hue. */
+.dp-nav-domain { --dp-band:var(--cat-know-band, var(--cat-know)); }
+.dp-nav-domain--model   { --dp-band:var(--cat-model-band, var(--cat-model)); }
+.dp-nav-domain--observe { --dp-band:var(--cat-observe-band, var(--cat-observe)); }
+.dp-nav-domain--work    { --dp-band:var(--cat-work-band, var(--cat-work)); }
+.dp-nav-domain > .md-nav__link,
+.dp-nav-domain > label.md-nav__link {
+  background:var(--dp-band); color:#fff;
+  border-radius:7px; padding:.32rem .6rem; margin-bottom:.25rem;
+  font-size:.68rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+}
+.dp-nav-domain > .md-nav__link:hover { color:#fff; opacity:.94; }
+.dp-nav-domain > .md-nav__link .dp-nav-ic { width:.85rem; height:.85rem; flex:none; margin-right:.42rem; opacity:.92; vertical-align:-2px; }

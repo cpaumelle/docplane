@@ -20,6 +20,12 @@ gitignored and mounted into the docs-web container over the neutral defaults:
                  These are identity colours, never status: --state-* stays
                  reserved for signal, and category colours must not be used
                  to mean healthy/broken.
+
+                 The sidebar's four domain group headings render as solid
+                 colour bands with white type. A band defaults to the domain
+                 hue; if your hue is too light for white type (bright golds
+                 especially), override just the band fill:
+                 :root{ --cat-work-band:#8A6F14; }  /* darker Aour, badges keep #C9A227 */
 - logo.svg    -- header mark (single-colour currentColor reads best; the header renders it light).
 - favicon.svg -- browser favicon.
 
