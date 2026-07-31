@@ -272,6 +272,93 @@ def test_meter_list_resolves_soak_refs_and_populates_coverage():
     # A reference matching an ACTIVE meter-list rule is verified identity.
     assert fetched["soak_monitoring_ref_status"] == "RESOLVED_MONITOR_RULE"
 
+    # Lifecycle, not just genesis: a service-label change removes the stale
+    # WATCHES wire, and a rule removed from git retires — coverage and soak
+    # resolution must both follow the graph, not history.
+    removed = client.post(
+        f"/api/v1/model/entities/{rule.json()['entity_id']}/links/remove",
+        json={"relation": "WATCHES", "to_entity_id": watched.json()["entity_id"]},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert removed.status_code == 200 and removed.json()["removed"] is True, removed.text
+    again = client.post(
+        f"/api/v1/model/entities/{rule.json()['entity_id']}/links/remove",
+        json={"relation": "WATCHES", "to_entity_id": watched.json()["entity_id"]},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    # A fresh removal of an absent link converges instead of failing.
+    assert again.status_code == 200 and again.json()["removed"] is False
+    coverage = client.get("/api/v1/observe/coverage", headers=AGENT).json()
+    assert f"e2e-svc-watched-{RUN}" in coverage["unwatched_services"]
+
+    retired = client.post(
+        f"/api/v1/model/entities/{rule.json()['entity_id']}/retire",
+        json={"expected_version": 1, "note": "absent from rule set"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert retired.status_code == 200 and retired.json()["status"] == "RETIRED", retired.text
+    coverage = client.get("/api/v1/observe/coverage", headers=AGENT).json()
+    assert rule_key not in coverage["rules_without_description"]
+    # The obsolete reference no longer resolves — it reads as a named
+    # reference again, admitting SOAKING but never observe=UPDATED.
+    fetched = client.get(f"/api/v1/initiatives/{initiative_id}", headers=AGENT).json()
+    assert fetched["soak_monitoring_ref_status"] == "UNRESOLVED_NAMED_REFERENCE"
+
+    # A rule restored in git reactivates its existing identity ((kind, key)
+    # is unique across statuses — no duplicate card), and resolution returns.
+    revived = client.post(
+        f"/api/v1/model/entities/{rule.json()['entity_id']}/reactivate",
+        json={"expected_version": 2, "note": "restored in rule set"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert revived.status_code == 200 and revived.json()["status"] == "ACTIVE", revived.text
+    fetched = client.get(f"/api/v1/initiatives/{initiative_id}", headers=AGENT).json()
+    assert fetched["soak_monitoring_ref_status"] == "RESOLVED_MONITOR_RULE"
+
+
+def test_coverage_ranks_by_criticality_and_surfaces_runbook_gaps():
+    """Sprint 6 ratified contract: paging alerts without runbooks are a
+    coverage subset, and gaps rank by criticality derived from the pages a
+    service DESCRIBES. The scope block versions the surface explicitly."""
+    paging = client.post(
+        "/api/v1/model/entities",
+        json={"entity_kind": "MONITOR_RULE", "entity_key": f"rule.e2e-paging-{RUN}", "display_name": "DiskFull", "attributes": {"rule_kind": "alert", "severity": "critical", "expr": "disk_free == 0", "has_description": True}},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert paging.status_code == 201, paging.text
+    covered = client.post(
+        "/api/v1/model/entities",
+        json={"entity_kind": "MONITOR_RULE", "entity_key": f"rule.e2e-covered-{RUN}", "display_name": "DiskSlow", "attributes": {"rule_kind": "alert", "severity": "critical", "expr": "disk_slow == 1", "has_description": True, "runbook_url": "https://docs/runbooks/disk"}},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert covered.status_code == 201, covered.text
+
+    plain_svc = client.post("/api/v1/model/entities", json={"entity_kind": "SERVICE", "entity_key": f"e2e-svc-plain-{RUN}", "display_name": "plain svc", "attributes": {}}, headers={**AGENT, "Idempotency-Key": _key()})
+    assert plain_svc.status_code == 201, plain_svc.text
+    critical_svc = client.post("/api/v1/model/entities", json={"entity_kind": "SERVICE", "entity_key": f"e2e-svc-critical-{RUN}", "display_name": "critical svc", "attributes": {}}, headers={**AGENT, "Idempotency-Key": _key()})
+    page = _seed_page(f"reference/e2e-{RUN}-critical-svc.md")
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE docs.pages SET criticality = 'OPERATIONAL_CRITICAL' WHERE resource_id = %s", (page["resource_id"],))
+        conn.commit()
+    linked = client.post(
+        f"/api/v1/model/entities/{critical_svc.json()['entity_id']}/page-links",
+        json={"relation": "DESCRIBES", "page_resource_id": page["resource_id"]},
+        headers=AGENT,
+    )
+    assert linked.status_code == 201, linked.text
+
+    coverage = client.get("/api/v1/observe/coverage", headers=AGENT).json()
+    assert f"rule.e2e-paging-{RUN}" in coverage["paging_alerts_without_runbook"]
+    assert f"rule.e2e-covered-{RUN}" not in coverage["paging_alerts_without_runbook"]
+    by_key = {item["entity_key"]: item for item in coverage["services"]}
+    assert by_key[f"e2e-svc-critical-{RUN}"]["criticality"] == "OPERATIONAL_CRITICAL"
+    # The critical unwatched service outranks NORMAL/unclassified ones.
+    unwatched = coverage["unwatched_services"]
+    assert unwatched.index(f"e2e-svc-critical-{RUN}") < unwatched.index(f"e2e-svc-plain-{RUN}")
+    assert "paging_alerts_without_runbook" in coverage["scope"]["implemented"]
+    assert "work_inbox_feed" in coverage["scope"]["follow_up"]
+
 
 def test_verification_request_lifecycle_reconciles_evidence():
     page = _seed_page(f"reference/e2e-{RUN}-verify.md")

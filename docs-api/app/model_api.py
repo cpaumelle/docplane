@@ -20,6 +20,7 @@ from app.model_models import (
     ArtifactRetire,
     EntityCreate,
     EntityLinkCreate,
+    EntityLinkRemove,
     EntityPageLinkCreate,
     EntityRetire,
     EntityUpdate,
@@ -292,6 +293,43 @@ def retire_entity(
         return _load_entity(conn, entity_id)
 
 
+@router.post("/api/v1/model/entities/{entity_id}/reactivate")
+def reactivate_entity(
+    entity_id: UUID,
+    request: EntityRetire,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Retirement's counterpart: (entity_kind, entity_key) is unique across
+    ALL statuses, so an identity that returns to reality (a rule restored in
+    git) must resume its existing card rather than mint a duplicate key."""
+    key = _key(idempotency_key)
+    with get_conn() as conn:
+        entity = _load_entity(conn, entity_id, for_update=True)
+        if entity["version"] != request.expected_version:
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ENTITY_VERSION_STALE", "current": entity["version"]})
+        if entity["status"] == "ACTIVE":
+            return entity
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE model.entities SET status = 'ACTIVE', retired_at = NULL, version = version + 1, updated_at = now() WHERE entity_id = %s AND version = %s",
+            (str(entity_id), request.expected_version),
+        )
+        append_event(
+            conn,
+            event_type="MODEL_ENTITY_REACTIVATED",
+            channel="API",
+            producer_id="docplane-model",
+            idempotency_key=f"MODEL_ENTITY_REACTIVATED:{principal.principal_id}:{key}",
+            principal=principal,
+            resource_type="MODEL_ENTITY",
+            resource_id=str(entity_id),
+            metadata={"entity_kind": entity["entity_kind"], "entity_key": entity["entity_key"], "note": request.note},
+        )
+        conn.commit()
+        return _load_entity(conn, entity_id)
+
+
 @router.post("/api/v1/model/entities/{entity_id}/links", status_code=201)
 def create_entity_link(
     entity_id: UUID,
@@ -331,6 +369,47 @@ def create_entity_link(
         )
         response = {"from_entity_id": str(entity_id), **request.model_dump(mode="json")}
         save_receipt(conn, principal, key, "MODEL_ENTITY_LINK", str(entity_id), digest, response)
+        conn.commit()
+    return response
+
+
+@router.post("/api/v1/model/entities/{entity_id}/links/remove")
+def remove_entity_link(
+    entity_id: UUID,
+    request: EntityLinkRemove,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Reconciliation counterpart of link creation: a graph edge that no
+    longer reflects reality (a rule's service label moved, a wire was
+    re-plugged) is removed, not left to accumulate. Removing an absent link
+    succeeds with removed=false so importers can converge idempotently."""
+    key = _key(idempotency_key)
+    digest = receipt_digest({"route": "entity-unlink", "entity_id": str(entity_id), **request.model_dump(mode="json")})
+    with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ENTITY_UNLINK", digest)
+        if replayed is not None:
+            return replayed
+        _load_entity(conn, entity_id)
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM model.entity_links WHERE from_entity_id = %s AND relation = %s AND to_entity_id = %s",
+            (str(entity_id), request.relation, str(request.to_entity_id)),
+        )
+        removed = cur.rowcount > 0
+        append_event(
+            conn,
+            event_type="MODEL_ENTITY_UNLINKED",
+            channel="API",
+            producer_id="docplane-model",
+            idempotency_key=f"MODEL_ENTITY_UNLINKED:{principal.principal_id}:{key}",
+            principal=principal,
+            resource_type="MODEL_ENTITY",
+            resource_id=str(entity_id),
+            metadata={"relation": request.relation, "to_entity_id": str(request.to_entity_id), "removed": removed, "note": request.note},
+        )
+        response = {"from_entity_id": str(entity_id), "relation": request.relation, "to_entity_id": str(request.to_entity_id), "removed": removed}
+        save_receipt(conn, principal, key, "MODEL_ENTITY_UNLINK", str(entity_id), digest, response)
         conn.commit()
     return response
 

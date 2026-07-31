@@ -126,18 +126,31 @@ pleasant dashboard act.
 
 ## Sprint 6 — exemplar B: monitoring meter list and runbook discipline
 
-- Rules importer reads Prometheus/Grafana config from git: rule entities
+Shipped in the meter-list PR (first half):
+
+- Rules importer reads Prometheus rule files from git: rule entities
   `WATCHES`-wired to services, descriptions/`runbook_url` annotations
-  imported, fingerprint-bound plain-English explanations generated per rule
-  and queued stale on rule change.
-- Coverage view: unwatched services, rules without descriptions, paging
-  alerts without runbooks — ranked by `criticality`, feeding the work
-  inbox. The importer records gaps and is structurally incapable of
-  creating pages.
+  imported, fingerprint-bound plain-English explanations generated per rule.
+  The rule files are authoritative across the whole lifecycle: edits update
+  entities and replace `WATCHES` wires, removals retire entities (behind an
+  explicit mass-retirement bound) and archive their pages, and target-set or
+  generator-contract changes declare a successor artifact (migration 007).
+- Coverage view (`GET /api/v1/observe/coverage`): unwatched services, rules
+  without descriptions, paging alerts without a `runbook_url` annotation —
+  ranked by `criticality` derived from `DESCRIBES`-linked pages. The
+  response's `scope` block versions the surface explicitly. The importer
+  records gaps and is structurally incapable of creating pages.
+
+Runbook-discipline follow-up (second half, deliberately not in that PR —
+the coverage `scope` block lists these as `follow_up`):
+
 - Runbook content contract for `OPERATION` pages (preconditions, commands,
   expected output, success check, rollback); coverage counts only
-  contract-meeting, verified runbooks; `RUNBOOK_EXERCISED` observations
+  contract-meeting, verified runbooks — upgrading the annotation-presence
+  check the shipped endpoint applies; `RUNBOOK_EXERCISED` observations
   record real use; expiry decays unexercised runbooks back to gaps.
+- Coverage gaps feed the work inbox as deduplicated captures.
+- Grafana provisioning/dashboards and `targets/` scrape-file enrichment.
 - Stub cleanup: the corpus harvest confirmed the legacy `runbooks/` stub
   tree (162 pages) is already fully archived and the 35 active runbooks are
   substantial; remaining debt is coverage and alert→runbook linking, not

@@ -102,6 +102,7 @@ CARD_CONTRACTS: dict[str, dict[str, Any]] = {
             "rule_kind": _STR, "expr": _STR, "severity": _STR,
             "pending_for": _STR, "source_file": _STR, "group": _STR,
             "has_description": {"type": "boolean"},
+            "runbook_url": _STR,
         },
     },
     "DEVICE_MODEL": {

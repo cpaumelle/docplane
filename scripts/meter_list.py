@@ -48,7 +48,7 @@ from migration.redaction import redact  # noqa: E402
 from schema_catalogue import ApiError, Client  # noqa: E402  (shared API client)
 
 GENERATOR_NAME = "docplane-meter-list"
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"
 SECTION = "observe/meter-list"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
@@ -89,6 +89,7 @@ def parse_rules(rules_dir: Path) -> dict[str, Any]:
                         "service": labels.get("service"),
                         "summary": annotations.get("summary"),
                         "description": annotations.get("description"),
+                        "runbook_url": annotations.get("runbook_url"),
                     }
                 )
             if rules:
@@ -133,6 +134,8 @@ def _rule_section(rule: dict[str, Any]) -> list[str]:
         lines += [_brace_safe(rule["description"].strip()), ""]
     else:
         lines += ["_No description in the rule file — surfaced as a coverage gap, not papered over._", ""]
+    if rule.get("runbook_url"):
+        lines += [f"**Runbook**: <{rule['runbook_url'].strip()}>", ""]
     lines += ["```promql", rule["expr"], "```", ""]
     return lines
 
@@ -222,19 +225,59 @@ def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
 
 # ── The run ─────────────────────────────────────────────────────────────────
 
-def ensure_entities(client: Client, source_key: str, structure: dict[str, Any], structure_hash: str) -> str:
-    """SERVICE entities per service label, MONITOR_RULE per rule with WATCHES
-    wires, plus the monitoring source SERVICE. Returns the source entity id.
-    Links are always attempted (server-side ON CONFLICT DO NOTHING), so a
-    resumed run wires pre-existing entities — the Sprint 5 resume lesson."""
+def rule_attributes(file_stem: str, group_name: str, rule: dict[str, Any]) -> dict[str, Any]:
+    attributes = {
+        "rule_kind": rule["rule_kind"],
+        "expr": rule["expr"],
+        "source_file": f"{file_stem}.yml",
+        "group": group_name,
+        "has_description": bool(rule.get("description")),
+    }
+    for field in ("severity", "pending_for", "runbook_url"):
+        if rule.get(field):
+            attributes[field] = rule[field]
+    return attributes
+
+
+# A rule set that suddenly retires more than this share of the existing meter
+# list is far more likely a bad checkout (wrong branch, truncated clone) than
+# a real mass decommission. The floor keeps small meter lists workable.
+MASS_RETIREMENT_FLOOR = 5
+MASS_RETIREMENT_SHARE = 0.2
+
+
+def reconcile_entities(
+    client: Client,
+    source_key: str,
+    structure: dict[str, Any],
+    structure_hash: str,
+    *,
+    allow_mass_retirement: bool = False,
+) -> dict[str, Any]:
+    """Full lifecycle reconciliation against the rule files (which are
+    authoritative — DOMAIN_MODEL.md, exemplar B), not first-run seeding:
+
+      create      rules new to the meter list
+      update      rules whose harvested attributes or display name moved
+      rewire      WATCHES edges replaced when a service label changes or drops
+      retire      rules no longer present in any rule file, bounded by an
+                  explicit mass-retirement guard
+      reactivate  retired rules restored in git — (kind, key) is unique
+                  across statuses, so identity resumes, never duplicates
+
+    Creates and link-adds are idempotent server-side (ON CONFLICT), the
+    lifecycle verbs are versioned CAS calls keyed by fingerprint, so a
+    resumed run converges — the Sprint 5 resume lesson, now for every verb.
+    Returns the source entity id plus a reconciliation summary."""
     services = {
-        entity["entity_key"]: entity["entity_id"]
+        entity["entity_key"]: entity
         for entity in client.call("GET", "/api/v1/model/entities?entity_kind=SERVICE&limit=1000").get("entities", [])
     }
     rules = {
-        entity["entity_key"]: entity["entity_id"]
-        for entity in client.call("GET", "/api/v1/model/entities?entity_kind=MONITOR_RULE&limit=1000").get("entities", [])
+        entity["entity_key"]: entity
+        for entity in client.call("GET", "/api/v1/model/entities?entity_kind=MONITOR_RULE&status=all&limit=1000").get("entities", [])
     }
+    summary = {"created": 0, "updated": 0, "retired": 0, "reactivated": 0, "links_added": 0, "links_removed": 0}
 
     def ensure_service(key: str, display: str) -> str:
         if key not in services:
@@ -242,42 +285,117 @@ def ensure_entities(client: Client, source_key: str, structure: dict[str, Any], 
                 "POST", "/api/v1/model/entities",
                 {"entity_kind": "SERVICE", "entity_key": key, "display_name": display},
                 _key(structure_hash, "entity", key),
-            )["entity_id"]
-        return services[key]
+            )
+        return services[key]["entity_id"]
 
     source_id = ensure_service(source_key, f"{source_key} (monitoring source)")
+
+    desired: dict[str, dict[str, Any]] = {}
     for file_stem, group_name, rule in iter_rules(structure):
         rule_key = f"rule.{_slug(rule['name'])}"
-        attributes = {
-            "rule_kind": rule["rule_kind"],
-            "expr": rule["expr"],
-            "source_file": f"{file_stem}.yml",
-            "group": group_name,
-            "has_description": bool(rule.get("description")),
+        desired[rule_key] = {
+            "display_name": rule["name"],
+            "attributes": rule_attributes(file_stem, group_name, rule),
+            "service": rule.get("service"),
         }
-        if rule.get("severity"):
-            attributes["severity"] = rule["severity"]
-        if rule.get("pending_for"):
-            attributes["pending_for"] = rule["pending_for"]
-        if rule_key not in rules:
+
+    # Retirement first, so a renamed rule can never trip over its old key.
+    # The importer owns the MONITOR_RULE kind outright, so the bound is the
+    # kind itself — nothing outside it is ever touched.
+    active_count = sum(1 for entity in rules.values() if entity["status"] == "ACTIVE")
+    to_retire = [key for key in sorted(rules) if key not in desired and rules[key]["status"] == "ACTIVE"]
+    threshold = max(MASS_RETIREMENT_FLOOR, int(active_count * MASS_RETIREMENT_SHARE))
+    if len(to_retire) > threshold and not allow_mass_retirement:
+        raise RuntimeError(
+            f"refusing to retire {len(to_retire)} of {active_count} meter-list rules "
+            f"(bound {threshold}) — verify the checkout is the real rule set, then "
+            "rerun with --allow-mass-retirement"
+        )
+    for rule_key in to_retire:
+        entity = rules[rule_key]
+        client.call(
+            "POST", f"/api/v1/model/entities/{entity['entity_id']}/retire",
+            {"expected_version": entity["version"], "note": f"absent from rule set {structure_hash[:16]}"},
+            _key(structure_hash, "retire", rule_key),
+        )
+        summary["retired"] += 1
+        print(f"RETIRED {rule_key} — no longer in any rule file")
+
+    for rule_key in sorted(desired):
+        wanted = desired[rule_key]
+        existing = rules.get(rule_key)
+        if existing is not None and existing["status"] == "RETIRED":
+            # The rule came back to git: its identity resumes.
+            existing = rules[rule_key] = client.call(
+                "POST", f"/api/v1/model/entities/{existing['entity_id']}/reactivate",
+                {"expected_version": existing["version"], "note": f"restored in rule set {structure_hash[:16]}"},
+                _key(structure_hash, "reactivate", rule_key),
+            )
+            summary["reactivated"] += 1
+            print(f"REACTIVATED {rule_key} — restored in the rule files")
+        if existing is None:
             rules[rule_key] = client.call(
                 "POST", "/api/v1/model/entities",
-                {"entity_kind": "MONITOR_RULE", "entity_key": rule_key, "display_name": rule["name"], "attributes": attributes},
+                {"entity_kind": "MONITOR_RULE", "entity_key": rule_key, "display_name": wanted["display_name"], "attributes": wanted["attributes"]},
                 _key(structure_hash, "entity", rule_key),
-            )["entity_id"]
-        if rule.get("service"):
-            service_id = ensure_service(_slug(rule["service"]), rule["service"])
-            client.call(
-                "POST", f"/api/v1/model/entities/{rules[rule_key]}/links",
-                {"relation": "WATCHES", "to_entity_id": service_id},
-                _key(structure_hash, "link", rule_key),
             )
-    return source_id
+            summary["created"] += 1
+            stale_links = []
+        else:
+            if existing["attributes"] != wanted["attributes"] or existing["display_name"] != wanted["display_name"]:
+                rules[rule_key] = client.call(
+                    "POST", f"/api/v1/model/entities/{existing['entity_id']}/update",
+                    {"expected_version": existing["version"], "display_name": wanted["display_name"], "attributes": wanted["attributes"]},
+                    _key(structure_hash, "update", rule_key),
+                )
+                summary["updated"] += 1
+            # Only a pre-existing rule can carry stale wires.
+            detail = client.call("GET", f"/api/v1/model/entities/{existing['entity_id']}")
+            stale_links = [link for link in detail.get("links_out", []) if link["relation"] == "WATCHES"]
+
+        rule_id = rules[rule_key]["entity_id"]
+        wanted_service_ids = set()
+        if wanted["service"]:
+            wanted_service_ids.add(ensure_service(_slug(wanted["service"]), wanted["service"]))
+        for service_id in sorted(wanted_service_ids):
+            if not any(link["to_entity_id"] == service_id for link in stale_links):
+                client.call(
+                    "POST", f"/api/v1/model/entities/{rule_id}/links",
+                    {"relation": "WATCHES", "to_entity_id": service_id},
+                    _key(structure_hash, "link", rule_key),
+                )
+                summary["links_added"] += 1
+        for link in stale_links:
+            if link["to_entity_id"] not in wanted_service_ids:
+                client.call(
+                    "POST", f"/api/v1/model/entities/{rule_id}/links/remove",
+                    {"relation": "WATCHES", "to_entity_id": link["to_entity_id"], "note": f"service label moved in rule set {structure_hash[:16]}"},
+                    _key(structure_hash, "unlink", f"{rule_key}-{link['entity_key']}"),
+                )
+                summary["links_removed"] += 1
+
+    return {"source_id": source_id, **summary}
+
+
+def artifact_needs_succession(artifact: dict[str, Any], desired_paths: list[str]) -> bool:
+    """The declaration must mirror reality: a target-set change (rule file
+    added/removed) or a generator-contract change (version bump) makes the
+    standing declaration stale — new pages would sit unprotected and removed
+    pages would stay owned. Migration 007 exists exactly so the successor
+    can be declared under the same key."""
+    return (
+        sorted(artifact.get("target_page_paths") or []) != sorted(desired_paths)
+        or artifact.get("generator_version") != GENERATOR_VERSION
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--allow-mass-retirement", action="store_true",
+        help="permit retiring more than the mass-retirement bound in one run",
+    )
     args = parser.parse_args(argv)
 
     rules_dir = Path(os.environ["METER_RULES_DIR"])
@@ -305,13 +423,21 @@ def main(argv: list[str] | None = None) -> int:
     import schema_catalogue as sc
 
     client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_METER_LIST_TOKEN"])
-    source_id = ensure_entities(client, source_key, structure, structure_hash)
+    reconciled = reconcile_entities(
+        client, source_key, structure, structure_hash,
+        allow_mass_retirement=args.allow_mass_retirement,
+    )
+    source_id = reconciled["source_id"]
+    print(
+        "reconciled entities: "
+        + ", ".join(f"{reconciled[key]} {key}" for key in ("created", "updated", "retired", "reactivated", "links_added", "links_removed"))
+    )
 
     artifact_key = f"meter-list-{_slug(source_key)}"
     artifact = sc.current_artifact(client, artifact_key)
     if artifact is not None:
         previous = sc.last_generation_fingerprint(client, artifact["artifact_id"])
-        if previous == structure_hash:
+        if previous == structure_hash and not artifact_needs_succession(artifact, sorted(page["path"] for page in pages)):
             print(f"UNCHANGED {structure_hash[:16]} — nothing to regenerate")
             return 0
 
@@ -328,6 +454,15 @@ def main(argv: list[str] | None = None) -> int:
             operations.append(("REPLACE_DOCUMENT", current["resource_id"], current["revision"], page))
     if lookup(PRESENCE_PATH) is None:
         operations.append(("CREATE_PAGE", None, None, presence_page()))
+    # Pages the previous declaration owned but this rule set no longer
+    # produces (a rule file removed from git) are archived in the same
+    # governed change — "rule files are authoritative" includes absence.
+    desired_paths = sorted(page["path"] for page in pages)
+    stale_paths = sorted(set((artifact or {}).get("target_page_paths") or []) - set(desired_paths) - {PRESENCE_PATH})
+    for path in stale_paths:
+        current = lookup(path)
+        if current is not None:
+            operations.append(("ARCHIVE_PAGE", current["resource_id"], current["revision"], {"path": path}))
 
     change = client.call(
         "POST", "/api/v1/changes",
@@ -340,10 +475,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     change_id = change["change_id"]
     for operation_type, resource_id, revision, page in operations:
-        request: dict[str, Any] = {
-            "operation_type": operation_type,
-            "payload": {"path": page["path"], "title": page["title"], "nav_path": page["nav_path"], "content": page["content"]},
-        }
+        request: dict[str, Any] = {"operation_type": operation_type, "payload": {}}
+        if operation_type != "ARCHIVE_PAGE":
+            request["payload"] = {"path": page["path"], "title": page["title"], "nav_path": page["nav_path"], "content": page["content"]}
         if resource_id:
             request["page_resource_id"] = resource_id
             request["expected_revision"] = revision
@@ -361,6 +495,18 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"published page not found after publication: {page['path']}")
         page_ids[page["path"]] = found["resource_id"]
 
+    if artifact is not None and artifact_needs_succession(artifact, sorted(page_ids)):
+        # Retire-then-redeclare under the same key (migration 007's successor
+        # path): retirement releases the old target set and its provenance
+        # arming, the successor binds the current one. Both calls are
+        # fingerprint-keyed, so a resumed run replays rather than double-acts.
+        client.call(
+            "POST", f"/api/v1/model/artifacts/{artifact['artifact_id']}/retire",
+            {"expected_version": artifact["version"], "note": f"superseded by rule set {structure_hash[:16]}"},
+            _key(structure_hash, "artifact-retire"),
+        )
+        print(f"RETIRED artifact {artifact['artifact_id']} — target set or generator contract moved")
+        artifact = None
     if artifact is None:
         artifact = client.call(
             "POST", "/api/v1/model/artifacts",

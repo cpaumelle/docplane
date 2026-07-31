@@ -62,6 +62,12 @@ class EntityLinkCreate(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
+class EntityLinkRemove(BaseModel):
+    relation: EntityRelation
+    to_entity_id: UUID
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class EntityPageLinkCreate(BaseModel):
     relation: PageRelation
     page_resource_id: UUID
