@@ -104,19 +104,18 @@
 .dp-badges .dp-meta { margin-left:auto; font-size:.76rem; color:var(--text-faint); }
 
 /* ── Domain page tint ─────────────────────────────────────────────────────
- * The reading surface opens in a low wash of the page's domain hue and fades
- * to neutral ground — orientation before reading. The reader script stamps
- * body[data-dp-domain] from the meta strip's data-domain. Mixed toward
- * transparent so it overlays any surface, light or dark. */
+ * The reading surface carries a uniform low wash of the page's domain hue,
+ * top to bottom — orientation wherever you are in the page (operator
+ * decision 2026-07-31: no fade; an earlier gradient read as inconsistent).
+ * The reader script stamps body[data-dp-domain] from the meta strip's
+ * data-domain. Mixed toward transparent so it overlays any surface, light
+ * or dark. */
 body[data-dp-domain="know"]    { --dp-tint:var(--cat-know); }
 body[data-dp-domain="model"]   { --dp-tint:var(--cat-model); }
 body[data-dp-domain="observe"] { --dp-tint:var(--cat-observe); }
 body[data-dp-domain="work"]    { --dp-tint:var(--cat-work); }
 body[data-dp-domain] .md-content {
-  background:linear-gradient(180deg,
-    color-mix(in srgb, var(--dp-tint) 13%, transparent) 0,
-    color-mix(in srgb, var(--dp-tint) 6%, transparent) 14rem,
-    transparent 32rem);
+  background:color-mix(in srgb, var(--dp-tint) 10%, transparent);
 }
 
 /* Dark surface opt-in (immersive panels): add class `surface-dark`. */
