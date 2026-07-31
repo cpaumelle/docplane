@@ -430,4 +430,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-window.DocPlaneInlineEditor = Object.freeze({ start });
+// auth/api are shared with the reader surface (overrides/main.html) so page
+// actions like Verify ride the same fabric self-issue credential flow.
+window.DocPlaneInlineEditor = Object.freeze({ start, auth: requestToken, api });
