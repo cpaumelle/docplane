@@ -24,12 +24,16 @@ Environment:
                              e.g. /opt/charliehub/monitoring/prometheus/rules
   METER_SOURCE_KEY           entity key for the monitoring source
                              (default hub2.prometheus)
+  METER_SERVICE_MAP          optional versioned YAML overlay for otherwise
+                             unlabelled rules (default config/meter-list-service-map.yml)
 
-Usage: meter_list.py [--dry-run]
+Usage: meter_list.py [--dry-run] [--reconcile-gaps] [--suggest-services]
 """
 from __future__ import annotations
 
 import argparse
+import difflib
+import fnmatch
 import hashlib
 import json
 import os
@@ -48,7 +52,7 @@ from migration.redaction import redact  # noqa: E402
 from schema_catalogue import ApiError, Client  # noqa: E402  (shared API client)
 
 GENERATOR_NAME = "docplane-meter-list"
-GENERATOR_VERSION = "1.2.0"
+GENERATOR_VERSION = "1.3.0"
 SECTION = "observe/meter-list"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
@@ -115,6 +119,86 @@ def parse_rules(rules_dir: Path) -> dict[str, Any]:
 def fingerprint(structure: dict[str, Any]) -> str:
     canonical = json.dumps(structure, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def load_service_overlay(path: Path | None) -> list[dict[str, str]]:
+    if path is None or not path.exists():
+        return []
+    document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if document.get("version") != 1 or not isinstance(document.get("mappings", []), list):
+        raise RuntimeError(f"{path}: service-map contract requires version: 1 and a mappings list")
+    mappings: list[dict[str, str]] = []
+    for index, item in enumerate(document.get("mappings", [])):
+        if not isinstance(item, dict) or set(item) != {"pattern", "service_entity_key"}:
+            raise RuntimeError(f"{path}: mapping {index} must contain only pattern and service_entity_key")
+        pattern = str(item["pattern"]).strip()
+        service_key = str(item["service_entity_key"]).strip()
+        if not pattern or not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,126}", service_key):
+            raise RuntimeError(f"{path}: invalid mapping {index}")
+        mappings.append({"pattern": pattern, "service_entity_key": service_key})
+    return mappings
+
+
+def overlay_assignments(
+    structure: dict[str, Any],
+    mappings: list[dict[str, str]],
+    known_service_keys: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    """Resolve overlays only for rules with no upstream service label.
+
+    Ambiguity and unknown services refuse loudly; zero-match patterns are
+    warnings so stale curation is visible without blocking unrelated import.
+    """
+    unlabelled = [rule["name"] for _, _, rule in iter_rules(structure) if not rule.get("service")]
+    assignments: dict[str, str] = {}
+    warnings: list[str] = []
+    for mapping in mappings:
+        matches = sorted(name for name in unlabelled if fnmatch.fnmatchcase(name, mapping["pattern"]))
+        if not matches:
+            warnings.append(f"overlay pattern {mapping['pattern']!r} matched zero unlabelled rules")
+        if mapping["service_entity_key"] not in known_service_keys:
+            warnings.append(
+                f"overlay pattern {mapping['pattern']!r} names unknown SERVICE "
+                f"{mapping['service_entity_key']!r}"
+            )
+            continue
+        for name in matches:
+            if name in assignments and assignments[name] != mapping["service_entity_key"]:
+                raise RuntimeError(
+                    f"overlay rule {name!r} matches conflicting services "
+                    f"{assignments[name]!r} and {mapping['service_entity_key']!r}"
+                )
+            assignments[name] = mapping["service_entity_key"]
+    return assignments, warnings
+
+
+def service_suggestions(structure: dict[str, Any], service_keys: list[str]) -> dict[str, Any]:
+    """Names-only curation aid. Suggestions never become links."""
+    def tokens(value: str) -> str:
+        return " ".join(re.findall(r"[a-z0-9]+", value.lower()))
+
+    rows = []
+    for _, _, rule in iter_rules(structure):
+        if rule.get("service"):
+            continue
+        needle = tokens(rule["name"])
+        ranked = sorted(
+            (
+                {
+                    "service_entity_key": key,
+                    "score": round(difflib.SequenceMatcher(None, needle, tokens(key)).ratio(), 3),
+                }
+                for key in service_keys
+            ),
+            key=lambda item: (-item["score"], item["service_entity_key"]),
+        )[:3]
+        rows.append({"rule_name": rule["name"], "candidates": ranked})
+    return {
+        "contract_version": "meter-service-suggestions-v1",
+        "source_fingerprint": fingerprint(structure),
+        "rules": rows,
+        "count": len(rows),
+    }
 
 
 def iter_rules(structure: dict[str, Any]):
@@ -253,11 +337,12 @@ def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
 
 # ── The run ─────────────────────────────────────────────────────────────────
 
-def rule_attributes(file_stem: str, group_name: str, rule: dict[str, Any]) -> dict[str, Any]:
+def rule_attributes(file_stem: str, group_name: str, rule: dict[str, Any], source_key: str = "hub2.prometheus") -> dict[str, Any]:
     attributes = {
         "rule_kind": rule["rule_kind"],
         "expr": rule["expr"],
         "source_file": f"{file_stem}.yml",
+        "source_page_path": f"{SECTION}/{_path_slug(source_key)}/{_path_slug(file_stem)}.md",
         "group": group_name,
         "has_description": bool(rule.get("description")),
     }
@@ -281,6 +366,7 @@ def reconcile_entities(
     structure_hash: str,
     *,
     allow_mass_retirement: bool = False,
+    service_overlay: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Full lifecycle reconciliation against the rule files (which are
     authoritative — DOMAIN_MODEL.md, exemplar B), not first-run seeding:
@@ -311,7 +397,11 @@ def reconcile_entities(
 
     services = {entity["entity_key"]: entity for entity in list_all("entity_kind=SERVICE")}
     rules = {entity["entity_key"]: entity for entity in list_all("entity_kind=MONITOR_RULE&status=all")}
-    summary = {"created": 0, "updated": 0, "retired": 0, "reactivated": 0, "links_added": 0, "links_removed": 0}
+    summary = {
+        "created": 0, "updated": 0, "retired": 0, "reactivated": 0,
+        "links_added": 0, "links_updated": 0, "links_removed": 0,
+        "warnings": [],
+    }
 
     def ensure_service(key: str, display: str) -> str:
         if key not in services:
@@ -323,14 +413,19 @@ def reconcile_entities(
         return services[key]["entity_id"]
 
     source_id = ensure_service(source_key, f"{source_key} (monitoring source)")
+    assignments, warnings = overlay_assignments(structure, service_overlay or [], set(services))
+    summary["warnings"] = warnings
+    for warning in warnings:
+        print(f"WARNING {warning}", file=sys.stderr)
 
     desired: dict[str, dict[str, Any]] = {}
     for file_stem, group_name, rule in iter_rules(structure):
         rule_key = f"rule.{_slug(rule['name'])}"
         desired[rule_key] = {
             "display_name": rule["name"],
-            "attributes": rule_attributes(file_stem, group_name, rule),
-            "service": rule.get("service"),
+            "attributes": rule_attributes(file_stem, group_name, rule, source_key),
+            "service": rule.get("service") or assignments.get(rule["name"]),
+            "service_source": "rule_label" if rule.get("service") else ("overlay" if rule["name"] in assignments else None),
         }
 
     # Retirement first, so a renamed rule can never trip over its old key.
@@ -390,15 +485,33 @@ def reconcile_entities(
         rule_id = rules[rule_key]["entity_id"]
         wanted_service_ids = set()
         if wanted["service"]:
-            wanted_service_ids.add(ensure_service(_slug(wanted["service"]), wanted["service"]))
+            if wanted["service_source"] == "overlay":
+                wanted_service_ids.add(services[wanted["service"]]["entity_id"])
+            else:
+                wanted_service_ids.add(ensure_service(_slug(wanted["service"]), wanted["service"]))
         for service_id in sorted(wanted_service_ids):
-            if not any(link["to_entity_id"] == service_id for link in stale_links):
+            existing_link = next((link for link in stale_links if link["to_entity_id"] == service_id), None)
+            wanted_metadata = {"source": wanted["service_source"]}
+            if existing_link is None or existing_link.get("metadata") != wanted_metadata:
                 client.call(
                     "POST", f"/api/v1/model/entities/{rule_id}/links",
-                    {"relation": "WATCHES", "to_entity_id": service_id},
-                    _key(structure_hash, "link", rule_key),
+                    {
+                        "relation": "WATCHES",
+                        "to_entity_id": service_id,
+                        "metadata": wanted_metadata,
+                    },
+                    _key(
+                        hashlib.sha256(
+                            f"{structure_hash}:{wanted['service_source']}:{wanted['service']}".encode()
+                        ).hexdigest(),
+                        "link",
+                        rule_key,
+                    ),
                 )
-                summary["links_added"] += 1
+                if existing_link is None:
+                    summary["links_added"] += 1
+                else:
+                    summary["links_updated"] += 1
         for link in stale_links:
             if link["to_entity_id"] not in wanted_service_ids:
                 client.call(
@@ -423,6 +536,11 @@ def artifact_needs_succession(artifact: dict[str, Any], desired_paths: list[str]
     )
 
 
+def should_reconcile_gap_work(*, source_changed: bool, explicit: bool) -> bool:
+    """Scheduled steady-state ticks never churn the Work queue."""
+    return source_changed or explicit
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
@@ -430,10 +548,21 @@ def main(argv: list[str] | None = None) -> int:
         "--allow-mass-retirement", action="store_true",
         help="permit retiring more than the mass-retirement bound in one run",
     )
+    parser.add_argument(
+        "--reconcile-gaps", action="store_true",
+        help="explicitly reconcile the bounded coverage-gap Work projection, even when source is unchanged",
+    )
+    parser.add_argument(
+        "--suggest-services", action="store_true",
+        help="print a names-only service-map suggestion report and perform no writes",
+    )
     args = parser.parse_args(argv)
 
     rules_dir = Path(os.environ["METER_RULES_DIR"])
     source_key = os.environ.get("METER_SOURCE_KEY", "hub2.prometheus")
+    default_overlay = ROOT / "config" / "meter-list-service-map.yml"
+    overlay_path = Path(os.environ.get("METER_SERVICE_MAP", str(default_overlay)))
+    service_overlay = load_service_overlay(overlay_path)
 
     structure = parse_rules(rules_dir)
     if not structure:
@@ -443,6 +572,19 @@ def main(argv: list[str] | None = None) -> int:
     pages = render_pages(source_key, structure, structure_hash)
     total_rules = sum(len(rules) for groups in structure.values() for rules in groups.values())
     unwired = sum(1 for _, _, rule in iter_rules(structure) if not rule.get("service"))
+
+    if args.suggest_services:
+        client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_METER_LIST_TOKEN"])
+        listing = client.call("GET", "/api/v1/model/entities?entity_kind=SERVICE&limit=1000")
+        if listing.get("truncated"):
+            raise RuntimeError("service listing truncated — refusing to suggest from a partial model")
+        print(json.dumps(
+            service_suggestions(structure, sorted(item["entity_key"] for item in listing.get("entities", []))),
+            indent=2,
+            sort_keys=True,
+        ))
+        return 0
+
     print(f"fingerprint {structure_hash}")
     print(
         f"parsed {total_rules} rules from {len(structure)} files; rendered {len(pages)} pages; "
@@ -464,18 +606,52 @@ def main(argv: list[str] | None = None) -> int:
     reconciled = reconcile_entities(
         client, source_key, structure, structure_hash,
         allow_mass_retirement=args.allow_mass_retirement,
+        service_overlay=service_overlay,
     )
     source_id = reconciled["source_id"]
     print(
         "reconciled entities: "
-        + ", ".join(f"{reconciled[key]} {key}" for key in ("created", "updated", "retired", "reactivated", "links_added", "links_removed"))
+        + ", ".join(f"{reconciled[key]} {key}" for key in ("created", "updated", "retired", "reactivated", "links_added", "links_updated", "links_removed"))
     )
 
     artifact_key = f"meter-list-{_slug(source_key)}"
     artifact = sc.current_artifact(client, artifact_key)
+
+    def observe_generation(current_artifact: dict[str, Any]) -> None:
+        client.call(
+            "POST", "/api/v1/observations",
+            {
+                "observations": [
+                    {
+                        "subject_artifact_id": current_artifact["artifact_id"],
+                        "observation_kind": "GENERATION",
+                        "outcome": "NOMINAL",
+                        "source_fingerprint": structure_hash,
+                        "summary": f"Imported {total_rules} monitoring rules from {len(structure)} files",
+                        "idempotency_key": _key(structure_hash, "generation"),
+                    }
+                ]
+            },
+            _key(structure_hash, "observation-batch"),
+        )
+
+    def reconcile_gap_work() -> None:
+        client.call(
+            "POST",
+            "/api/v1/observe/coverage/reconcile-work",
+            {},
+            _key(structure_hash, "coverage-work"),
+        )
+
     if artifact is not None:
         previous = sc.last_generation_fingerprint(client, artifact["artifact_id"])
         if previous == structure_hash and not artifact_needs_succession(artifact, sorted(page["path"] for page in pages)):
+            # Replay the existing fingerprint-bound NOMINAL observation. The
+            # API receipt makes this zero-mutation while proving the scheduled
+            # loop still has one current success record.
+            observe_generation(artifact)
+            if should_reconcile_gap_work(source_changed=False, explicit=args.reconcile_gaps):
+                reconcile_gap_work()
             print(f"UNCHANGED {structure_hash[:16]} — nothing to regenerate")
             return 0
 
@@ -559,22 +735,11 @@ def main(argv: list[str] | None = None) -> int:
             },
             _key(structure_hash, "artifact"),
         )
-    client.call(
-        "POST", "/api/v1/observations",
-        {
-            "observations": [
-                {
-                    "subject_artifact_id": artifact["artifact_id"],
-                    "observation_kind": "GENERATION",
-                    "outcome": "NOMINAL",
-                    "source_fingerprint": structure_hash,
-                    "summary": f"Imported {total_rules} monitoring rules from {len(structure)} files",
-                    "idempotency_key": _key(structure_hash, "generation"),
-                }
-            ]
-        },
-        _key(structure_hash, "observation-batch"),
-    )
+    observe_generation(artifact)
+    # Coverage changed with this import, so advance the bounded Work
+    # projection once. Scheduled UNCHANGED ticks deliberately skip it.
+    if should_reconcile_gap_work(source_changed=True, explicit=args.reconcile_gaps):
+        reconcile_gap_work()
     print(f"PUBLISHED {len(page_ids)} pages, artifact {artifact['artifact_id']}, fingerprint {structure_hash[:16]}")
     return 0
 

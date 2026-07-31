@@ -60,6 +60,13 @@ class EntityLinkCreate(BaseModel):
     relation: EntityRelation
     to_entity_id: UUID
     note: str | None = Field(default=None, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def metadata_bounded(self):
+        if len(json.dumps(self.metadata, sort_keys=True, ensure_ascii=False, default=str)) > 7600:
+            raise ValueError("metadata exceeds 7600 bytes")
+        return self
 
 
 class EntityLinkRemove(BaseModel):
