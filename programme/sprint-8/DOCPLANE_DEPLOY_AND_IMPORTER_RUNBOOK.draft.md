@@ -52,9 +52,16 @@ are derived consumers. If a step seems to require inverting that arrow, stop.
 3. **Rebuild and recreate the changed images** (docs-api, dashboard, docs-web
    as the diff requires), tagging the outgoing api image with the rollback
    pattern first. Leave PostgreSQL and untouched services alone.
-4. **Health checks**: container healthy with restart count 0 and correct OCI
-   revision; API discovery (`/.well-known/docplane.json`), dashboard, and
-   `/healthz` all answering. `[operator-verify]` compose service names.
+4. **Health checks**: container healthy with restart count 0; API discovery
+   (`/.well-known/docplane.json`), dashboard, and `/healthz` all answering.
+   `[operator-verify]` compose service names.
+   **Provenance check, defined precisely** (2026-07-31 exercise: "correct
+   OCI revision" was folklore — the label did not exist): the deploy is
+   provenance-correct when `/healthz` reports `git_sha` equal to the
+   deployed checkout SHA and the container's `GIT_SHA` env matches. Images
+   built after 2026-07-31 additionally carry
+   `org.opencontainers.image.revision` with the same SHA (docs-api
+   Dockerfile LABEL); on older images that label is legitimately absent.
    Then **confirm the ledger**: a healthy freshly-started docs-api has by
    definition applied all migrations; verify with
    `docker compose exec docs-api python /app/migrate.py status --dir /app/db/migrations`
