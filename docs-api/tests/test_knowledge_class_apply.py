@@ -34,9 +34,10 @@ def page(resource_id="p1", path="operations/x.md", knowledge_class=None, metadat
 
 
 class FakeClient:
-    def __init__(self, pages, *, stale_ids=()):
+    def __init__(self, pages, *, stale_ids=(), mismatch_ids=()):
         self.pages = {item["resource_id"]: dict(item) for item in pages}
         self.stale_ids = set(stale_ids)
+        self.mismatch_ids = set(mismatch_ids)
         self.mutations = []
 
     def call(self, method, path, payload=None, idempotency_key=None):
@@ -46,6 +47,8 @@ class FakeClient:
         self.mutations.append((resource_id, payload, idempotency_key))
         if resource_id in self.stale_ids:
             raise ApiError(409, {"detail": {"code": "PAGE_METADATA_VERSION_STALE", "current": 4}})
+        if resource_id in self.mismatch_ids:
+            raise ApiError(422, {"detail": {"code": "WORKSPACE_KNOWLEDGE_CLASS_MISMATCH"}})
         self.pages[resource_id]["knowledge_class"] = payload["knowledge_class"]
         self.pages[resource_id]["metadata_version"] += 1
         return dict(self.pages[resource_id])
@@ -58,7 +61,10 @@ def test_second_run_is_zero_mutation_convergence():
     assert first["counts"]["applied"] == 1
     assert len(client.mutations) == 1
     second = apply_report(client, curated)
-    assert second["counts"] == {"applied": 0, "already_matched": 1, "optimistic_lock_skips": 0, "remaining": 0}
+    assert second["counts"] == {
+        "applied": 0, "already_matched": 1, "optimistic_lock_skips": 0,
+        "coherence_refusals": 0, "remaining": 0,
+    }
     assert len(client.mutations) == 1
 
 
@@ -80,6 +86,40 @@ def test_api_optimistic_lock_is_a_listed_skip_not_failure():
     result = apply_report(FakeClient([page()], stale_ids={"p1"}), curated)
     assert result["counts"]["optimistic_lock_skips"] == 1
     assert result["optimistic_lock_skips"][0]["detail"]["code"] == "PAGE_METADATA_VERSION_STALE"
+
+
+def test_coherence_refusal_is_listed_and_batch_continues():
+    """docplane#123: one mis-workspaced WORK_NOTE must not halt the batch."""
+    curated = report(
+        {"resource_id": "p1", "proposed": "WORK_NOTE", "metadata_version": 3},
+        {"resource_id": "p2", "proposed": "OPERATION", "metadata_version": 3},
+    )
+    client = FakeClient([page("p1", path="notes/a.md"), page("p2")], mismatch_ids={"p1"})
+    result = apply_report(client, curated)
+    assert result["counts"] == {
+        "applied": 1, "already_matched": 0, "optimistic_lock_skips": 0,
+        "coherence_refusals": 1, "remaining": 0,
+    }
+    refusal = result["coherence_refusals"][0]
+    assert refusal["code"] == "WORKSPACE_KNOWLEDGE_CLASS_MISMATCH"
+    assert refusal["path"] == "notes/a.md"
+    assert refusal["workspace_id"] == page("p1")["workspace_id"]
+    assert [item["resource_id"] for item in result["applied"]] == ["p2"]
+
+
+def test_persistent_refusal_still_converges():
+    """Replays keep the refusal visible without ever blocking convergence."""
+    curated = report(
+        {"resource_id": "p1", "proposed": "WORK_NOTE", "metadata_version": 3},
+        {"resource_id": "p2", "proposed": "OPERATION", "metadata_version": 3},
+    )
+    client = FakeClient([page("p1"), page("p2")], mismatch_ids={"p1"})
+    apply_report(client, curated)
+    second = apply_report(client, curated)
+    assert second["counts"] == {
+        "applied": 0, "already_matched": 1, "optimistic_lock_skips": 0,
+        "coherence_refusals": 1, "remaining": 0,
+    }
 
 
 def test_unknown_vocabulary_refuses_whole_file_before_calls(tmp_path):

@@ -78,6 +78,13 @@ def apply_report(client: Client, report: dict[str, Any], batch_limit: int = DEFA
     Matching pages converge without a write. A class changed after curation is
     listed as a skip. Races and other metadata movement are refused by the
     classify verb's expected_metadata_version lock and surfaced as skips.
+    A 422 coherence refusal (e.g. WORKSPACE_KNOWLEDGE_CLASS_MISMATCH) is
+    page-local in exactly the same way: it is listed under
+    ``coherence_refusals`` and the batch continues, so one mis-workspaced
+    proposal cannot halt the rest of the report (docplane#123). Refused
+    entries never count toward ``remaining`` — the convergence proof stays
+    ``applied == 0, remaining == 0`` while refusals remain visible until the
+    operator moves the page or strikes the proposal.
     """
     if batch_limit < 1:
         raise ValueError("batch_limit must be at least 1")
@@ -90,6 +97,7 @@ def apply_report(client: Client, report: dict[str, Any], batch_limit: int = DEFA
         "applied": [],
         "already_matched": [],
         "optimistic_lock_skips": [],
+        "coherence_refusals": [],
         "remaining": 0,
     }
     write_attempts = 0
@@ -133,16 +141,26 @@ def apply_report(client: Client, report: dict[str, Any], batch_limit: int = DEFA
                 _idempotency_key(report, page, proposed, expected_version),
             )
         except ApiError as error:
-            if error.status not in {409, 412}:
+            if error.status not in {409, 412, 422}:
                 raise
             detail = error.body.get("detail", error.body) if isinstance(error.body, dict) else error.body
-            result["optimistic_lock_skips"].append({**identity, "code": "OPTIMISTIC_LOCK_REFUSED", "detail": detail})
+            if error.status == 422:
+                code = detail.get("code", "CLASSIFY_REFUSED") if isinstance(detail, dict) else "CLASSIFY_REFUSED"
+                result["coherence_refusals"].append({
+                    **identity,
+                    "code": code,
+                    "workspace_id": page["workspace_id"],
+                    "detail": detail,
+                })
+            else:
+                result["optimistic_lock_skips"].append({**identity, "code": "OPTIMISTIC_LOCK_REFUSED", "detail": detail})
             continue
         result["applied"].append(identity)
     result["counts"] = {
         "applied": len(result["applied"]),
         "already_matched": len(result["already_matched"]),
         "optimistic_lock_skips": len(result["optimistic_lock_skips"]),
+        "coherence_refusals": len(result["coherence_refusals"]),
         "remaining": result["remaining"],
     }
     return result

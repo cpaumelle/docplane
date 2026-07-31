@@ -244,8 +244,8 @@ SECOND_APPLY=$(DOCPLANE_API="$API" DOCPLANE_TOKEN="$TOKEN" python3 scripts/knowl
 python3 - "$FIRST_APPLY" "$SECOND_APPLY" <<'PY'
 import json,sys
 first,second=map(json.loads,sys.argv[1:])
-assert first["counts"]=={"applied":1,"already_matched":0,"optimistic_lock_skips":0,"remaining":0}
-assert second["counts"]=={"applied":0,"already_matched":1,"optimistic_lock_skips":0,"remaining":0}
+assert first["counts"]=={"applied":1,"already_matched":0,"optimistic_lock_skips":0,"coherence_refusals":0,"remaining":0}
+assert second["counts"]=={"applied":0,"already_matched":1,"optimistic_lock_skips":0,"coherence_refusals":0,"remaining":0}
 PY
 rm -f "$SUGGESTIONS" "$CURATED"
 compose exec -T postgres psql -U docs -d docs -Atc "SELECT count(*) FROM pg_constraint WHERE conname='pages_knowledge_class_check'" | grep -qx 1 || fail "migration 010 CHECK missing"
