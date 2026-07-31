@@ -7,6 +7,13 @@ ENV GIT_SHA=${GIT_SHA} \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Standard OCI provenance so image metadata answers "what commit is this"
+# without a running container; /healthz git_sha remains the runtime check.
+LABEL org.opencontainers.image.revision=${GIT_SHA} \
+      org.opencontainers.image.created=${BUILD_TIMESTAMP} \
+      org.opencontainers.image.title="docplane-api" \
+      org.opencontainers.image.source="https://github.com/cpaumelle/docplane"
+
 WORKDIR /app
 COPY docs-api/requirements.txt ./requirements.txt
 RUN apt-get update \
