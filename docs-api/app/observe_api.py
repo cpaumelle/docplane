@@ -352,6 +352,18 @@ def observe_coverage(principal: Principal = Depends(require_contributor)) -> dic
         )
         paging_alerts_without_runbook = [row[0] for row in cur.fetchall()]
         cur.execute(
+            """
+            SELECT r.entity_key FROM model.entities r
+             WHERE r.entity_kind = 'MONITOR_RULE' AND r.status = 'ACTIVE'
+               AND NOT EXISTS (
+                   SELECT 1 FROM model.entity_links l
+                    WHERE l.from_entity_id = r.entity_id AND l.relation = 'WATCHES'
+               )
+             ORDER BY r.entity_key
+            """
+        )
+        rules_without_service = [row[0] for row in cur.fetchall()]
+        cur.execute(
             "SELECT count(*) FROM model.entities WHERE entity_kind = 'MONITOR_RULE' AND status = 'ACTIVE'"
         )
         rule_count = int(cur.fetchone()[0])
@@ -366,11 +378,16 @@ def observe_coverage(principal: Principal = Depends(require_contributor)) -> dic
         "rules_without_description": rules_without_description,
         "paging_alerts_without_runbook": paging_alerts_without_runbook,
         "paging_severities": list(_PAGING_SEVERITIES),
+        # The unwired share of the meter list (164 of 256 on first fabric
+        # run) is itself coverage truth: a rule nobody can attribute to a
+        # service is a labelling gap in the rule files.
+        "rules_without_service": rules_without_service,
         "scope": {
             "implemented": [
                 "unwatched_services",
                 "rules_without_description",
                 "paging_alerts_without_runbook",
+                "rules_without_service",
                 "criticality_ranking",
             ],
             "follow_up": ["verified_runbook_gating", "work_inbox_feed"],

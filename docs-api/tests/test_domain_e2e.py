@@ -356,6 +356,10 @@ def test_coverage_ranks_by_criticality_and_surfaces_runbook_gaps():
     # The critical unwatched service outranks NORMAL/unclassified ones.
     unwatched = coverage["unwatched_services"]
     assert unwatched.index(f"e2e-svc-critical-{RUN}") < unwatched.index(f"e2e-svc-plain-{RUN}")
+    # A rule with no WATCHES wire is a labelling gap in the rule files —
+    # surfaced explicitly (the first fabric run counted 164 of 256).
+    assert f"rule.e2e-paging-{RUN}" in coverage["rules_without_service"]
+    assert "rules_without_service" in coverage["scope"]["implemented"]
     assert "paging_alerts_without_runbook" in coverage["scope"]["implemented"]
     assert "work_inbox_feed" in coverage["scope"]["follow_up"]
 
