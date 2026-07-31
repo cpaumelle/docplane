@@ -318,3 +318,26 @@ config from git, maintains rule entities `WATCHES`-wired to services,
 generates fingerprint-bound plain-English explanations, and populates the
 coverage view — gaps, never stubs. This is the second complete pass through
 the same four-domain machinery, proving the pattern generalises.
+
+### Coverage burn-down
+
+Coverage truth remains a derived Observe projection; it is never replaced by
+a hand-maintained queue. A bounded reconciler may project individual
+description and paging-runbook gaps into reopenable Work items for humane
+triage. The stable rule entity is the item identity: repeated reconciliation
+converges, disappeared gaps resolve, and recurring gaps reopen. The default
+batch creates at most ten new items while the coverage endpoint continues to
+report the complete debt.
+
+Runbook discipline still binds: a gap item does not create, stub or imply a
+runbook. Runbooks are authored only from real operational events. Service
+wiring is fixed upstream by a rule label wherever possible; a versioned,
+operator-curated overlay may supply a `WATCHES` edge only for an unlabelled
+rule and records `metadata.source=overlay` on that edge.
+
+The scheduled meter-list run is the second reconciliation loop, not a blind
+verification cron. It compares a Git authority with DocPlane's projection
+through the same importer and receipts as a manual run. An unchanged tick
+replays one fingerprint-bound nominal observation and makes no model, Know or
+Work mutation. Work projection advances only when coverage changes or when an
+operator explicitly requests reconciliation.

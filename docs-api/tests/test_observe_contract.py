@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 
 from app.model_api import router as model_router
-from app.observe_api import derive_freshness, router as observe_router
+from app.observe_api import derive_freshness, plan_gap_reconciliation, router as observe_router
 from app.observe_models import ObservationBatch, ObservationCreate
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +45,47 @@ def test_observe_routes_exist_and_expose_no_mutation_surface():
     paths = {route.path for route in app.routes}
     assert "/api/v1/model/entities/{entity_id}/status" in paths
     assert "/api/v1/model/artifacts/{artifact_id}/status" in paths
+    assert "/api/v1/observe/coverage/reconcile-work" in paths
+    assert "/api/v1/observe/coverage/work-items" in paths
+
+
+def test_gap_projection_is_bounded_convergent_resolving_and_reopening():
+    candidates = [
+        {"gap_kind": "MISSING_DESCRIPTION", "subject_entity_id": f"r{i}"}
+        for i in range(12)
+    ]
+    first = plan_gap_reconciliation(candidates, [], 10)
+    assert len(first["create"]) == 10
+    existing = [
+        {**item, "work_item_id": f"w{i}", "status": "OPEN"}
+        for i, item in enumerate(first["create"])
+    ]
+    second = plan_gap_reconciliation(candidates, existing, 10)
+    assert len(second["create"]) == 2
+    known = existing + [
+        {**item, "work_item_id": f"new{i}", "status": "OPEN"}
+        for i, item in enumerate(second["create"])
+    ]
+    converged = plan_gap_reconciliation(candidates, known, 10)
+    assert converged == {"create": [], "reopen": [], "refresh": [], "resolve": []}
+
+    vanished = plan_gap_reconciliation(candidates[1:], known, 10)
+    assert [item["subject_entity_id"] for item in vanished["resolve"]] == ["r0"]
+    resolved = [{**known[0], "status": "RESOLVED"}] + known[1:]
+    recurring = plan_gap_reconciliation(candidates, resolved, 10)
+    assert [item["subject_entity_id"] for item in recurring["reopen"]] == ["r0"]
+
+
+def test_coverage_reconcile_requires_idempotency_header():
+    schema = _app().openapi()
+    parameters = schema["paths"]["/api/v1/observe/coverage/reconcile-work"]["post"].get("parameters", [])
+    assert any(item["name"] == "Idempotency-Key" for item in parameters)
+
+
+def test_sprint6_scope_token_remains_additive_compatibility_contract():
+    source = (ROOT / "docs-api/app/observe_api.py").read_text(encoding="utf-8")
+    assert '"work_inbox_feed"' in source
+    assert '"DELIVERED_AS_BOUNDED_WORK_PROJECTION"' in source
 
 
 def test_observation_post_declares_idempotency_and_get_is_cursor_paginated():
