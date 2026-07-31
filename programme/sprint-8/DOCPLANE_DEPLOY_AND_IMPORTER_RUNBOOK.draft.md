@@ -158,8 +158,14 @@ are derived consumers. If a step seems to require inverting that arrow, stop.
   client, do NOT reuse the token, finish any in-flight work with a freshly
   issued credential (fabric self-issue exists for exactly this), then
   rotate the exposed credential through the credential authority in the
-  same session and confirm the old token is rejected (401). Audit the event
-  ledger for uses of the exposed token between exposure and revocation.
+  same session and confirm the old token is rejected. The rejection
+  contract (verified in production 2026-07-31): a REVOKED credential
+  returns **403 AUTH_PRINCIPAL_INACTIVE** — the principal is known but
+  inactive; 401 is reserved for unknown/malformed tokens. A 403 with that
+  code IS the successful confirmation; a 401 for a just-revoked token would
+  itself be suspicious (it means the token you tested is not the one you
+  revoked). Audit the event ledger for uses of the exposed token between
+  exposure and revocation.
   Prevention: never pass bearers as command-line arguments — argv is
   world-readable on the host. Use `curl --config <file>` / `-H @file` with
   a 0600 file, or a client that reads the token from the environment
