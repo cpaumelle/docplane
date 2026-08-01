@@ -35,6 +35,7 @@ def test_domain_precedence():
     assert page_domain(_page(path="guides/example-town.md")) == "know"
     assert page_domain(_page(path="observe/meter-list/example-prometheus/index.md")) == "observe"
     assert page_domain(_page(path="model/services/edge-1.md")) == "model"
+    assert page_domain(_page(path="work/roadmap.md")) == "work"
     assert page_domain(_page(path="index.md")) == "know"
     assert page_domain(_page(knowledge_class="WORK_NOTE")) == "work"
     # WORK_NOTE wins wherever the page lives, and case/whitespace don't matter.

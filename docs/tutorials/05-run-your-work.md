@@ -46,6 +46,10 @@ Each answer is `UPDATED` (with links to what changed), `NOT_REQUIRED` (with a on
 
 Agents read and answer the same gates via `work_dispositions`.
 
+## Browse work on the published site
+
+Acting on work happens in the dashboard — but *surveying* it shouldn't require one. The work-catalogue generator (`scripts/work_catalogue.py`, [operator guide](../operations/WORK_CATALOGUE.md)) renders a read-only `work/` section on the published site: the queue board, a priority-ranked Roadmap for sprint picking, Soaking with criteria and monitoring refs for check-ins, Parked with review dates, recently-completed with each initiative's closure gate, and one page per open initiative. It regenerates only when work state actually changes (fingerprint-guarded), archives pages for closed initiatives automatically, and shows the inbox as a count only — pre-triage thoughts stay out of print. Every page links back to the dashboard to act.
+
 ## The habit
 
 - Capture everything, instantly, without judging it.

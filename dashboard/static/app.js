@@ -447,7 +447,7 @@ function renderDirectories() {
 function pageDomain(page) {
   if ((page.knowledge_class || "").trim().toUpperCase() === "WORK_NOTE") return "work";
   const head = (page.path || "").split("/")[0];
-  return head === "observe" || head === "model" ? head : "know";
+  return head === "observe" || head === "model" || head === "work" ? head : "know";
 }
 
 const KNOWLEDGE_CLASSES = ["ARCHITECTURE", "OPERATION", "REFERENCE", "POLICY", "DECISION", "EVIDENCE", "DESIGN", "WORK_NOTE"];
