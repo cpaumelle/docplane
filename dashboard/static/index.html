@@ -31,15 +31,23 @@
   <div class="shell">
     <nav class="sidebar" data-product-aria="modules" aria-label="DocPlane modules">
       <button class="nav active" data-view="overview">Overview</button>
-      <button class="nav" data-view="work">Work</button>
+      <span class="nav-group">work</span>
+      <button class="nav" data-view="work">Queues &amp; inbox</button>
+      <span class="nav-group">know</span>
       <button class="nav" data-view="explore">Explore</button>
       <button class="nav" data-view="review">Review</button>
-      <button class="nav" data-view="authoring">Authoring</button>
-      <button class="nav" data-view="history">Changes & versions</button>
+      <button class="nav" data-view="classify">Classify</button>
+      <button class="nav" data-view="authoring">Author</button>
+      <span class="nav-group">model</span>
+      <button class="nav" data-view="model">Entities</button>
+      <span class="nav-group">observe</span>
+      <button class="nav" data-view="observe">Coverage &amp; evidence</button>
+      <span class="nav-group">control</span>
+      <button class="nav" data-view="history">Changes &amp; versions</button>
     </nav>
     <main>
       <section id="view-overview" class="view active">
-        <div class="heading"><div><h1>Operational state</h1><p>Current corpus, publication and maintenance signals.</p></div><button id="refresh-overview">Refresh</button></div>
+        <div class="heading"><div><h1>Campaigns and state</h1><p>What needs doing, then what is true. Every card opens the view where the work happens.</p></div><button id="refresh-overview">Refresh</button></div>
         <div id="overview-cards" class="cards"></div>
         <div class="grid two">
           <article class="panel"><h2>Certification</h2><div id="certification">Connect to load.</div><button id="retry-publication" disabled>Retry current publication</button></article>
@@ -67,9 +75,8 @@
       </section>
 
       <section id="view-explore" class="view">
-        <div class="heading"><div><h1>Explore the corpus</h1><p>Browse directory by directory; search flat only when you ask to.</p></div><div class="actions"><button id="export-observatory">Export manifest</button><button id="refresh-explore">Refresh</button></div></div>
+        <div class="heading"><div><h1>Explore the corpus</h1><p>Browse directory by directory; select pages to stage a governed move.</p></div><div class="actions"><button id="export-observatory">Export manifest</button><button id="refresh-explore">Refresh</button></div></div>
         <article class="panel explore-controls">
-          <p id="explore-classification-summary" class="signal-note">Classification audit loads with the corpus snapshot.</p>
           <div class="filters">
             <label>Search everywhere<input id="explore-query" placeholder="Path or title — replaces browsing while active"></label>
             <label>Classification<select id="explore-class"><option value="">All</option></select></label>
@@ -79,6 +86,13 @@
           </div>
         </article>
         <nav id="explore-breadcrumbs" class="breadcrumbs" aria-label="Corpus location"></nav>
+        <div id="explore-selection" class="selection-bar" hidden>
+          <strong id="explore-selection-count"></strong>
+          <label>Move to<input id="explore-move-target" list="explore-directory-options" placeholder="target/directory"></label>
+          <datalist id="explore-directory-options"></datalist>
+          <button id="explore-move-stage" disabled>Stage move plan</button>
+          <button id="explore-selection-clear" class="ghost">Clear selection</button>
+        </div>
         <div class="grid explore-layout">
           <article class="panel"><h2>Directories</h2><div id="explore-directories" class="list muted">Connect to load.</div></article>
           <article class="panel">
@@ -92,7 +106,7 @@
       </section>
 
       <section id="view-review" class="view">
-        <div class="heading"><div><h1>Review</h1><p>A single ranked attention queue for structural evidence, classification and verification.</p></div><button id="refresh-review">Refresh</button></div>
+        <div class="heading"><div><h1>Review</h1><p>The ranked attention queue, fabric verification, and staged reorganisation plans.</p></div><button id="refresh-review">Refresh</button></div>
         <article class="panel">
           <h2>Verify a section before relying on it</h2>
           <div class="scope-action"><label>Path prefix<input id="verify-prefix" placeholder="operations/proxmox"></label><button id="verify-section" disabled>Request fabric verification</button></div>
@@ -102,16 +116,50 @@
           <article class="panel"><h2>Ranked candidates</h2><div id="review-candidates" class="list muted">Connect to load.</div><button id="review-more" hidden>Load more</button></article>
           <article class="panel"><h2>Open verification requests</h2><div id="verification-requests" class="list muted">Connect to load.</div></article>
         </div>
-        <details class="panel advanced">
-          <summary><strong>Advanced reorganisation</strong> — manage existing plans or build raw operations</summary>
-          <ol class="workflow"><li>Plan</li><li>Analyze</li><li>Validate</li><li>Publish</li></ol>
-          <div class="grid two">
-            <article class="panel"><h2>Create plan</h2><label>Title<input id="plan-title"></label><label>Purpose<textarea id="plan-purpose"></textarea></label><label>Workspace<input id="plan-workspace" value="reference"></label><button id="create-plan">Create plan</button></article>
-            <article class="panel"><h2>Add operation</h2><label>Type<select id="operation-type"><option>MOVE_PAGE</option><option>REPARENT_NAV</option><option>ARCHIVE_PAGE</option><option>RESTORE_PAGE</option><option>ADD_REDIRECT</option><option>REMOVE_REDIRECT</option><option>REORDER_SECTIONS</option></select></label><label>Page resource ID<input id="operation-page-id"></label><label>Expected revision<input id="operation-revision"></label><label>Payload JSON<textarea id="operation-payload">{}</textarea></label><button id="add-operation" disabled>Add operation</button></article>
+        <div class="grid two">
+          <article class="panel">
+            <h2>Reorganisation plans</h2>
+            <p class="muted">Plans are staged from Explore: select pages, choose a target directory, stage. Resource IDs and revisions are bound automatically.</p>
+            <div class="actions"><button id="refresh-reorganisation">Refresh plans</button></div>
+            <div id="reorg-plans" class="list muted">Connect to load.</div>
+          </article>
+          <article class="panel">
+            <h2>Selected plan</h2>
+            <div id="reorg-detail" class="list muted">No plan selected.</div>
+            <div class="actions"><button id="analyze-plan" disabled>Analyze</button><button id="validate-plan" disabled>Validate</button><button id="publish-plan" disabled>Publish</button></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-classify" class="view">
+        <div class="heading"><div><h1>Classify</h1><p>Burn down unclassified pages — or review a suspect class — one governed decision at a time.</p></div><button id="refresh-classify">Refresh</button></div>
+        <article class="panel">
+          <div class="scope-action">
+            <label>Scope<select id="classify-class-scope">
+              <option value="__missing__">(missing) — backfill</option>
+              <option value="ARCHITECTURE">architecture — review</option>
+              <option value="OPERATION">operation — review</option>
+              <option value="REFERENCE">reference — review</option>
+              <option value="POLICY">policy — review</option>
+              <option value="DECISION">decision — review</option>
+              <option value="EVIDENCE">evidence — review</option>
+              <option value="DESIGN">design — review</option>
+              <option value="WORK_NOTE">work note — review</option>
+            </select></label>
+            <span></span>
           </div>
-          <div class="actions"><button id="refresh-reorganisation">Refresh plans</button><button id="analyze-plan" disabled>Analyze</button><button id="validate-plan" disabled>Validate</button><button id="publish-plan" disabled>Publish</button></div>
-          <div class="grid two"><article class="panel"><h2>Open plans</h2><div id="reorg-plans" class="list muted">Connect to load.</div></article><article class="panel"><h2>Selected plan</h2><pre id="reorg-detail">No plan selected.</pre></article></div>
-        </details>
+          <div id="classify-burndown" class="chips-row muted">Connect to load.</div>
+          <p id="classify-progress" class="muted"></p>
+        </article>
+        <div class="grid classify-layout">
+          <article class="panel" id="classify-card">
+            <div id="classify-current" class="muted">Connect to load.</div>
+            <pre id="classify-preview" class="preview" hidden></pre>
+            <div id="classify-actions" class="class-actions"></div>
+          </article>
+          <article class="panel"><h2>Up next</h2><div id="classify-queue" class="list muted"></div></article>
+        </div>
+        <p class="signal-note">Keyboard: <kbd>1</kbd>–<kbd>8</kbd> assign class · <kbd>j</kbd>/<kbd>k</kbd> next/previous · <kbd>s</kbd> skip. Every assignment is a governed reclassification recorded against the exact metadata version.</p>
       </section>
 
       <section id="view-authoring" class="view">
@@ -137,12 +185,40 @@
         </div>
       </section>
 
+      <section id="view-model" class="view">
+        <div class="heading"><div><h1>Model</h1><p>The card index of what the fabric structurally is — one card per system, service, node, network or artifact.</p></div><button id="refresh-model">Refresh</button></div>
+        <article class="panel"><div id="model-kinds" class="chips-row muted">Connect to load.</div></article>
+        <div class="grid explore-layout">
+          <article class="panel">
+            <div class="panel-heading"><h2>Entities</h2><span id="model-count" class="muted"></span></div>
+            <div id="model-entities" class="list muted">Connect to load.</div>
+          </article>
+          <article class="panel">
+            <h2 id="model-detail-title">Entity</h2>
+            <div id="model-detail" class="list muted">Select an entity to see its attributes, wires, pages and live status.</div>
+          </article>
+        </div>
+        <article class="panel"><h2>Generated artifacts</h2><div id="model-artifacts" class="list muted">Connect to load.</div></article>
+      </section>
+
+      <section id="view-observe" class="view">
+        <div class="heading"><div><h1>Observe</h1><p>The meter list, coverage gaps and the evidence ledger — what is watched and what reality currently shows.</p></div><button id="refresh-observe">Refresh</button></div>
+        <div id="observe-cards" class="cards"></div>
+        <div class="grid two">
+          <article class="panel"><h2>Unwatched services</h2><p class="muted">Ranked by criticality of the pages describing them.</p><div id="observe-unwatched" class="list muted">Connect to load.</div></article>
+          <article class="panel"><h2>Coverage work items</h2><div id="observe-work-items" class="list muted">Connect to load.</div></article>
+        </div>
+        <article class="panel"><h2>Meter-list gaps</h2><div id="observe-gaps" class="list muted">Connect to load.</div></article>
+        <article class="panel"><h2>Recent observations</h2><div id="observe-observations" class="list muted">Connect to load.</div></article>
+      </section>
+
       <section id="view-history" class="view">
         <div class="heading"><div><h1>Changes & versions</h1><p>Published changes, deployment receipts and page version history.</p></div><button id="refresh-history">Refresh</button></div>
         <div id="changes" class="list muted">Connect to load.</div>
       </section>
     </main>
   </div>
+  <div id="toast" class="toast" hidden></div>
   <footer><span id="identity">Not connected</span><button id="troubleshoot-auth" type="button">Connection help</button><span>Named contributors · direct publish · complete audit trail</span></footer>
   <script src="/assets/editor.bundle.js" defer></script>
   <script src="/assets/app.js" defer></script>
