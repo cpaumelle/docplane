@@ -9,7 +9,7 @@ API, is authoritative. The dashboard has no database, filesystem, authentication
 permission, publication or release-store authority. It does not scan generated MkDocs
 files or reconstruct corpus policy in browser JavaScript.
 
-The retired CharlieHub MkDocs dashboard is behavioral and design evidence only. Its useful
+The retired legacy MkDocs dashboard is behavioral and design evidence only. Its useful
 questions, visual hierarchy and calibrated structural signals inform the Corpus
 Observatory; its implementation and any independent scanning model are not an authority.
 

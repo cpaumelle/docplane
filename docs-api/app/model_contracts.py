@@ -2,8 +2,8 @@
 
 Card kinds are DATA, not schema: the entity table accepts any kind in its
 vocabulary, and this module decides what a valid card of each kind looks
-like. Checklists were harvested from the fabric, not invented — see
-docs/architecture/CARD_TYPE_HARVEST_REPORT.md. A kind is `ratified` once
+like. Checklists were harvested from a real deployment, not invented — the survey
+method is docs/architecture/CARD_TYPE_HARVEST.md. A kind is `ratified` once
 several real instances filled its required fields; unratified kinds accept
 any attributes (still secret-scanned) until they earn a checklist.
 
@@ -155,7 +155,7 @@ def contracts_document() -> dict[str, Any]:
             }
             for kind in ENTITY_KINDS
         },
-        "provenance": "docs/architecture/CARD_TYPE_HARVEST_REPORT.md",
+        "provenance": "docs/architecture/CARD_TYPE_HARVEST.md",
     }
 
 

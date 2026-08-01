@@ -149,8 +149,9 @@ a database CHECK constraint, so adding a kind is an additive migration
 extending that CHECK plus a card-contract entry — the compatibility
 contract's textbook additive case (migration `008_monitor_rule_kind.sql` is
 the exemplar; an earlier draft of this document called it a data change,
-which implementation evidence overtook). The harvested starting set (see the
-[corpus harvest report](CARD_TYPE_HARVEST_REPORT.md)): `SYSTEM`, `SERVICE`,
+which implementation evidence overtook). The harvested starting set (method in
+[the harvest survey design](CARD_TYPE_HARVEST.md); the deployment-specific
+harvest report lives with the deploying fabric's records): `SYSTEM`, `SERVICE`,
 `NODE`, `VM`, `SITE`, `NETWORK`, `DATABASE`, `SCHEMA`, `API`, `ROUTE`,
 `DEVICE_MODEL`, `INTERFACE`, `ARTIFACT` — with `SITE` and `VM` added on
 harvest evidence the original draft missed.

@@ -279,7 +279,7 @@ def _latest_generation(cur, artifact_id: str) -> dict[str, Any] | None:
 # it descending so the most critical unwatched service surfaces first.
 _CRITICALITY_RANK = {"NORMAL": 0, "IMPORTANT": 1, "OPERATIONAL_CRITICAL": 2, "POLICY_REQUIRED": 3}
 
-# Severities that page a human (hub2 convention). A paging alert without a
+# Severities that page a human (deployment paging convention). A paging alert without a
 # runbook_url annotation is an operational gap; informational severities
 # merely benefit from one.
 _PAGING_SEVERITIES = ("critical", "page")
