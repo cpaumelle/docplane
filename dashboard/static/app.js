@@ -362,7 +362,13 @@ async function loadWork() {
     }
     const open = (initiatives.initiatives || []);
     $("attach-target").innerHTML = `<option value="">Select an initiative…</option>` + open.map((item) => `<option value="${esc(item.initiative_id)}">${esc(item.title)} (${esc(item.work_state)})</option>`).join("");
-    $("work-inbox").innerHTML = (inbox.captures || []).length ? inbox.captures.map((item) => `<article class="panel"><strong>${esc(item.kind)}</strong><p>${esc(item.body)}</p><p class="muted">${esc(item.created_at)}</p><div class="actions"><button class="capture-promote" data-id="${esc(item.capture_id)}">Promote</button><button class="capture-attach" data-id="${esc(item.capture_id)}">Attach</button><button class="capture-discard" data-id="${esc(item.capture_id)}">Discard</button></div></article>`).join("") : `<p class="muted">Inbox zero.</p>`;
+    $("work-inbox").innerHTML = (inbox.captures || []).length ? inbox.captures.map((item) => {
+      // Origin context is the triage superpower of the distraction ledger:
+      // "where was I when I thought this" renders right on the card.
+      const origin = item.origin || {};
+      const originLine = [origin.tool || origin.channel, origin.context].filter(Boolean).join(" · ");
+      return `<article class="panel"><strong>${esc(item.kind)}</strong><p>${esc(item.body)}</p>${originLine ? `<p class="muted origin-line">from ${esc(originLine)}</p>` : ""}<p class="muted">${esc(item.created_at)}</p><div class="actions"><button class="capture-promote" data-id="${esc(item.capture_id)}">Promote</button><button class="capture-attach" data-id="${esc(item.capture_id)}">Attach</button><button class="capture-discard" data-id="${esc(item.capture_id)}">Discard</button></div></article>`;
+    }).join("") : `<p class="muted">Inbox zero.</p>`;
     document.querySelectorAll(".capture-promote").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "promote").catch((error) => { $("work-inbox").textContent = error.message; })));
     document.querySelectorAll(".capture-attach").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "attach").catch((error) => { $("work-inbox").textContent = error.message; })));
     document.querySelectorAll(".capture-discard").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "discard").catch((error) => { $("work-inbox").textContent = error.message; })));

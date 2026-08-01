@@ -59,6 +59,7 @@ Put this in your agent's system prompt or skill; it is the entire etiquette:
 5. **Gaps, not stubs.** If something's missing, `work_capture` it. Never publish an empty page to mark a TODO.
 6. **Classify at birth** — pass `knowledge_class` when creating pages.
 7. **Verify against reality, bind evidence to revisions.** When asked to verify a page, record what was actually checked.
+8. **One task at a time — park everything else.** Mid-task discoveries (a bug, an improvement, a question) get ONE `work_capture` call with `kind` and `context`, then you return to the task. Never chase a discovery, never widen scope unprompted. See [the distraction ledger](05-run-your-work.md#the-distraction-ledger-how-agents-stay-on-task).
 
 The complete worked cold-start — discovery through create, publish, verify, archive and cleanup — is [Agent onboarding](../architecture/agent-onboarding.md).
 

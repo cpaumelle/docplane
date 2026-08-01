@@ -178,6 +178,8 @@ button.card--link:hover { border-color:var(--action); }
 button.ghost { background:transparent; border-color:transparent; color:var(--text-muted); }
 button.ghost:hover:not(:disabled) { background:var(--bg-sunken); border-color:transparent; }
 
+.origin-line { font-size:.8rem; overflow-wrap:anywhere; }
+
 /* ── Toast (replaces window.alert) ────────────────────────────────────── */
 .toast { position:fixed; bottom:3.4rem; right:1.2rem; z-index:50; max-width:26rem; padding:.7rem 1rem; background:var(--ink); color:var(--white); border-radius:var(--radius-input); box-shadow:var(--shadow-card); font-size:.88rem; }
 .toast[data-kind="warn"] { background:var(--state-warn); }

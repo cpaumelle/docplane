@@ -12,6 +12,21 @@ Mid-task, something occurs to you. Save it without breaking flow:
 
 Captures land in the **Inbox** untriaged. That's the point: capturing and structuring are different mental modes, and mixing them kills capture.
 
+## The distraction ledger: how agents stay on task
+
+Coding sessions die by distraction: you start one thing, notice a bug, chase it, notice something else — and the original task never finishes. Agents are *worse* at this than humans, because every discovery looks equally actionable to them. The capture inbox is the structural fix, but it only works if the behavior is contracted, so put this in your agent's standing instructions:
+
+> **Focus discipline.** You are working on exactly one task. When you notice
+> anything out of scope — a bug, a possible improvement, a question, an idea —
+> record it with ONE `work_capture` call (`kind=BUG` for defects,
+> `kind=IMPROVEMENT` for enhancements; pass `context` = repo/file + what you
+> were doing) and **return to your task immediately**. Do not investigate it,
+> do not fix it, do not mention it beyond one sentence. The capture is the
+> guarantee the thought is safe to walk away from. Scope changes only when
+> the human asks for them.
+
+Each capture stamps its origin automatically, and the inbox card shows it — so at triage time "where was I when I thought this" is right on the card. The payoff compounds: the task at hand actually finishes, and Friday's triage finds a tidy pile of `BUG`s and `IMPROVEMENT`s with context instead of a memory of vague unease.
+
 ## Triage: deliberate, later
 
 When you *choose* to (a coffee break, a Friday review), open the inbox and give each capture one of three fates:

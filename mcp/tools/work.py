@@ -41,15 +41,22 @@ def _error(code: int, body) -> dict:
 def register(mcp) -> None:
     @mcp.tool()
     def work_capture(text: str, kind: str = "IDEA", context: str = "", idempotency_key: str = "") -> dict:
-        """Save an idea, next action, finding or question to the work inbox without breaking flow.
+        """Park an out-of-scope discovery in the work inbox and RETURN to your task.
 
-        Zero-decision: pass the thought as one string. Optionally pass context
-        (repository, session, what you were doing) so triage knows where the
-        thought came from. Pass your own idempotency_key to make retry after a
-        lost response replay the original receipt.
+        This is the distraction ledger. When you notice something mid-task that
+        is not the task — a bug (kind=BUG), a possible enhancement
+        (kind=IMPROVEMENT), an idea, a question — record it in this ONE call
+        and continue what you were doing. Do not investigate it, do not fix it,
+        do not widen your scope: the capture exists precisely so the thought is
+        safe to walk away from. Triage is a separate, deliberate act later.
+
+        Zero-decision: pass the thought as one string. Pass context
+        (repository, file, what you were doing) so triage knows where it came
+        from. Pass your own idempotency_key to make a retry after a lost
+        response replay the original receipt.
         """
-        if kind not in {"IDEA", "NEXT_ACTION", "FINDING", "QUESTION"}:
-            return {"error": "kind must be IDEA, NEXT_ACTION, FINDING or QUESTION"}
+        if kind not in {"IDEA", "NEXT_ACTION", "FINDING", "QUESTION", "BUG", "IMPROVEMENT"}:
+            return {"error": "kind must be IDEA, NEXT_ACTION, FINDING, QUESTION, BUG or IMPROVEMENT"}
         origin = {"channel": "MCP", "server": MCP_SERVER_NAME, "tool": "work_capture"}
         if context.strip():
             origin["context"] = context.strip()[:4000]
