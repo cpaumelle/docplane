@@ -13,11 +13,11 @@ discipline in `DOMAIN_MODEL.md`.
 ## Required environment
 
 ```text
-DOCPLANE_API=https://docplane.charliehub.internal
+DOCPLANE_API=https://docplane.example.internal
 DOCPLANE_METER_LIST_TOKEN=<named AUTOMATION bearer>
-METER_RULES_DIR=/opt/charliehub/monitoring/prometheus/rules
-METER_SOURCE_KEY=hub2.prometheus
-METER_SERVICE_MAP=/opt/docplane/config/meter-list-service-map.yml
+METER_RULES_DIR=/srv/monitoring/prometheus/rules
+METER_SOURCE_KEY=prometheus.main   # required; stable — it is entity identity
+METER_SERVICE_MAP=/srv/docplane/config/meter-list-service-map.yml
 DOCPLANE_COVERAGE_GAP_BATCH_LIMIT=10
 ```
 
@@ -42,7 +42,7 @@ Generate a names-only curation aid without writes:
 
 ```bash
 python3 scripts/meter_list.py --suggest-services \
-  > programme/sprint-8/meter-list-service-map-suggestions.json
+  > meter-list-service-map-suggestions.json
 ```
 
 Suggestions are evidence, never mappings. Review them with operational

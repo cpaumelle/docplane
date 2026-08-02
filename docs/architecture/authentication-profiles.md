@@ -48,7 +48,7 @@ source fingerprint. Neither log contains a clear bearer or token hash.
 
 ## Trust boundary
 
-`private_fabric` deliberately treats reachability of the routed internal hostname as the admission decision. This is the same high-level boundary used by the legacy CharlieHub Docs API, upgraded from a shared retrievable key to short-lived, individually attributable capabilities.
+`private_fabric` deliberately treats reachability of the routed internal hostname as the admission decision. This is the same high-level boundary used by the legacy internal Docs API it replaced, upgraded from a shared retrievable key to short-lived, individually attributable capabilities.
 
 Admission is dual-gated:
 

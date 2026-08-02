@@ -99,10 +99,10 @@ def test_discovery_is_the_complete_unauthenticated_starting_point():
 
 
 def test_discovery_exposes_deployment_site_name_without_changing_product_identity(monkeypatch):
-    monkeypatch.setenv("DOCPLANE_SITE_NAME", "CharlieHub Documentation")
+    monkeypatch.setenv("DOCPLANE_SITE_NAME", "Example Documentation")
     body = agent_contract_api.discovery()
     assert body["product"] == "DocPlane"
-    assert body["site_name"] == "CharlieHub Documentation"
+    assert body["site_name"] == "Example Documentation"
 
 
 def test_assembled_app_has_one_authoritative_handler_per_extracted_path():

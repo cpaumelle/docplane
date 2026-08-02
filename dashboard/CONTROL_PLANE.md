@@ -9,23 +9,47 @@ API, is authoritative. The dashboard has no database, filesystem, authentication
 permission, publication or release-store authority. It does not scan generated MkDocs
 files or reconstruct corpus policy in browser JavaScript.
 
-The retired CharlieHub MkDocs dashboard is behavioral and design evidence only. Its useful
+The retired legacy MkDocs dashboard is behavioral and design evidence only. Its useful
 questions, visual hierarchy and calibrated structural signals inform the Corpus
 Observatory; its implementation and any independent scanning model are not an authority.
 
 ## Product information architecture
 
-The dashboard surfaces `Overview · Work · Explore · Review · Author · Changes`.
+The dashboard is verb-first: the sidebar groups its modules under the four domains
+of intent, so the navigation itself teaches the model.
 
-Explore and Review are the Know-domain Corpus Observatory:
+`Overview · WORK: Queues & inbox · KNOW: Explore / Review / Classify / Author ·
+MODEL: Entities · OBSERVE: Coverage & evidence · Changes & versions`
 
-- **Explore** navigates authoritative snapshot structure, pages and governed metadata.
+- **Overview** is a campaign board, not a statistics page: unclassified pages,
+  review candidates, work inbox, coverage gaps, maintenance attention and open
+  changes, each card deep-linking into the view where that work happens.
+- **Explore** navigates authoritative snapshot structure, pages and governed
+  metadata, and is where reorganisation begins: selecting pages raises a move
+  bar (target directory + stage). Staging compiles a governed reorganisation
+  plan — resource IDs and revisions are bound from the snapshot, never typed.
 - **Review** is the ranked attention queue. Structural candidates include bounded,
-  server-generated reason codes, measured evidence, thresholds, resource IDs and revisions.
-- Freshness and verification are Review concerns. The section path-prefix pre-flight and
-  revision-bound verification request lifecycle remain available there.
-- Raw reorganisation remains available under Review's **Advanced** control so existing
-  plans can still be inspected, analysed, validated and published.
+  server-generated reason codes, measured evidence, thresholds, resource IDs and
+  revisions. Freshness and verification are Review concerns; the section
+  path-prefix pre-flight and revision-bound verification request lifecycle live
+  there. Staged reorganisation plans are inspected, analysed, validated and
+  published here — the raw operation-payload form is gone; plans are authored
+  from Explore's selection, and the plan detail renders each operation with its
+  analysis verdict before publish.
+- **Classify** is the reclassification workbench: a keyboard-driven queue
+  (1–8 assign, j/k navigate) with a body preview, each assignment the same
+  governed, optimistic-locked classify call used everywhere else. Its scope is
+  selectable: `(missing)` burns down the classification audit's backfill;
+  choosing a class reviews that class for accuracy section by section —
+  re-affirming the current class is a skip, never a write.
+- **Entities (model)** reads the card index: kind-filtered entity list, and an
+  entity page aggregating attributes, typed wires (in and out), linked pages and
+  the observe `current_status` projection with artifact freshness.
+- **Coverage & evidence (observe)** leads with the coverage gaps — unwatched
+  services ranked by criticality, rules without descriptions, paging alerts
+  without runbooks, unwired rules — each capturable into the work inbox, plus
+  open coverage work items and the recent observations ledger. The dashboard
+  renders gaps; it never creates stubs.
 
 Structural signals support contributor judgement; they never authorise mutation.
 Classification and overdue policy have one owner in the maintenance API and its shared

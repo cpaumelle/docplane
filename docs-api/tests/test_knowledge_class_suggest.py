@@ -60,22 +60,22 @@ def test_content_shapes():
 
 def test_path_prefix_is_the_fallback():
     assert propose("reference/api.md", "API", "plain")["proposed"] == "REFERENCE"
-    assert propose("sites/dinard.md", "Dinard", "plain")["confidence"] == 0.5
+    assert propose("sites/example-town.md", "Example Town", "plain")["confidence"] == 0.5
     assert propose("uncharted/thing.md", "Thing", "plain") is None
 
 
 def test_conflicts_surface_disagreeing_legacy_fields_only():
-    disagree = conflict_for("sites/dinard.md", "REFERENCE", "**Lifecycle:** OPERATION\n")
+    disagree = conflict_for("sites/example-town.md", "REFERENCE", "**Lifecycle:** OPERATION\n")
     assert disagree["implied"] == "OPERATION" and disagree["current"] == "REFERENCE"
-    assert conflict_for("sites/dinard.md", "OPERATION", "**Lifecycle:** OPERATION\n") is None
-    assert conflict_for("sites/dinard.md", "REFERENCE", "no field") is None
+    assert conflict_for("sites/example-town.md", "OPERATION", "**Lifecycle:** OPERATION\n") is None
+    assert conflict_for("sites/example-town.md", "REFERENCE", "no field") is None
 
 
 def test_report_is_total_sorted_and_write_free():
     pages = [
         _page(path="z/unknown.md"),
         _page(path="operations/backup.md", content="**Lifecycle:** OPERATION"),
-        _page(path="sites/dinard.md", knowledge_class="REFERENCE",
+        _page(path="sites/example-town.md", knowledge_class="REFERENCE",
               content="**Lifecycle:** OPERATION"),
         _page(path="reference/api.md", knowledge_class="REFERENCE", content="fine"),
     ]
@@ -89,7 +89,7 @@ def test_report_is_total_sorted_and_write_free():
     assert counts["classified"] + counts["proposed"] + counts["no_signal"] == counts["pages"]
     assert [item["path"] for item in report["suggestions"]] == ["operations/backup.md"]
     assert report["no_signal"] == ["z/unknown.md"]
-    assert report["conflicts"][0]["path"] == "sites/dinard.md"
+    assert report["conflicts"][0]["path"] == "sites/example-town.md"
     assert pages == snapshot  # proposes only — never mutates its input
     assert build_report(pages) == report  # deterministic
 

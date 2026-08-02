@@ -63,6 +63,7 @@ def overview(authorization: str | None = Header(default=None)) -> dict[str, Any]
         "work": "/api/v1/work/queues",
         "maintenance": "/api/v1/maintenance/pages?queue=all&limit=20",
         "deployments": "/api/v1/deployments/attempts?limit=10",
+        "coverage": "/api/v1/observe/coverage",
     }
     result: dict[str, Any] = {"modules": {}}
     for name, path in endpoints.items():
@@ -71,14 +72,6 @@ def overview(authorization: str | None = Header(default=None)) -> dict[str, Any]
         except ControlPlaneError as exc:
             result["modules"][name] = {"available": False, "error": exc.code}
     return result
-
-
-@app.get("/api/control-plane/structure")
-def structure(authorization: str | None = Header(default=None)) -> Any:
-    try:
-        return client.get("/api/v1/dashboard/structure", authorization=_auth(authorization))
-    except ControlPlaneError as exc:
-        _raise(exc)
 
 
 @app.get("/api/control-plane/observatory")
@@ -286,14 +279,6 @@ def verification_request_action(
         raise HTTPException(status_code=404, detail={"code": "ACTION_NOT_FOUND"})
     try:
         return client.post(f"/api/v1/verification-requests/{request_id}/{action}", authorization=_auth(authorization), idempotency_key=idempotency_key, json_body=body)
-    except ControlPlaneError as exc:
-        _raise(exc)
-
-
-@app.get("/api/control-plane/reorganisation/tree")
-def reorganisation_tree(authorization: str | None = Header(default=None)) -> Any:
-    try:
-        return client.get("/api/v1/reorganisation/tree", authorization=_auth(authorization))
     except ControlPlaneError as exc:
         _raise(exc)
 

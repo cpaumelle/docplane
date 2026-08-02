@@ -25,7 +25,7 @@ groups:
   interval: 60s
   rules:
   - alert: BackupLegFailed
-    expr: hub2_backup_leg_success == 0
+    expr: site_backup_leg_success == 0
     for: 15m
     labels:
       severity: warning
@@ -35,7 +35,7 @@ groups:
       description: |
         The most recent backup run reported failure.
   - alert: BackupStale
-    expr: time() - hub2_backup_last_success_timestamp > 93600
+    expr: time() - site_backup_last_success_timestamp > 93600
     labels:
       severity: critical
       service: backup
@@ -78,11 +78,11 @@ def test_fingerprint_changes_when_a_rule_changes(tmp_path):
 def test_rendering_is_deterministic_stamped_and_flags_description_gaps(tmp_path):
     structure = meter_list.parse_rules(_rules_dir(tmp_path))
     fp = meter_list.fingerprint(structure)
-    pages = meter_list.render_pages("hub2.prometheus", structure, fp)
-    assert pages == meter_list.render_pages("hub2.prometheus", structure, fp)
+    pages = meter_list.render_pages("example.prometheus", structure, fp)
+    assert pages == meter_list.render_pages("example.prometheus", structure, fp)
     assert [page["path"] for page in pages] == [
-        "observe/meter-list/hub2-prometheus/index.md",
-        "observe/meter-list/hub2-prometheus/backup-alerts.md",
+        "observe/meter-list/example-prometheus/index.md",
+        "observe/meter-list/example-prometheus/backup-alerts.md",
     ]
     body = pages[1]["content"]
     assert fp[:16] in body
@@ -99,13 +99,13 @@ def test_rendering_is_redaction_gated(tmp_path):
     )
     (tmp_path / "backup-alerts.yml").write_text(poisoned, encoding="utf-8")
     structure = meter_list.parse_rules(tmp_path)
-    pages = meter_list.render_pages("hub2.prometheus", structure, meter_list.fingerprint(structure))
+    pages = meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))
     rendered = "\n".join(page["content"] for page in pages)
     assert "AKIAIOSFODNN7REALKEY" not in rendered
 
 
 def test_unbalanced_brace_prose_survives_the_redaction_invariant(tmp_path):
-    """A real hub2 rule's description contains grep 'metric{' — legitimately
+    """A real production rule's description contains grep 'metric{' — legitimately
     unbalanced braces that the canonical transform's brace invariant refuses.
     Prose braces are entity-escaped so the document stays brace-free for the
     transform while rendering identically."""
@@ -115,12 +115,12 @@ def test_unbalanced_brace_prose_survives_the_redaction_invariant(tmp_path):
     )
     (tmp_path / "backup-alerts.yml").write_text(poisoned, encoding="utf-8")
     structure = meter_list.parse_rules(tmp_path)
-    pages = meter_list.render_pages("hub2.prometheus", structure, meter_list.fingerprint(structure))
+    pages = meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))
     body = pages[1]["content"]
     assert "ceph_tuning_drift&#123;" in body
     assert "grep 'ceph_tuning_drift{'" not in body
     # PromQL fences keep their braces verbatim.
-    assert "hub2_backup_leg_success == 0" in body
+    assert "site_backup_leg_success == 0" in body
 
 
 def test_navigation_is_collision_free_under_the_deployed_validator(tmp_path):
@@ -129,12 +129,12 @@ def test_navigation_is_collision_free_under_the_deployed_validator(tmp_path):
     structure = meter_list.parse_rules(_rules_dir(tmp_path))
     fp = meter_list.fingerprint(structure)
     tree: dict = {}
-    for page in [meter_list.presence_page(), *meter_list.render_pages("hub2.prometheus", structure, fp)]:
+    for page in [meter_list.presence_page(), *meter_list.render_pages("example.prometheus", structure, fp)]:
         _insert(tree, page["nav_path"].split(" / "), page["path"])
     # Nav keeps the true dotted identity for humans; paths carry the slug.
-    source_node = tree["Observe"]["Meter list"]["hub2.prometheus"]
+    source_node = tree["Observe"]["Meter list"]["example.prometheus"]
     assert isinstance(source_node, dict)
-    assert source_node["Overview"] == "observe/meter-list/hub2-prometheus/index.md"
+    assert source_node["Overview"] == "observe/meter-list/example-prometheus/index.md"
     assert tree["Observe"]["Meter list"]["Overview"] == "observe/meter-list/index.md"
 
 
@@ -142,7 +142,7 @@ def test_every_rendered_path_satisfies_the_deployed_path_contract(tmp_path):
     """The Sprint 6 fabric canary lesson: nav was validated under the
     deployed validator, but page PATHS never were — and the deployed path
     contract forbids dots outside the .md suffix, refusing all 36 pages of
-    the first live run (source key hub2.prometheus). Validate every
+    the first live run (source key example.prometheus). Validate every
     rendered path against the real publication regex, with the exact
     dotted source key the fabric uses AND a dotted file stem."""
     from app.publication import _PATH_RE
@@ -150,19 +150,19 @@ def test_every_rendered_path_satisfies_the_deployed_path_contract(tmp_path):
     (tmp_path / "ceph.rules.yml").write_text(RULES_YML, encoding="utf-8")
     structure = meter_list.parse_rules(_rules_dir(tmp_path))
     fp = meter_list.fingerprint(structure)
-    pages = meter_list.render_pages("hub2.prometheus", structure, fp)
+    pages = meter_list.render_pages("example.prometheus", structure, fp)
     for page in [meter_list.presence_page(), *pages]:
         assert _PATH_RE.fullmatch(page["path"]), page["path"]
     # The dotted identities survive where they belong: entity keys and nav.
-    assert meter_list._slug("hub2.prometheus") == "hub2.prometheus"
+    assert meter_list._slug("example.prometheus") == "example.prometheus"
     assert {page["path"] for page in pages} == {
-        "observe/meter-list/hub2-prometheus/index.md",
-        "observe/meter-list/hub2-prometheus/backup-alerts.md",
-        "observe/meter-list/hub2-prometheus/ceph-rules.md",
+        "observe/meter-list/example-prometheus/index.md",
+        "observe/meter-list/example-prometheus/backup-alerts.md",
+        "observe/meter-list/example-prometheus/ceph-rules.md",
     }
     # Index links point at the slugged paths, relative to the source dir.
     index = pages[0]["content"]
-    assert "(hub2-prometheus/ceph-rules.md)" in index
+    assert "(example-prometheus/ceph-rules.md)" in index
     assert "`ceph.rules`" in index
 
 
@@ -171,7 +171,7 @@ def test_colliding_file_stem_slugs_are_refused(tmp_path):
     (tmp_path / "foo-rules.yml").write_text(RULES_YML, encoding="utf-8")
     structure = meter_list.parse_rules(tmp_path)
     with pytest.raises(RuntimeError, match="both slug to page path segment"):
-        meter_list.render_pages("hub2.prometheus", structure, meter_list.fingerprint(structure))
+        meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))
 
 
 def test_importer_payloads_validate_against_the_deployed_api_models(tmp_path):
@@ -194,7 +194,7 @@ def test_importer_payloads_validate_against_the_deployed_api_models(tmp_path):
     EntityRetire.model_validate({"expected_version": 2, "note": "absent from rule set"})
     ArtifactDeclare.model_validate(
         {
-            "artifact_key": "meter-list-hub2.prometheus",
+            "artifact_key": "meter-list-example.prometheus",
             "generator_name": meter_list.GENERATOR_NAME,
             "generator_version": meter_list.GENERATOR_VERSION,
             "source_entity_id": uuid4(),
@@ -218,14 +218,14 @@ def test_importer_payloads_validate_against_the_deployed_api_models(tmp_path):
 
 def test_idempotency_keys_are_versioned_and_fingerprint_bound():
     fp = "ab" * 32
-    key = meter_list._key(fp, "operation", "observe/meter-list/hub2.prometheus/backup-alerts.md")
+    key = meter_list._key(fp, "operation", "observe/meter-list/example.prometheus/backup-alerts.md")
     assert key.startswith(f"meter-list-{meter_list.GENERATOR_VERSION}-{fp[:16]}-operation-")
     assert len(key) <= 256
-    assert key != meter_list._key("cd" * 32, "operation", "observe/meter-list/hub2.prometheus/backup-alerts.md")
+    assert key != meter_list._key("cd" * 32, "operation", "observe/meter-list/example.prometheus/backup-alerts.md")
 
 
 def test_slug_is_stable_and_charset_safe():
-    assert meter_list._slug("Hub2BackupLegFailed") == "hub2backuplegfailed"
+    assert meter_list._slug("SiteBackupLegFailed") == "sitebackuplegfailed"
     assert meter_list._slug("job:up:ratio") == "job-up-ratio"
     assert meter_list._slug("  Weird -- Name!!  ") == "weird----name"
     import re
@@ -243,7 +243,7 @@ def test_runbook_url_is_harvested_and_rendered(tmp_path):
     stale = structure["backup-alerts"]["backup_tier1"][1]
     assert stale["runbook_url"] == "https://docs.example/runbooks/backup"
     assert meter_list.rule_attributes("backup-alerts", "backup_tier1", stale)["runbook_url"] == "https://docs.example/runbooks/backup"
-    body = meter_list.render_pages("hub2.prometheus", structure, meter_list.fingerprint(structure))[1]["content"]
+    body = meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))[1]["content"]
     assert "**Runbook**: <https://docs.example/runbooks/backup>" in body
 
 
@@ -319,7 +319,7 @@ class FakeModelClient:
 def _reconcile(fake: FakeModelClient, tmp_path: Path, yml: str, **kwargs) -> dict:
     (tmp_path / "backup-alerts.yml").write_text(yml, encoding="utf-8")
     structure = meter_list.parse_rules(tmp_path)
-    return meter_list.reconcile_entities(fake, "hub2.prometheus", structure, meter_list.fingerprint(structure), **kwargs)
+    return meter_list.reconcile_entities(fake, "example.prometheus", structure, meter_list.fingerprint(structure), **kwargs)
 
 
 def test_second_run_updates_edited_rules_and_replaces_stale_watches(tmp_path):
@@ -408,7 +408,7 @@ def test_rules_removed_from_git_are_retired(tmp_path):
     _reconcile(fake, tmp_path, RULES_YML)
     removed = RULES_YML.replace(
         """  - alert: BackupStale
-    expr: time() - hub2_backup_last_success_timestamp > 93600
+    expr: time() - site_backup_last_success_timestamp > 93600
     labels:
       severity: critical
       service: backup
@@ -457,7 +457,7 @@ def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_pa
     rules_dir = _rules_dir(tmp_path)
     structure = meter_list.parse_rules(rules_dir)
     fp = meter_list.fingerprint(structure)
-    paths = sorted(page["path"] for page in meter_list.render_pages("hub2.prometheus", structure, fp))
+    paths = sorted(page["path"] for page in meter_list.render_pages("example.prometheus", structure, fp))
     calls = []
 
     class RecordingClient:
@@ -492,6 +492,8 @@ def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_pa
     monkeypatch.setenv("METER_RULES_DIR", str(rules_dir))
     monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
     monkeypatch.setenv("DOCPLANE_METER_LIST_TOKEN", "not-printed")
+    # METER_SOURCE_KEY is required — it is entity identity, never defaulted.
+    monkeypatch.setenv("METER_SOURCE_KEY", "example.prometheus")
 
     assert meter_list.main([]) == 0
     assert "UNCHANGED" in capsys.readouterr().out

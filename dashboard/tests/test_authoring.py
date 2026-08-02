@@ -149,7 +149,9 @@ def test_dashboard_navigation_preserves_exact_page_deep_links_and_browser_histor
     assert "const url = new URL(location.href);" in app_js
     assert "url.hash = requested;" in app_js
     assert 'history.replaceState({ view: requested }, "", url);' in app_js
-    assert "else location.hash = view;" in app_js
+    # Navigation hashes may carry a view argument (#explore=<path>, #model=<id>)
+    # so drill-down locations stay shareable.
+    assert "else location.hash = target;" in app_js
     assert 'window.addEventListener("hashchange"' in app_js
     assert 'new URLSearchParams(location.search).get("edit")' in authoring_js
     assert 'history.replaceState({}, "", "#" + name)' not in app_js

@@ -20,8 +20,8 @@ from app.generator import GENERATOR_STAMP, _augment_content, page_domain
 
 def _page(**overrides):
     base = {
-        "path": "guides/dinard.md",
-        "content": "# Dinard\n\nbody\n",
+        "path": "guides/example-town.md",
+        "content": "# Example Town\n\nbody\n",
         "knowledge_class": None,
         "provenance": "AUTHORED",
         "updated_at": None,
@@ -32,9 +32,10 @@ def _page(**overrides):
 
 
 def test_domain_precedence():
-    assert page_domain(_page(path="guides/dinard.md")) == "know"
-    assert page_domain(_page(path="observe/meter-list/hub2-prometheus/index.md")) == "observe"
-    assert page_domain(_page(path="model/services/fr-edge-1.md")) == "model"
+    assert page_domain(_page(path="guides/example-town.md")) == "know"
+    assert page_domain(_page(path="observe/meter-list/example-prometheus/index.md")) == "observe"
+    assert page_domain(_page(path="model/services/edge-1.md")) == "model"
+    assert page_domain(_page(path="work/roadmap.md")) == "work"
     assert page_domain(_page(path="index.md")) == "know"
     assert page_domain(_page(knowledge_class="WORK_NOTE")) == "work"
     # WORK_NOTE wins wherever the page lives, and case/whitespace don't matter.
@@ -50,7 +51,7 @@ def test_meta_strip_injected_under_title():
     assert strip.startswith('<p class="dp-badges" data-domain="know">')
     assert '<span class="dp-badge dp-badge--ic" data-domain="know">' in strip
     assert "<svg " in strip and ">Know</span>" in strip
-    assert lines.index(strip) > lines.index("# Dinard")
+    assert lines.index(strip) > lines.index("# Example Town")
 
 
 def test_updated_meta_lives_in_the_strip_not_an_italic_line():
@@ -61,7 +62,7 @@ def test_updated_meta_lives_in_the_strip_not_an_italic_line():
 
 
 def test_legacy_italic_marker_is_stripped():
-    content = "# Dinard\n\n*Last updated: 2026-01-01 00:00 UTC · v3*\n\nbody\n"
+    content = "# Example Town\n\n*Last updated: 2026-01-01 00:00 UTC · v3*\n\nbody\n"
     out = _augment_content(_page(content=content))
     assert "Last updated:" not in out
 

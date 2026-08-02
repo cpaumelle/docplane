@@ -102,7 +102,7 @@ class InitiativeDependencyCreate(BaseModel):
 
 class CaptureCreate(BaseModel):
     body: str = Field(min_length=1, max_length=20000)
-    kind: Literal["IDEA", "NEXT_ACTION", "FINDING", "QUESTION"] = "IDEA"
+    kind: Literal["IDEA", "NEXT_ACTION", "FINDING", "QUESTION", "BUG", "IMPROVEMENT"] = "IDEA"
     origin: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")

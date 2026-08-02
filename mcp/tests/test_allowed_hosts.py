@@ -1,6 +1,6 @@
 """Regression cover for port-aware MCP host/origin defaults.
 
-hub2 published MCP on 18049 while the shipped default allowlist assumed the
+A deployment published MCP on 18049 while the shipped default allowlist assumed the
 upstream 8049, so every normal client got 421 Invalid Host header and had to
 send a hand-forged ``Host: 127.0.0.1``. These tests pin the fix: defaults must
 follow the configured port, without weakening host validation.
@@ -35,7 +35,7 @@ def test_default_port_is_not_duplicated_when_listen_equals_public():
 
 
 def test_non_default_published_port_is_allowed():
-    """The exact hub2 failure: published 18049, listening 8049."""
+    """The exact production failure: published 18049, listening 8049."""
     hosts = default_allowed_hosts(8049, 18049)
     assert "127.0.0.1:18049" in hosts, "published port missing - this is the 421 defect"
     assert "localhost:18049" in hosts
@@ -66,7 +66,7 @@ def test_published_port_is_offered_before_listen_port():
 
 # --- port_from_spec -------------------------------------------------------
 # DOCPLANE_MCP_PORT is interpolated into the compose `ports:` entry, so it may
-# carry a bind address. hub2 publishes loopback-only as "127.0.0.1:18049";
+# carry a bind address. a fabric host publishes loopback-only as "127.0.0.1:18049";
 # int()-ing that raw value crash-looped docs-mcp at import on the very first
 # deployment of the port-aware default.
 
@@ -74,7 +74,7 @@ def test_bare_port_spec():
     assert port_from_spec("8049", 1) == 8049
 
 
-def test_loopback_restricted_spec_is_the_hub2_shape():
+def test_loopback_restricted_spec_is_the_production_shape():
     assert port_from_spec("127.0.0.1:18049", 1) == 18049
 
 

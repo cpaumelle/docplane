@@ -1,124 +1,89 @@
 # DocPlane
 
-DocPlane is a documentation control plane. PostgreSQL is the authored source of truth; MkDocs output is a generated, certified release.
+**DocPlane is a documentation control plane for people who build and run systems with AI agents.** It gives your infrastructure, your projects and your code one governed home for everything you and your agents know — authored in PostgreSQL through a versioned API, published as a certified static site, and organised by four verbs you can say out loud:
 
-Every approved active identity is a **contributor**. There are no document-reader, editor, reviewer, merger or workspace-owner tiers. Workspaces classify content and active work; they do not grant authoring rights.
+| Verb | Question it answers | You say |
+| --- | --- | --- |
+| **work** | What should happen, or is happening? | "Save that idea in work." |
+| **know** | What do we understand and rely on? | "Check know for how that server is configured." |
+| **model** | What is the system, structurally? | "Check model for the schema or the API route." |
+| **observe** | What is watched, and what does reality show? | "Is anything watching this service?" |
 
-## Authentication and deployment boundary
+One authority, two audiences: every page, card, capture and observation is equally readable and writable by humans (a browser dashboard) and agents (an MCP server and a plain HTTP API) — the same revision-bound editing contract, the same audit trail, no second source of truth anywhere. Every approved identity is a **contributor**; there are no reader/editor/reviewer/merger tiers.
 
-DocPlane always uses named bearer credentials for protected API reads and writes. How those credentials are obtained is switchable by deployment:
+## Why it exists
 
-- **`managed`** — safe repository default for public, external or partner-facing installations. Credentials are operator-issued and self-service issuance is disabled.
-- **`private_fabric`** — for installations whose routed hostname is already protected by a private VPN, SD-WAN or equivalent internal-fabric boundary. A reachable agent can self-issue a short-lived, individually attributable AGENT contributor token with no bootstrap secret or DocPlane-side approval round-trip.
+Documentation systems fail in familiar ways: wikis drift from reality, generated docs overwrite hand-written insight, agents paste knowledge into chat logs that evaporate, and "temporary" notes become permanent landfill. DocPlane's design answers each failure directly:
 
-The complete threat model, trusted-front requirements, token constraints and configuration are documented in [Authentication profiles](docs/architecture/authentication-profiles.md). Do not enable `private_fabric` on a publicly reachable hostname.
+- **One authority, additive evolution.** PostgreSQL through the versioned API is the only source of truth. The rendered site is a generated, certified *release* — never an input.
+- **Revision-bound writes.** Every edit binds to the exact revision it read. Concurrent work conflicts loudly (HTTP 409/412) instead of silently clobbering.
+- **Gaps, not stubs.** Missing runbooks and unwatched services are recorded as visible gaps that feed a work queue — never auto-created as empty pages that poison search.
+- **Capture is zero-decision; triage is deliberate.** Saving a thought costs one sentence and no choices. Structuring it is a separate, deliberate act.
+- **Existence is never the metric.** A runbook counts when it meets a content contract and has been verified against reality — at its strongest by having been exercised.
 
-Private-fabric issuance is dual-gated: docs-api must be configured for `private_fabric`, and the request must arrive through the trusted routed front, which injects an internal admission marker on the exact self-issue route. Direct docs-api reachability does not admit issuance.
+## What ships
 
-Clients must start from `/.well-known/docplane.json`; it reports the active profile and exact credential-acquisition path. The complete copy-pasteable path from discovery through create, publish, verify, archive and cleanup is in [Agent onboarding and first publication](docs/architecture/agent-onboarding.md).
+Four services behind one nginx front, one database:
 
-A caller's own agent framework may still classify credential issuance as a sensitive action and require human confirmation. That is a caller-side policy gate, not a DocPlane failure. Before approving it, verify the routed endpoint, requested AGENT/CONTRIBUTOR scope and token expiry.
-
-## Authoring contract
-
-The normal workflow is:
-
-1. Read a page and retain its exact `revision`.
-2. Create a change with one or more revision-bound operations, or use the one-call page replacement endpoint.
-3. Validate the candidate state when using the explicit multi-operation workflow.
-4. Publish directly.
-
-Review comments are optional audit events. They never authorize or block publication.
-
-A successful publication:
-
-- revalidates every exact page revision and explicit section hash inside the publishing transaction;
-- archives each prior page revision in `docs.page_versions`;
-- applies the complete change atomically in PostgreSQL;
-- records the contributor, operations and candidate identity;
-- builds and promotes the generated MkDocs release;
-- records a deployment attempt, release identity and certification state.
-
-If the database mutation succeeds but the site build fails, DocPlane records `DEPLOYMENT_FAILED`. The authored state remains durable and can be published again with `POST /api/v1/publication/retry`; no approval or re-authoring is required.
-
-### Machine-readable operation payloads
-
-A cold client must not infer `CREATE_PAGE`, section-edit, move, redirect or archive payloads from implementation code. DocPlane publishes the complete unauthenticated operation contract at:
-
-```text
-GET /api/v1/operation-contracts
+```
+docs-web  :8080  ── the routed front: rendered docs site + /dashboard + /api/v1
+docs-api  :8010  ── FastAPI control plane (pages, changes, model, observe, work)
+dashboard :8051  ── human control surface (verb-first: Work · Know · Model · Observe)
+docs-mcp  :8049  ── MCP server exposing the same contracts to agents
+postgres         ── the single authority
 ```
 
-That document contains, for every supported `operation_type`:
-
-- required revision and section bindings;
-- an exact JSON Schema for `payload`;
-- a complete request example for `POST /api/v1/changes/{change_id}/operations`.
-
-The same schemas, mapping and examples are embedded in `/openapi.json`. CI fails if the runtime operation vocabulary, payload schemas and examples drift apart.
-
-## Fresh installation
+## Install in five minutes
 
 ```bash
+git clone <this-repo> docplane && cd docplane
 cp .env.example .env
 # Set POSTGRES_PASSWORD, DOCPLANE_EVENT_CURSOR_SECRET and MCP_API_KEY.
 # For managed mode, also set DOCPLANE_BOOTSTRAP_TOKEN.
 docker compose up --build -d postgres docs-api dashboard docs-web
 ```
 
-The API container applies the ordered migrations in `db/migrations/` before it starts serving. There is no alternate SQL bootstrap path.
-
-### Managed installation
-
-Issue the first named contributor token:
+The API container applies the ordered migrations in `db/migrations/` before it starts serving; there is no alternate bootstrap path. Check it's alive and issue your first credential:
 
 ```bash
+curl -s http://localhost:8080/healthz                     # liveness + corpus counts, no auth
+curl -s http://localhost:8080/.well-known/docplane.json   # machine-readable start-here
+
+# Managed mode (the repository default): issue yourself a named contributor token
 set -a; . ./.env; set +a
-bash ./scripts/bootstrap-contributor.sh "Initial Administrator" HUMAN
+bash ./scripts/bootstrap-contributor.sh "Your Name" HUMAN
 ```
 
-### Private-fabric installation
+Open **http://localhost:8080/dashboard/**, connect with the token, and you're in.
 
-Set:
+**Private deployments:** if the routed hostname is already inside a VPN / SD-WAN boundary, `DOCPLANE_ACCESS_PROFILE=private_fabric` lets any reachable agent self-issue a short-lived, individually attributable token with no operator round-trip — issuance is dual-gated on the profile *and* the trusted routed front, so direct API reachability never admits it. Read [Authentication profiles](docs/architecture/authentication-profiles.md) first, and never enable it on a publicly reachable hostname.
 
-```dotenv
-DOCPLANE_ACCESS_PROFILE=private_fabric
-```
+## Learn it by using it
 
-Then a cold agent can discover and self-issue through the routed site URL:
+The tutorials take a new user from zero to a documented system:
 
-```bash
-BASE='http://localhost:8080'
-DISCOVERY=$(curl -fsS "$BASE/.well-known/docplane.json")
-TOKEN=$(curl -fsS -X POST \
-  -H 'Content-Type: application/json' \
-  "$BASE/api/v1/auth/self-issue" \
-  -d '{"display_name":"example-agent"}' | jq -r .token)
-```
+1. [What DocPlane is](docs/tutorials/01-what-is-docplane.md) — the four verbs, the principles, the mental model.
+2. [Install and first login](docs/tutorials/02-install-and-first-login.md) — environment, access profiles, tokens, a tour of the dashboard.
+3. [Author your first pages](docs/tutorials/03-author-your-first-pages.md) — start documenting a real system today.
+4. [Map your system](docs/tutorials/04-map-your-system.md) — build the model: cards, wires and page links.
+5. [Run your work](docs/tutorials/05-run-your-work.md) — capture, triage, initiatives and honest closure.
+6. [Let it observe](docs/tutorials/06-let-it-observe.md) — import monitoring rules, see coverage gaps, verify pages against reality.
+7. [Connect your agents](docs/tutorials/07-connect-your-agents.md) — MCP setup, credentials, and the contract agents follow.
+8. [Organise and classify](docs/tutorials/08-organise-and-classify.md) — knowledge classes, the review queue and governed reorganisation.
 
-The direct API port is not the self-service admission surface; use the routed docs-web hostname.
+A fresh installation starts empty. To see the knowledge-class system end to end — the eight classes, birth classification, the suggest → curate → apply backfill and its audit surfaces — seed the generic example corpus in [`examples/knowledge-classes/`](examples/knowledge-classes/README.md).
 
-Store a suitable named token in `DOCPLANE_TOKEN` in `.env`, then start the MCP surface:
+## For agents
 
-```bash
-docker compose up --build -d docs-mcp
-```
+Everything an agent needs is discoverable over HTTP — no repository access, no guessing:
 
-Default local surfaces:
+- `GET /.well-known/docplane.json` — active profile and the exact credential-acquisition path.
+- `GET /api/v1/operation-contracts` — the complete operation vocabulary: JSON Schema and a full request example for every `operation_type`.
+- `GET /openapi.json` — the whole surface; CI fails if contracts, schemas and examples drift apart.
 
-- API: `http://localhost:8010`
-- Dashboard: `http://localhost:8051`
-- Generated documentation and routed API: `http://localhost:8080`
-- MCP: `http://localhost:8049/mcp`
+The authoring contract is always **search → read exact revision → edit → validate → publish**. Review comments are optional audit events; they never authorize or block publication. A successful publication revalidates every bound revision inside the transaction, archives priors in `docs.page_versions`, applies atomically, then builds and certifies the site release. A failed build leaves the authored state durable — `POST /api/v1/publication/retry`, no re-authoring. The complete copy-pasteable cold-start path is [Agent onboarding](docs/architecture/agent-onboarding.md).
 
-### Example corpus
-
-A fresh installation starts empty. To see the knowledge-class system —
-the eight classes, birth classification, the suggest → curate → apply
-backfill workflow and its audit surfaces — seed the generic example
-corpus in [`examples/knowledge-classes/`](examples/knowledge-classes/README.md).
-
-## Direct publication example
+A minimal direct edit, end to end:
 
 ```bash
 TOKEN='dp_...'
@@ -154,8 +119,15 @@ curl -fsS -X POST \
 - `dashboard/` — human control surface; owns no document state
 - `mcp/` — MCP tools using the same contributor API
 - `mkdocs/` — rendered-site configuration
-- `migration/` — corpus migration libraries: redaction/import transforms and
-  `links.py` (link discovery, bounded link-only rewriting, route derivation)
-- `scripts/docplane_links.py` — CLI for planning, applying and scanning link
-  repairs around page moves; dry-run by default, JSON receipts for CI
-- `docs/architecture/` — product architecture and deployment-security contracts
+- `migration/` — corpus migration libraries: redaction/import transforms and `links.py` (link discovery, bounded link-only rewriting, route derivation)
+- `scripts/` — operator tooling: contributor bootstrap, meter-list importer, link repairs, knowledge-class suggest/apply
+- `docs/architecture/` — ratified design documents; `docs/tutorials/` — the learning path above
+
+## Going deeper
+
+- [The four-domain model](docs/architecture/DOMAIN_MODEL.md) — the ratified architecture: work/know/model/observe over one authority.
+- [Guiding philosophy](docs/architecture/GUIDING_PHILOSOPHY.md) — the principles every design decision must satisfy.
+- [Authentication profiles](docs/architecture/authentication-profiles.md) — managed vs private-fabric, threat model included.
+- [Reorganisation control plane](docs/architecture/REORGANISATION_CONTROL_PLANE.md) — governed structural change.
+- [Redaction invariants](docs/architecture/REDACTION_INVARIANTS.md) — how secrets are kept out of the corpus, fail-closed.
+- [Meter-list importer](docs/operations/METER_LIST_IMPORTER.md) — operator guide for the monitoring importer.

@@ -3,7 +3,7 @@
 
 Prometheus holds the readings; DocPlane holds the meter list. This importer
 reads alerting/recording rule files from a git checkout of the monitoring
-configuration (charliehub-hub2: monitoring/prometheus/rules/), and drives the
+configuration (e.g. monitoring/prometheus/rules/ in the monitoring repository), and drives the
 DocPlane API as a named AUTOMATION principal:
 
   model    one MONITOR_RULE entity per rule, WATCHES-wired to the SERVICE
@@ -21,9 +21,9 @@ Environment:
   DOCPLANE_API               routed front
   DOCPLANE_METER_LIST_TOKEN  AUTOMATION bearer (never logged)
   METER_RULES_DIR            Prometheus rules directory in the checkout,
-                             e.g. /opt/charliehub/monitoring/prometheus/rules
+                             e.g. /srv/monitoring/prometheus/rules
   METER_SOURCE_KEY           entity key for the monitoring source
-                             (default hub2.prometheus)
+                             (required; stable — it is entity identity)
   METER_SERVICE_MAP          optional versioned YAML overlay for otherwise
                              unlabelled rules (default config/meter-list-service-map.yml)
 
@@ -61,7 +61,7 @@ _PATH_SLUG_RE = re.compile(r"[^a-z0-9_-]+")
 
 
 def _slug(value: str) -> str:
-    """Entity-key charset: dots are legal (hub2.prometheus, rule.job-up-ratio)."""
+    """Entity-key charset: dots are legal (example.prometheus, rule.job-up-ratio)."""
     slug = _SLUG_RE.sub("-", value.strip().lower()).strip("-.")
     return slug[:120] or "unnamed"
 
@@ -69,7 +69,7 @@ def _slug(value: str) -> str:
 def _path_slug(value: str) -> str:
     """Page-path segment charset. The deployed path contract
     (publication._PATH_RE) forbids dots everywhere except the .md suffix,
-    so identities that legally carry dots — the hub2.prometheus source key,
+    so identities that legally carry dots — a dotted source key like example.prometheus,
     a foo.rules file stem — must be slugged separately for paths. The
     entity key stays the stable identity; the path slug is display routing.
     Found by the Sprint 6 fabric canary: PATH_INVALID on all 36 pages."""
@@ -212,7 +212,7 @@ def iter_rules(structure: dict[str, Any]):
 
 def _brace_safe(text: str) -> str:
     """Rule prose may legitimately carry unbalanced braces (grep patterns,
-    template fragments — a real hub2 rule does), which the canonical
+    template fragments — a real production rule does), which the canonical
     redaction transform's brace invariant refuses. HTML entities render
     identically in the published page while keeping the document brace-free
     for the transform. PromQL stays verbatim in fences — selectors and
@@ -337,7 +337,7 @@ def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
 
 # ── The run ─────────────────────────────────────────────────────────────────
 
-def rule_attributes(file_stem: str, group_name: str, rule: dict[str, Any], source_key: str = "hub2.prometheus") -> dict[str, Any]:
+def rule_attributes(file_stem: str, group_name: str, rule: dict[str, Any], source_key: str = "example.prometheus") -> dict[str, Any]:
     attributes = {
         "rule_kind": rule["rule_kind"],
         "expr": rule["expr"],
@@ -559,7 +559,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     rules_dir = Path(os.environ["METER_RULES_DIR"])
-    source_key = os.environ.get("METER_SOURCE_KEY", "hub2.prometheus")
+    # The source key is entity identity: a wrong guess forks the MONITOR_RULE
+    # set and orphans existing WATCHES wires, so refuse to run without it.
+    source_key = os.environ.get("METER_SOURCE_KEY", "").strip()
+    if not source_key:
+        print("METER_SOURCE_KEY is required (stable monitoring-source entity key, e.g. prometheus.main)", file=sys.stderr)
+        return 1
     default_overlay = ROOT / "config" / "meter-list-service-map.yml"
     overlay_path = Path(os.environ.get("METER_SERVICE_MAP", str(default_overlay)))
     service_overlay = load_service_overlay(overlay_path)

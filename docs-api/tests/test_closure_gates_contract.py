@@ -87,7 +87,7 @@ def test_transition_and_dispositions_models_accept_the_new_fields():
         raise AssertionError("unknown disposition must be rejected")
     except ValidationError:
         pass
-    update = DispositionsUpdate(expected_version=2, soak_monitoring_ref="grafana:hub2-overview")
+    update = DispositionsUpdate(expected_version=2, soak_monitoring_ref="grafana:cluster-overview")
     assert update.model_disposition is None
 
 

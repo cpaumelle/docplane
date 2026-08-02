@@ -162,7 +162,7 @@ def validate_redirects(redirects: dict[str, str], pages: list[dict]) -> dict[str
 # Precedence: WORK_NOTE pages are the work domain's page form wherever they
 # live; the observe/ and model/ surface sections carry their domain; every
 # other page is the know corpus.
-_SURFACE_SECTIONS = {"observe": "observe", "model": "model"}
+_SURFACE_SECTIONS = {"observe": "observe", "model": "model", "work": "work"}
 _DOMAIN_LABELS = {"work": "Work", "know": "Know", "model": "Model", "observe": "Observe"}
 
 # One glyph per domain, shared across every surface (badges here; the
