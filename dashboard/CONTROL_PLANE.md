@@ -28,6 +28,11 @@ MODEL: Entities · OBSERVE: Coverage & evidence · Changes & versions`
   metadata, and is where reorganisation begins: selecting pages raises a move
   bar (target directory + stage). Staging compiles a governed reorganisation
   plan — resource IDs and revisions are bound from the snapshot, never typed.
+  Its navigation organizer is the first-class structural editor: a searchable,
+  collapsible tree with drag-and-drop, keyboard movement, undo/redo, explicit
+  destination-URL review and staged impact analysis. Overview pages are visibly
+  pinned first. The browser holds an unsaved draft only; persistence still runs
+  through the reorganisation plan lifecycle.
 - **Review** is the ranked attention queue. Structural candidates include bounded,
   server-generated reason codes, measured evidence, thresholds, resource IDs and
   revisions. Freshness and verification are Review concerns; the section

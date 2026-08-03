@@ -29,7 +29,7 @@ def load_release_state(conn) -> tuple[list[dict[str, Any]], dict[str, int], dict
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT resource_id::text, path, title, nav_path, content, revision,
+        SELECT resource_id::text, path, title, nav_path, nav_order, content, revision,
                version, status, updated_at
           FROM docs.pages
          ORDER BY path
@@ -42,11 +42,12 @@ def load_release_state(conn) -> tuple[list[dict[str, Any]], dict[str, int], dict
             "path": row[1],
             "title": row[2],
             "nav_path": row[3],
-            "content": row[4],
-            "revision": row[5],
-            "version": row[6],
-            "status": row[7],
-            "updated_at": row[8],
+            "nav_order": row[4],
+            "content": row[5],
+            "revision": row[6],
+            "version": row[7],
+            "status": row[8],
+            "updated_at": row[9],
         }
         for row in rows
     ]
@@ -65,6 +66,7 @@ def state_identity(pages: list[dict[str, Any]], sections: dict[str, int], redire
                     "resource_id": page["resource_id"],
                     "path": page["path"],
                     "nav_path": page["nav_path"],
+                    "nav_order": page.get("nav_order", 1000),
                     "revision": page["revision"],
                     "status": page["status"],
                 }

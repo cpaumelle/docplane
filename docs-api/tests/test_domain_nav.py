@@ -69,3 +69,24 @@ def test_non_strict_keeps_tuple_shape_and_grouping():
     nav, conflicts = build_nav(_pages(), strict=False)
     assert conflicts == []
     assert [next(iter(entry)) for entry in nav] == ["Home", "Know", "Model", "Observe"]
+
+
+def test_explicit_page_order_is_respected_and_overview_is_always_first():
+    pages = [
+        {"path": "reference/z.md", "nav_path": "Reference/Topic/Zebra", "nav_order": 0, "content": "# Z"},
+        {"path": "reference/index.md", "nav_path": "Reference/Topic/Overview", "nav_order": 900, "content": "# O"},
+        {"path": "reference/a.md", "nav_path": "Reference/Topic/Alpha", "nav_order": 10, "content": "# A"},
+    ]
+    nav = build_nav(pages)
+    know = nav[0]["Know"]
+    topic = know[0]["Reference"][0]["Topic"]
+    assert [next(iter(item)) for item in topic] == ["Overview", "Zebra", "Alpha"]
+
+
+def test_page_order_uses_normalized_nav_segments():
+    pages = [
+        {"path": "reference/z.md", "nav_path": "Reference / Topic / Zebra", "nav_order": 0, "content": "# Z"},
+        {"path": "reference/a.md", "nav_path": "Reference/Topic/Alpha", "nav_order": 10, "content": "# A"},
+    ]
+    topic = build_nav(pages)[0]["Know"][0]["Reference"][0]["Topic"]
+    assert [next(iter(item)) for item in topic] == ["Zebra", "Alpha"]

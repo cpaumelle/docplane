@@ -318,7 +318,7 @@ def page_history(
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT version_id::text, path, title, nav_path, revision, version,
+            SELECT version_id::text, path, title, nav_path, nav_order, revision, version,
                    status, updated_by, archived_at, change_id::text
               FROM docs.page_versions
              WHERE resource_id = %s
@@ -341,12 +341,13 @@ def page_history(
             "path": row[1],
             "title": row[2],
             "nav_path": row[3],
-            "revision": row[4],
-            "version": row[5],
-            "status": row[6],
-            "updated_by": row[7],
-            "archived_at": row[8],
-            "change_id": row[9],
+            "nav_order": row[4],
+            "revision": row[5],
+            "version": row[6],
+            "status": row[7],
+            "updated_by": row[8],
+            "archived_at": row[9],
+            "change_id": row[10],
         }
         for row in rows
     ]
@@ -367,7 +368,7 @@ def page_version(
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT path, title, nav_path, content, revision, version, status,
+            SELECT path, title, nav_path, nav_order, content, revision, version, status,
                    updated_by, archived_at, change_id::text
               FROM docs.page_versions
              WHERE resource_id = %s AND revision = %s
@@ -377,7 +378,7 @@ def page_version(
         row = cur.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "PAGE_VERSION_NOT_FOUND"})
-    keys = ("path", "title", "nav_path", "content", "revision", "version", "status", "updated_by", "archived_at", "change_id")
+    keys = ("path", "title", "nav_path", "nav_order", "content", "revision", "version", "status", "updated_by", "archived_at", "change_id")
     return {"resource_id": str(resource_id), **dict(zip(keys, row))}
 
 
@@ -392,7 +393,7 @@ def rollback_page(
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT path, title, nav_path, content, status FROM docs.page_versions WHERE resource_id = %s AND revision = %s",
+            "SELECT path, title, nav_path, nav_order, content, status FROM docs.page_versions WHERE resource_id = %s AND revision = %s",
             (str(resource_id), request.target_revision),
         )
         target = cur.fetchone()
@@ -429,7 +430,7 @@ def rollback_page(
                     "rollback-operation",
                     str(resource_id),
                     request.expected_revision,
-                    _json({"content": target[3], "title": target[1], "nav_path": target[2]}),
+                    _json({"content": target[4], "title": target[1], "nav_path": target[2], "nav_order": target[3]}),
                 ),
             )
             conn.commit()

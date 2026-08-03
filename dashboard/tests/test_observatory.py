@@ -122,6 +122,13 @@ def test_reorganisation_is_staged_from_selection_not_raw_payloads():
     assert 'id="plan-title"' not in html
     assert 'id="explore-move-stage"' in html
     assert 'id="explore-selection"' in html
+    assert 'id="nav-organizer-body"' in html
+    assert 'id="nav-tree"' in html
+    assert 'id="nav-undo"' in html
+    assert 'id="nav-redo"' in html
+    assert 'draggable="${overview ? "false" : "true"}"' in javascript
+    assert 'operation_type:moved ? "MOVE_PAGE" : "REPARENT_NAV"' in javascript
+    assert "link_impacts" in javascript
     # The builder binds identity server-known values, never typed ones.
     assert "page_resource_id: page.resource_id" in javascript
     assert "expected_revision: String(page.revision)" in javascript

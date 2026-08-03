@@ -120,7 +120,7 @@ def tree(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT resource_id::text, path, title, nav_path, revision, version,
+            SELECT resource_id::text, path, title, nav_path, nav_order, revision, version,
                    status, w.workspace_key
               FROM docs.pages p
               JOIN docplane.workspaces w ON w.workspace_id = p.workspace_id
@@ -133,8 +133,8 @@ def tree(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
     pages = [
         {
             "resource_id": row[0], "path": row[1], "title": row[2],
-            "nav_path": row[3], "revision": row[4], "version": row[5],
-            "status": row[6], "workspace_key": row[7],
+            "nav_path": row[3], "nav_order": row[4], "revision": row[5], "version": row[6],
+            "status": row[7], "workspace_key": row[8],
         }
         for row in rows
     ]

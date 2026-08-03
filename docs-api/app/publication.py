@@ -22,6 +22,7 @@ from app.db import get_conn
 from app.event_store import append_event
 from app.markdown_sections import find_section
 from app.runtime import deploy_current_state, state_identity
+from migration.links import plan_rewrites, plan_source_move
 
 _PATH_RE = re.compile(r"^[a-z0-9/_-]+\.md$")
 _KNOWLEDGE_CLASSES = {
@@ -63,7 +64,7 @@ def _load_pages(conn, *, for_update: bool = False) -> list[dict[str, Any]]:
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT p.resource_id::text, p.path, p.title, p.nav_path, p.content,
+        SELECT p.resource_id::text, p.path, p.title, p.nav_path, p.nav_order, p.content,
                p.revision, p.version, p.status, p.workspace_id::text,
                w.workspace_key, p.publication_state, p.knowledge_class,
                p.verification_state, p.owner_principal_id::text,
@@ -76,7 +77,7 @@ def _load_pages(conn, *, for_update: bool = False) -> list[dict[str, Any]]:
         + (" FOR UPDATE OF p" if for_update else ""),
     )
     keys = (
-        "resource_id", "path", "title", "nav_path", "content", "revision",
+        "resource_id", "path", "title", "nav_path", "nav_order", "content", "revision",
         "version", "status", "workspace_id", "workspace_key", "publication_state",
         "knowledge_class", "verification_state", "owner_principal_id", "review_due_at",
         "criticality", "metadata_review_required", "metadata_version", "updated_at",
@@ -253,6 +254,8 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
     results: list[dict[str, Any]] = []
     touched: set[str] = set()
     created: set[str] = set()
+    moves: dict[str, str] = {}
+    move_results: dict[str, dict[str, Any]] = {}
 
     base_identity = state_identity(original_pages, original_sections, original_redirects)
     if change.get("base_state_identity") and change["base_state_identity"] != base_identity:
@@ -325,6 +328,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     "path": path,
                     "title": str(payload["title"]).strip(),
                     "nav_path": str(payload["nav_path"]).strip(),
+                    "nav_order": int(payload.get("nav_order", 1000)),
                     "content": str(payload["content"]),
                     "revision": str(uuid4()),
                     "version": 1,
@@ -350,9 +354,9 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
             elif op_type == "REPLACE_DOCUMENT":
                 _require_payload(operation, "content")
                 page["content"] = str(payload["content"])
-                for field in ("title", "nav_path"):
+                for field in ("title", "nav_path", "nav_order"):
                     if field in payload:
-                        page[field] = str(payload[field]).strip()
+                        page[field] = int(payload[field]) if field == "nav_order" else str(payload[field]).strip()
                 touched.add(page["resource_id"])
             elif op_type == "PATCH_METADATA":
                 allowed = {"title", "nav_path", "workspace_key", "knowledge_class", "criticality"}
@@ -401,12 +405,18 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                 page["path"] = new_path
                 if payload.get("to_nav_path"):
                     page["nav_path"] = str(payload["to_nav_path"])
+                if "nav_order" in payload:
+                    page["nav_order"] = int(payload["nav_order"])
                 if payload.get("create_redirect", True):
                     redirects[old_path] = new_path
+                moves[old_path] = new_path
+                move_results[old_path] = result
                 touched.add(page["resource_id"])
             elif op_type == "REPARENT_NAV":
                 _require_payload(operation, "to_nav_path")
                 page["nav_path"] = str(payload["to_nav_path"])
+                if "nav_order" in payload:
+                    page["nav_order"] = int(payload["nav_order"])
                 touched.add(page["resource_id"])
             elif op_type == "ARCHIVE_PAGE":
                 page["status"] = "archived"
@@ -441,6 +451,50 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
             op_errors.append(entry)
         _record_operation_result(result, results, errors, warnings)
 
+    # Moving a page is a corpus-wide operation. Repair live inbound references
+    # and preserve the moved page's outbound relative-link meaning. Protected
+    # evidence remains unchanged behind the compatibility redirect and is
+    # exposed in the analysis receipt.
+    if moves and not errors:
+        original_by_id = {item["resource_id"]: item for item in original_pages}
+        impacts_by_move: dict[str, list[dict[str, Any]]] = {source: [] for source in moves}
+        try:
+            for page in pages:
+                previous = original_by_id.get(page["resource_id"])
+                if previous is None or page["status"] != "active":
+                    continue
+                inbound = plan_rewrites(previous["path"], page["content"], moves)
+                content = inbound.content if inbound.changed else page["content"]
+                outbound = None
+                if previous["path"] != page["path"]:
+                    outbound = plan_source_move(previous["path"], page["path"], content)
+                    if outbound.changed:
+                        content = outbound.content
+                if content != page["content"]:
+                    page["content"] = content
+                    touched.add(page["resource_id"])
+                for source in moves:
+                    rewrites = [item for item in inbound.rewrites if item.resolved_old == source]
+                    preserved = [item for item in inbound.preservations if item.resolved == source]
+                    if outbound is not None and previous["path"] == source:
+                        rewrites.extend(outbound.rewrites)
+                        preserved.extend(outbound.preservations)
+                    if rewrites or preserved:
+                        impacts_by_move[source].append({
+                            "resource_id": page["resource_id"],
+                            "path": page["path"],
+                            "rewrites": [vars(item) for item in rewrites],
+                            "preservations": [
+                                {"page": item.page, "line": item.line, "target": item.target,
+                                 "resolved": item.resolved, "reason": item.reason.value}
+                                for item in preserved
+                            ],
+                        })
+            for source, result in move_results.items():
+                result["link_impacts"] = impacts_by_move[source]
+        except Exception as exc:  # fail the complete move closed on parser defects
+            errors.append({"code": "LINK_REWRITE_UNSAFE", "detail": str(exc)})
+
     if not operations:
         errors.append({"code": "CHANGE_HAS_NO_OPERATIONS"})
     active_pages = [page for page in pages if page["status"] == "active"]
@@ -465,6 +519,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     "resource_id": page["resource_id"],
                     "path": page["path"],
                     "nav_path": page["nav_path"],
+                    "nav_order": page.get("nav_order", 1000),
                     "content_hash": hashlib.sha256(page["content"].encode("utf-8")).hexdigest(),
                     "status": page["status"],
                 }
@@ -544,12 +599,12 @@ def _snapshot_page(cur, page: dict[str, Any], change_id: str) -> None:
     cur.execute(
         """
         INSERT INTO docs.page_versions
-            (resource_id, path, title, nav_path, content, revision, version,
+            (resource_id, path, title, nav_path, nav_order, content, revision, version,
              status, workspace_id, publication_state, knowledge_class,
              verification_state, owner_principal_id, review_due_at, criticality,
              metadata_review_required, metadata_version, updated_by, change_id)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s)
+                %s, %s, %s, %s, %s, %s, %s, %s)
         -- A (resource_id, revision) pair identifies an immutable version, so if
         -- it is already recorded this snapshot is a no-op. Migration-imported
         -- pages carry their head revision in page_versions (full faithful
@@ -560,7 +615,7 @@ def _snapshot_page(cur, page: dict[str, Any], change_id: str) -> None:
         """,
         (
             page["resource_id"], page["path"], page["title"], page["nav_path"],
-            page["content"], page["revision"], page["version"], page["status"],
+            page.get("nav_order", 1000), page["content"], page["revision"], page["version"], page["status"],
             page["workspace_id"], page["publication_state"], page["knowledge_class"],
             page["verification_state"], page["owner_principal_id"], page["review_due_at"],
             page["criticality"], page["metadata_review_required"], page["metadata_version"],
@@ -598,17 +653,17 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
                 cur.execute(
                     """
                     INSERT INTO docs.pages
-                        (resource_id, path, title, nav_path, content, revision, version,
+                        (resource_id, path, title, nav_path, nav_order, content, revision, version,
                          status, workspace_id, publication_state, knowledge_class,
                          verification_state, owner_principal_id, review_due_at,
                          criticality, metadata_review_required, metadata_version,
                          updated_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, 1, %s, %s, %s, %s,
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 1, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         resource_id, page["path"], page["title"], page["nav_path"],
-                        page["content"], page["revision"], page["status"], page["workspace_id"],
+                        page.get("nav_order", 1000), page["content"], page["revision"], page["status"], page["workspace_id"],
                         page["publication_state"], page["knowledge_class"], page["verification_state"],
                         page["owner_principal_id"], page["review_due_at"], page["criticality"],
                         page["metadata_review_required"], page["metadata_version"], principal.display_name,
@@ -632,7 +687,7 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
             cur.execute(
                 """
                 UPDATE docs.pages
-                   SET path = %s, title = %s, nav_path = %s, content = %s,
+                   SET path = %s, title = %s, nav_path = %s, nav_order = %s, content = %s,
                        revision = %s, version = version + 1, status = %s,
                        workspace_id = %s, publication_state = %s,
                        knowledge_class = %s, verification_state = %s,
@@ -642,7 +697,7 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
                  WHERE resource_id = %s AND revision = %s
                 """,
                 (
-                    page["path"], page["title"], page["nav_path"], page["content"],
+                    page["path"], page["title"], page["nav_path"], page.get("nav_order", 1000), page["content"],
                     new_revision, page["status"], page["workspace_id"], page["publication_state"],
                     page["knowledge_class"], page["verification_state"], page["owner_principal_id"],
                     page["review_due_at"], page["criticality"], page["metadata_review_required"],

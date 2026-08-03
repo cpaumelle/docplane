@@ -27,6 +27,7 @@ COPY docs-api/app ./app
 # migration.redaction as its secret-shape DETECTOR (reject, never rewrite).
 COPY migration/__init__.py ./migration/__init__.py
 COPY migration/redaction.py ./migration/redaction.py
+COPY migration/links.py ./migration/links.py
 COPY docs-api/migrate.py ./migrate.py
 COPY docs-api/entrypoint.sh ./entrypoint.sh
 COPY db/migrations ./db/migrations
