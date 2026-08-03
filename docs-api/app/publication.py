@@ -18,10 +18,12 @@ from fastapi import HTTPException
 
 from app import generator
 from app.agent_auth import Principal
+from app.agent_models import TextPatchEdit
 from app.db import get_conn
 from app.event_store import append_event
 from app.markdown_sections import find_section
 from app.runtime import deploy_current_state, state_identity
+from app.text_patch import apply_text_patch
 from migration.links import plan_rewrites, plan_source_move
 
 _PATH_RE = re.compile(r"^[a-z0-9/_-]+\.md$")
@@ -32,6 +34,7 @@ _KNOWLEDGE_CLASSES = {
 _OPERATION_TYPES = {
     "CREATE_PAGE",
     "REPLACE_DOCUMENT",
+    "PATCH_TEXT",
     "PATCH_METADATA",
     "REPLACE_SECTION",
     "INSERT_BEFORE_HEADING",
@@ -358,6 +361,25 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     if field in payload:
                         page[field] = int(payload[field]) if field == "nav_order" else str(payload[field]).strip()
                 touched.add(page["resource_id"])
+            elif op_type == "PATCH_TEXT":
+                _require_payload(operation, "edits")
+                edits = payload["edits"]
+                if not isinstance(edits, list) or not edits:
+                    raise ValueError("PATCH_EDITS_REQUIRED")
+                try:
+                    validated_edits = [TextPatchEdit.model_validate(edit).model_dump() for edit in edits]
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("PATCH_EDIT_INVALID") from exc
+                patched = apply_text_patch(page["content"], validated_edits)
+                page["content"] = patched.content
+                result["patch"] = {
+                    "edits_applied": patched.edits_applied,
+                    "occurrences_replaced": patched.occurrences_replaced,
+                    "before_sha256": patched.before_sha256,
+                    "after_sha256": patched.after_sha256,
+                    "impacts": list(patched.impacts),
+                }
+                touched.add(page["resource_id"])
             elif op_type == "PATCH_METADATA":
                 allowed = {"title", "nav_path", "workspace_key", "knowledge_class", "criticality"}
                 unexpected = set(payload) - allowed
@@ -443,7 +465,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                 if not isinstance(order, list) or len(order) != len(set(order)):
                     raise ValueError("SECTION_ORDER_INVALID")
                 sections = {str(name): index for index, name in enumerate(order)}
-        except ValueError as exc:
+        except (ValueError, KeyError, TypeError) as exc:
             code, _, detail = str(exc).partition(":")
             entry = {"code": code}
             if detail:

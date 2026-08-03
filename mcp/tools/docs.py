@@ -109,6 +109,63 @@ def register(mcp) -> None:
         code, body = _request("GET", f"/api/v1/pages/{page['resource_id']}?view=edit_context")
         return body if code == 200 else _error(code, body)
 
+    def _resolve_page(path_or_slug: str) -> dict:
+        page = _find_path(path_or_slug)
+        if page is not None:
+            return page
+        params = httpx.QueryParams({"q": path_or_slug, "limit": 5})
+        code, body = _request("GET", f"/api/v1/search?{params}")
+        if code != 200:
+            return _error(code, body)
+        results = body.get("results", [])
+        if len(results) != 1:
+            return {"error": "page is not uniquely resolved", "query": path_or_slug, "matches": results}
+        return results[0]
+
+    @mcp.tool()
+    def read_doc_outline(path_or_slug: str) -> dict:
+        """Read page metadata, revision and heading outline without the full Markdown body."""
+        page = _resolve_page(path_or_slug)
+        if "error" in page:
+            return page
+        code, body = _request("GET", f"/api/v1/pages/{page['resource_id']}?view=outline")
+        return body if code == 200 else _error(code, body)
+
+    @mcp.tool()
+    def read_doc_section(path_or_slug: str, heading_id: str) -> dict:
+        """Read one heading-bounded section plus its page revision and content hash."""
+        page = _resolve_page(path_or_slug)
+        if "error" in page:
+            return page
+        code, body = _request("GET", f"/api/v1/pages/{page['resource_id']}/sections/{heading_id}")
+        return body if code == 200 else _error(code, body)
+
+    @mcp.tool()
+    def patch_doc(path: str, expected_revision: str, edits: list[dict], purpose: str, idempotency_key: str = "") -> dict:
+        """Safely patch exact text in a page without resending the whole document.
+
+        This is the preferred tool for small edits. Each edit is
+        {old_text, new_text, expected_occurrences}; ambiguous anchors, stale
+        revisions and no-op patches fail closed. Read the outline or section
+        first and pass its revision unchanged.
+        """
+        if not expected_revision.strip():
+            return {"error": "expected_revision is required", "remedy": "Call read_doc_outline or read_doc_section first."}
+        if not purpose.strip():
+            return {"error": "purpose is required"}
+        if not edits:
+            return {"error": "at least one edit is required"}
+        existing = _find_path(path)
+        if existing is None:
+            return {"error": "page not found", "path": path}
+        code, body = _request(
+            "POST",
+            f"/api/v1/pages/{existing['resource_id']}/patch",
+            body={"expected_revision": expected_revision, "edits": edits, "purpose": purpose},
+            idempotency_key=idempotency_key.strip() or _key("patch"),
+        )
+        return body if code == 200 else _error(code, body)
+
     @mcp.tool()
     def list_docs(status: str = "active") -> list[dict]:
         """List active, archived or all canonical pages."""
@@ -164,8 +221,12 @@ def register(mcp) -> None:
         return response if code == 200 else _error(code, response)
 
     @mcp.tool()
-    def write_doc(path: str, title: str, nav_path: str, content: str = "", purpose: str = "", content_path: str = "", knowledge_class: str = "") -> dict:
-        """Create or replace a Markdown page and publish it directly with exact-revision safety.
+    def write_doc(path: str, title: str, nav_path: str, content: str = "", purpose: str = "", content_path: str = "", knowledge_class: str = "", expected_revision: str = "") -> dict:
+        """Create a page or replace its complete Markdown body.
+
+        For small edits use patch_doc. Existing-page replacement requires the
+        expected_revision returned by the caller's earlier read; DocPlane will
+        never substitute a newer revision on the caller's behalf.
 
         Provide the document either inline via `content` or — for large pages —
         via `content_path`, a file path relative to the server's allowlisted
@@ -186,6 +247,11 @@ def register(mcp) -> None:
                 return failure
             content = loaded
         existing = _find_path(path)
+        if existing and not expected_revision.strip():
+            return {
+                "error": "expected_revision is required when replacing an existing page",
+                "remedy": "Call read_doc first, or prefer patch_doc for a small exact edit.",
+            }
         change_key = _key("change")
         code, change = _request(
             "POST",
@@ -199,7 +265,7 @@ def register(mcp) -> None:
             operation = {
                 "operation_type": "REPLACE_DOCUMENT",
                 "page_resource_id": existing["resource_id"],
-                "expected_revision": existing["revision"],
+                "expected_revision": expected_revision.strip(),
                 "payload": {"content": content, "title": title, "nav_path": nav_path},
             }
         else:

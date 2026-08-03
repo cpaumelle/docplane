@@ -16,7 +16,7 @@ def test_managed_profile_is_fail_closed_and_operator_issued(monkeypatch):
     monkeypatch.setenv("DOCPLANE_ACCESS_PROFILE", "managed")
     discovery = client.get("/.well-known/docplane.json").json()
     acquisition = discovery["authentication"]["token_acquisition"]
-    assert discovery["contract_version"] == "docplane-agent-discovery-v3"
+    assert discovery["contract_version"] == "docplane-agent-discovery-v4"
     assert acquisition["access_profile"] == "managed"
     assert acquisition["self_service"] is False
     assert acquisition["endpoint"] is None

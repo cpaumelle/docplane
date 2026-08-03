@@ -44,6 +44,7 @@ class ChangeCreate(BaseModel):
 _OPERATION_TYPES = {
     "CREATE_PAGE",
     "REPLACE_DOCUMENT",
+    "PATCH_TEXT",
     "PATCH_METADATA",
     "REPLACE_SECTION",
     "INSERT_BEFORE_HEADING",
@@ -93,6 +94,31 @@ class PageReplaceRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
     nav_path: str | None = Field(default=None, min_length=1, max_length=1000)
     purpose: str = Field(default="Replace a page through the audited agent shortcut", min_length=1, max_length=4000)
+
+
+class TextPatchEdit(BaseModel):
+    old_text: str = Field(min_length=1, max_length=262144)
+    new_text: str = Field(max_length=262144)
+    expected_occurrences: int = Field(default=1, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def changes_text(self):
+        if self.old_text == self.new_text:
+            raise ValueError("old_text and new_text must differ")
+        return self
+
+
+class PagePatchRequest(BaseModel):
+    expected_revision: str = Field(min_length=1, max_length=200)
+    edits: list[TextPatchEdit] = Field(min_length=1, max_length=100)
+    purpose: str = Field(default="Patch a page through the audited agent shortcut", min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def bounded_payload(self):
+        total = sum(len(edit.old_text) + len(edit.new_text) for edit in self.edits)
+        if total > 1048576:
+            raise ValueError("combined patch text exceeds 1 MiB")
+        return self
 
 
 class ChangeAbandonRequest(BaseModel):

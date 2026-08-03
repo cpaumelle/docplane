@@ -30,6 +30,7 @@ REPLACED_AGENT_PATHS = {
 }
 
 DISCOVERY_URL = "/.well-known/docplane.json"
+DISCOVERY_CONTRACT_VERSION = "docplane-agent-discovery-v4"
 
 ERROR_CATALOG: dict[str, dict[str, str]] = {
     "AUTH_REQUIRED": {
@@ -80,6 +81,30 @@ ERROR_CATALOG: dict[str, dict[str, str]] = {
         "message": "The page changed after this edit was prepared.",
         "remedy": "Read the current page, rebase the intended edit on the returned current revision, and submit again with a new Idempotency-Key.",
     },
+    "PAGE_SECTION_NOT_FOUND": {
+        "message": "The requested heading is not present in the current page revision.",
+        "remedy": "Read the current outline view and retry with one of its heading_id values.",
+    },
+    "PATCH_OCCURRENCE_MISMATCH": {
+        "message": "A patch anchor did not occur exactly as many times as expected.",
+        "remedy": "Read the current section or page, choose a unique exact old_text anchor, and retry with the current revision and a new Idempotency-Key.",
+    },
+    "PATCH_EDIT_INVALID": {
+        "message": "A patch edit does not satisfy the exact-edit contract.",
+        "remedy": "Supply old_text, new_text and optionally expected_occurrences; old_text must be non-empty and old_text/new_text must differ.",
+    },
+    "PATCH_OLD_TEXT_EMPTY": {
+        "message": "An exact patch anchor cannot be empty.",
+        "remedy": "Choose a non-empty, preferably unique old_text anchor from the current page revision.",
+    },
+    "PATCH_EDITS_OVERLAP": {
+        "message": "Two requested exact-text edits overlap in the original page.",
+        "remedy": "Combine the overlapping edits into one exact replacement and retry with a new Idempotency-Key.",
+    },
+    "PATCH_NO_CHANGE": {
+        "message": "The requested patch would not change the page.",
+        "remedy": "Re-read the current revision and submit only an edit that changes content.",
+    },
     "CHANGE_NOT_FOUND": {
         "message": "The requested change does not exist.",
         "remedy": "List recent changes or create a new change for the intended work.",
@@ -105,6 +130,7 @@ ERROR_CATALOG: dict[str, dict[str, str]] = {
 REQUIRED_IDEMPOTENCY_PATHS = {
     "/api/v1/pages/{resource_id}/rollback",
     "/api/v1/pages/{resource_id}/replace",
+    "/api/v1/pages/{resource_id}/patch",
     "/api/v1/changes",
     "/api/v1/changes/{change_id}/operations",
     "/api/v1/changes/{change_id}/publish",
@@ -239,7 +265,7 @@ def discovery() -> dict[str, Any]:
     return {
         "product": "DocPlane",
         "site_name": site_name,
-        "contract_version": "docplane-agent-discovery-v3",
+        "contract_version": DISCOVERY_CONTRACT_VERSION,
         "entrypoint": DISCOVERY_URL,
         "openapi": "/openapi.json",
         "health": "/healthz",

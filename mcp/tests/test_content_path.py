@@ -54,6 +54,16 @@ def test_purpose_is_always_required(monkeypatch, tmp_path):
     assert result == {"error": "purpose is required"}
 
 
+def test_existing_page_requires_revision_from_callers_read(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        docs_tools, "_request",
+        lambda method, path, **kwargs: (200, {"pages": [{"resource_id": "p1", "revision": "latest"}]})
+        if method == "GET" else (_ for _ in ()).throw(AssertionError("mutation must not start")),
+    )
+    result = call(tmp_path, monkeypatch, content="# replacement")
+    assert result["error"].startswith("expected_revision is required")
+
+
 def test_exactly_one_content_source(monkeypatch, tmp_path):
     assert "exactly one" in call(tmp_path, monkeypatch)["error"]
     (tmp_path / "doc.md").write_text("body", encoding="utf-8")

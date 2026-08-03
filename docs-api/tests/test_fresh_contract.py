@@ -81,6 +81,7 @@ def test_operation_vocabulary_is_machine_readable():
         "INSERT_BEFORE_HEADING",
         "MOVE_PAGE",
         "PATCH_METADATA",
+        "PATCH_TEXT",
         "REMOVE_REDIRECT",
         "REORDER_SECTIONS",
         "REPARENT_NAV",

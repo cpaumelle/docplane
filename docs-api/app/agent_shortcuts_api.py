@@ -20,6 +20,7 @@ from app.agent_models import (
     ChangeAbandonRequest,
     ChangeCreate,
     ChangeOperationCreate,
+    PagePatchRequest,
     PageReplaceRequest,
 )
 from app.db import get_conn
@@ -95,6 +96,34 @@ def _assert_published_replay(
         )
 
 
+def _patch_payload(request: PagePatchRequest) -> dict[str, Any]:
+    return {"edits": [edit.model_dump() for edit in request.edits]}
+
+
+def _assert_published_patch_replay(
+    change: dict[str, Any],
+    resource_id: UUID,
+    request: PagePatchRequest,
+    operation_key: str,
+) -> None:
+    operations = change.get("operations") or []
+    expected = ("PATCH_TEXT", str(resource_id), request.expected_revision, _patch_payload(request), operation_key)
+    actual = None
+    if len(operations) == 1:
+        operation = operations[0]
+        actual = (
+            operation.get("operation_type"), operation.get("page_resource_id"),
+            operation.get("expected_revision"), operation.get("payload"),
+            operation.get("idempotency_key"),
+        )
+    if actual != expected:
+        raise HTTPException(status_code=409, detail={
+            "code": "IDEMPOTENCY_KEY_REUSED",
+            "message": "The Idempotency-Key already identifies a different page patch.",
+            "remedy": "Use the original request body or choose a new Idempotency-Key.",
+        })
+
+
 @router.post("/api/v1/pages/{resource_id}/replace")
 def replace_page(
     resource_id: UUID,
@@ -162,6 +191,67 @@ def replace_page(
             page_resource_id=resource_id,
             expected_revision=request.expected_revision,
             payload=_replace_payload(request),
+        ),
+        idempotency_key=operation_key,
+        principal=principal,
+    )
+    validate_change(change_id, principal)
+    return publish_change(change_id, principal)
+
+
+@router.post("/api/v1/pages/{resource_id}/patch")
+def patch_page(
+    resource_id: UUID,
+    request: PagePatchRequest,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Apply exact, revision-bound text edits through the audited publication workflow."""
+    outer_key = _required_idempotency(idempotency_key)
+    change_key = _child_key(outer_key, "change")
+    operation_key = _child_key(outer_key, "operation")
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT p.path, w.workspace_key
+              FROM docs.pages p
+              JOIN docplane.workspaces w ON w.workspace_id = p.workspace_id
+             WHERE p.resource_id = %s
+            """,
+            (str(resource_id),),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail={
+            "code": "PAGE_NOT_FOUND",
+            "message": "The requested page does not exist.",
+            "remedy": "Resolve or search for the page again before preparing the patch.",
+        })
+    path, workspace_key = row
+    change = create_change(
+        ChangeCreate(title=f"Patch {path}", purpose=request.purpose, workspace_key=workspace_key),
+        idempotency_key=change_key,
+        principal=principal,
+    )
+    change_id = UUID(change["change_id"])
+    if change["status"] == "PUBLISHED":
+        _assert_published_patch_replay(change, resource_id, request, operation_key)
+        return change
+    if change["status"] == "ABANDONED":
+        raise HTTPException(status_code=409, detail={
+            "code": "CHANGE_ABANDONED",
+            "message": "This idempotent patch was abandoned before publication.",
+            "remedy": "Choose a new Idempotency-Key to create a new audited patch.",
+            "change_id": str(change_id),
+        })
+    add_operation(
+        change_id,
+        ChangeOperationCreate(
+            operation_type="PATCH_TEXT",
+            page_resource_id=resource_id,
+            expected_revision=request.expected_revision,
+            payload=_patch_payload(request),
         ),
         idempotency_key=operation_key,
         principal=principal,

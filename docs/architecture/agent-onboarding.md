@@ -266,4 +266,4 @@ A successful close-out records content-free identifiers such as page resource ID
 
 ## MCP boundary
 
-The bundled DocPlane MCP server is a client of the same contributor API; it does not own document state. Deployments may expose a local MCP adapter for convenient `search_docs`, `read_doc`, `list_docs`, `write_doc` and `archive_doc` tools. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
+The bundled DocPlane MCP server is a client of the same contributor API; it does not own document state. Deployments may expose a local MCP adapter for convenient `search_docs`, `read_doc_outline`, `read_doc_section`, `patch_doc`, `read_doc`, `list_docs`, `write_doc` and `archive_doc` tools. `patch_doc` is the discoverable default for small edits. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
