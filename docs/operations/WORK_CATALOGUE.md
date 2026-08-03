@@ -84,3 +84,11 @@ The endpoint is CAS-bound, accepts only an active `AUTOMATION` destination,
 and appends an audit event containing the old/new custody, purpose, and request
 hash. It does not retire the artifact, alter its targets, or change page
 protection.
+
+The audit event is `MODEL_ARTIFACT_CUSTODY_REASSIGNED` on channel `API` with
+`producer_id = docplane-bootstrap`. Break-glass authority is carried by that
+producer and event type, not by a channel value — the channel vocabulary is
+closed by the genesis CHECK and `EventIngest.channel`, so listing every
+break-glass action is a `producer_id` query. Because the event is appended
+inside the custody transaction, an unlistable channel would roll the whole
+reassignment back rather than record it silently.

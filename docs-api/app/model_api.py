@@ -698,7 +698,12 @@ def reassign_artifact_custody(
         append_event(
             conn,
             event_type="MODEL_ARTIFACT_CUSTODY_REASSIGNED",
-            channel="BOOTSTRAP",
+            # The channel records HOW the request arrived, and its vocabulary is
+            # closed in two places (the genesis CHECK and EventIngest.channel).
+            # Break-glass authority is carried by producer_id and this
+            # event_type, so auditing it needs no new channel value: querying
+            # producer_id = 'docplane-bootstrap' returns exactly these actions.
+            channel="API",
             producer_id="docplane-bootstrap",
             idempotency_key=event_key,
             resource_type="MODEL_ARTIFACT",
