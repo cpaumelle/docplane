@@ -28,12 +28,29 @@ Never print the bearer. Use the routed origin, not the direct API port.
 ```bash
 python3 scripts/work_catalogue.py --dry-run   # render + report, zero writes
 python3 scripts/work_catalogue.py             # reconcile
+scripts/run_work_catalogue_reconciliation.sh  # flocked scheduler entrypoint + metrics
 ```
 
 Run it after meaningful work-state changes (transitions, closures), or on a
 schedule; steady-state ticks are cheap no-ops by fingerprint. Initiative
 pages for closed initiatives are archived automatically in the same change
 that stops rendering them.
+
+The wrapper writes `docplane_generated_projection_*` metrics atomically to
+the node-exporter textfile collector. It records live-versus-published drift,
+the latest reconciliation result, and the latest check time. Override the
+path with `DOCPLANE_WORK_CATALOGUE_METRICS_FILE` only when the node's canonical
+textfile collector path differs.
+
+The wrapper's lock defaults to `/run/lock/docplane-work-catalogue.lock`,
+deliberately outside `/tmp`: a scheduler unit running with `PrivateTmp=true`
+gets a private `/tmp`, so a lock there would exclude nothing from an
+operator's concurrent manual run — the exact overlap the lock exists to
+prevent. Override with `DOCPLANE_WORK_CATALOGUE_LOCK_FILE` only to a path
+that every caller shares. When the lock is already held the wrapper reports
+`SKIPPED`, still publishes drift metrics, and exits successfully: a skipped
+overlap is the lock working, not a failed reconciliation, and must not raise
+the failure alert.
 
 ## What it owns
 
@@ -48,3 +65,22 @@ that stops rendering them.
 Publication failures follow the platform contract: authored state stays
 durable, `POST /api/v1/publication/retry` resumes, and all mutation calls
 are fingerprint-keyed so a resumed run replays instead of double-acting.
+The generator fails before any API call when the dedicated work-catalogue
+token is absent; it never falls back to `DOCPLANE_TOKEN` or another principal.
+
+If the declaring automation principal has been lost, an operator may transfer
+custody without releasing page protection:
+
+```text
+POST /api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody
+X-DocPlane-Bootstrap-Token: <operator bootstrap credential>
+Idempotency-Key: <unique logical mutation key>
+
+{"expected_version": 1, "destination_principal_id": "<active AUTOMATION uuid>",
+ "purpose": "Restore work-catalogue reconciliation under its named automation identity."}
+```
+
+The endpoint is CAS-bound, accepts only an active `AUTOMATION` destination,
+and appends an audit event containing the old/new custody, purpose, and request
+hash. It does not retire the artifact, alter its targets, or change page
+protection.

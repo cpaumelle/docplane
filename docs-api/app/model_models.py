@@ -96,3 +96,9 @@ class ArtifactDeclare(BaseModel):
 class ArtifactRetire(BaseModel):
     expected_version: int = Field(ge=1)
     note: str | None = Field(default=None, max_length=4000)
+
+
+class ArtifactCustodyReassign(BaseModel):
+    expected_version: int = Field(ge=1)
+    destination_principal_id: UUID
+    purpose: str = Field(min_length=10, max_length=4000)
