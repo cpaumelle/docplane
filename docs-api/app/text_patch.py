@@ -22,6 +22,10 @@ def apply_text_patch(content: str, edits: list[dict]) -> PatchResult:
     for index, edit in enumerate(edits):
         old = str(edit["old_text"])
         new = str(edit["new_text"])
+        if not old:
+            # Defensive guard for callers that bypass the typed shortcut and
+            # submit a free-form operation payload through /changes.
+            raise ValueError(f"PATCH_OLD_TEXT_EMPTY:{index}")
         expected = int(edit.get("expected_occurrences", 1))
         starts: list[int] = []
         cursor = 0

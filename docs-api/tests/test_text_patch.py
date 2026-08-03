@@ -15,6 +15,7 @@ def test_exact_patch_applies_and_reports_hash_only_impacts():
 
 @pytest.mark.parametrize("edits, code", [
     ([{"old_text": "missing", "new_text": "x"}], "PATCH_OCCURRENCE_MISMATCH"),
+    ([{"old_text": "", "new_text": "x"}], "PATCH_OLD_TEXT_EMPTY"),
     ([{"old_text": "alpha", "new_text": "alpha"}], "PATCH_NO_CHANGE"),
     ([
         {"old_text": "alpha beta", "new_text": "x"},

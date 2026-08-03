@@ -148,7 +148,7 @@ CREATE TABLE docs.change_operations (
     sequence integer NOT NULL CHECK (sequence >= 0),
     idempotency_key text NOT NULL CHECK (btrim(idempotency_key) <> ''),
     operation_type text NOT NULL CHECK (operation_type IN (
-        'CREATE_PAGE', 'REPLACE_DOCUMENT', 'PATCH_TEXT', 'PATCH_METADATA',
+        'CREATE_PAGE', 'REPLACE_DOCUMENT', 'PATCH_METADATA',
         'REPLACE_SECTION', 'INSERT_BEFORE_HEADING', 'INSERT_AFTER_HEADING',
         'MOVE_PAGE', 'REPARENT_NAV', 'ARCHIVE_PAGE', 'RESTORE_PAGE',
         'ADD_REDIRECT', 'REMOVE_REDIRECT', 'REORDER_SECTIONS'

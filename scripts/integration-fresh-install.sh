@@ -88,7 +88,7 @@ DISCOVERY=$(curl -fsS "$FRONT/.well-known/docplane.json")
 python3 - "$DISCOVERY" <<'PY'
 import json,sys
 body=json.loads(sys.argv[1])
-assert body["contract_version"] == "docplane-agent-discovery-v3"
+assert body["contract_version"] == "docplane-agent-discovery-v4"
 a=body["authentication"]["token_acquisition"]
 assert a["access_profile"] == "private_fabric"
 assert a["self_service"] is True

@@ -22,7 +22,6 @@ _CALLER_POLICY_NOTE = (
 @router.get(DISCOVERY_PATH)
 def discovery() -> dict[str, Any]:
     document = base_discovery()
-    document["contract_version"] = "docplane-agent-discovery-v4"
     document["operation_contracts"] = {
         "contract_version": CONTRACT_VERSION,
         "endpoint": CONTRACT_ENDPOINT,

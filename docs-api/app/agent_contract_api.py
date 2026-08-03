@@ -30,6 +30,7 @@ REPLACED_AGENT_PATHS = {
 }
 
 DISCOVERY_URL = "/.well-known/docplane.json"
+DISCOVERY_CONTRACT_VERSION = "docplane-agent-discovery-v4"
 
 ERROR_CATALOG: dict[str, dict[str, str]] = {
     "AUTH_REQUIRED": {
@@ -87,6 +88,14 @@ ERROR_CATALOG: dict[str, dict[str, str]] = {
     "PATCH_OCCURRENCE_MISMATCH": {
         "message": "A patch anchor did not occur exactly as many times as expected.",
         "remedy": "Read the current section or page, choose a unique exact old_text anchor, and retry with the current revision and a new Idempotency-Key.",
+    },
+    "PATCH_EDIT_INVALID": {
+        "message": "A patch edit does not satisfy the exact-edit contract.",
+        "remedy": "Supply old_text, new_text and optionally expected_occurrences; old_text must be non-empty and old_text/new_text must differ.",
+    },
+    "PATCH_OLD_TEXT_EMPTY": {
+        "message": "An exact patch anchor cannot be empty.",
+        "remedy": "Choose a non-empty, preferably unique old_text anchor from the current page revision.",
     },
     "PATCH_EDITS_OVERLAP": {
         "message": "Two requested exact-text edits overlap in the original page.",
@@ -256,7 +265,7 @@ def discovery() -> dict[str, Any]:
     return {
         "product": "DocPlane",
         "site_name": site_name,
-        "contract_version": "docplane-agent-discovery-v3",
+        "contract_version": DISCOVERY_CONTRACT_VERSION,
         "entrypoint": DISCOVERY_URL,
         "openapi": "/openapi.json",
         "health": "/healthz",
