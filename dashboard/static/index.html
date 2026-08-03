@@ -86,6 +86,24 @@
           </div>
         </article>
         <nav id="explore-breadcrumbs" class="breadcrumbs" aria-label="Corpus location"></nav>
+        <article class="panel nav-organizer">
+          <div class="panel-heading">
+            <div><h2>Navigation</h2><p class="muted">Arrange pages, move them between sections, and preview URL and link changes before publishing.</p></div>
+            <button id="nav-organize-toggle" aria-expanded="false" aria-controls="nav-organizer-body">Organize navigation</button>
+          </div>
+          <div id="nav-organizer-body" hidden>
+            <div class="nav-toolbar">
+              <label>Find a page<input id="nav-search" placeholder="Title, URL, or section"></label>
+              <button id="nav-undo" disabled>Undo</button>
+              <button id="nav-redo" disabled>Redo</button>
+              <button id="nav-reset" class="ghost" disabled>Discard</button>
+              <button id="nav-stage" class="primary" disabled>Review changes</button>
+            </div>
+            <p id="nav-guidance" class="muted">Drag pages by their handle. Drop onto a section to move them; use the arrow buttons for keyboard reordering.</p>
+            <div id="nav-tree" class="nav-tree" role="tree" aria-label="Documentation navigation"></div>
+            <div id="nav-impact" class="nav-impact" aria-live="polite"></div>
+          </div>
+        </article>
         <div id="explore-selection" class="selection-bar" hidden>
           <strong id="explore-selection-count"></strong>
           <label>Move to<input id="explore-move-target" list="explore-directory-options" placeholder="target/directory"></label>

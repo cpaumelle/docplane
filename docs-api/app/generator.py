@@ -304,17 +304,37 @@ def _insert(tree: dict, parts: list[str], path: str) -> None:
             node = node.setdefault(key, {})
 
 
-def _serialize(tree: dict, *, top_level: bool, section_order: dict[str, int] | None) -> list:
+def _serialize(
+    tree: dict,
+    *,
+    top_level: bool,
+    section_order: dict[str, int] | None,
+    nav_orders: dict[str, int] | None = None,
+    prefix: tuple[str, ...] = (),
+) -> list:
     keys = list(tree)
     if top_level:
         order = section_order or {}
         keys.sort(key=lambda key: (order.get(key, 10_000), _normalize_segment(key)))
     else:
-        keys.sort(key=_normalize_segment)
+        order = nav_orders or {}
+        keys.sort(
+            key=lambda key: (
+                0 if _normalize_segment(key) == "overview" and isinstance(tree[key], str) else 1,
+                order.get("/".join((*prefix, key)), 1000),
+                _normalize_segment(key),
+            )
+        )
     result: list = []
     for key in keys:
         value = tree[key]
-        result.append({key: _serialize(value, top_level=False, section_order=section_order) if isinstance(value, dict) else value})
+        result.append({key: _serialize(
+            value,
+            top_level=False,
+            section_order=section_order,
+            nav_orders=nav_orders,
+            prefix=(*prefix, key),
+        ) if isinstance(value, dict) else value})
     return result
 
 
@@ -346,7 +366,13 @@ def build_nav(pages: list[dict], *, strict: bool = True, section_order: dict[str
             if strict:
                 raise
             conflicts.append({"kind": exc.kind, "segment": exc.segment, "detail": exc.message, "paths": [path]})
-    serialized = _serialize(tree, top_level=True, section_order=section_order)
+    nav_orders = {str(page["nav_path"]): int(page.get("nav_order", 1000)) for page in pages}
+    serialized = _serialize(
+        tree,
+        top_level=True,
+        section_order=section_order,
+        nav_orders=nav_orders,
+    )
     nav = ([{"Home": home}] if home else []) + _group_nav_by_domain(tree, serialized)
     return nav if strict else (nav, conflicts)
 

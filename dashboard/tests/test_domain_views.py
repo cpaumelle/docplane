@@ -43,4 +43,4 @@ def test_overview_aggregates_coverage_alongside_the_existing_modules():
 def test_unused_proxy_routes_are_gone():
     headers = {"Authorization": "Bearer contributor"}
     assert client.get("/api/control-plane/structure", headers=headers).status_code == 404
-    assert client.get("/api/control-plane/reorganisation/tree", headers=headers).status_code == 404
+    assert client.get("/api/control-plane/reorganisation/tree", headers=headers).status_code == 200

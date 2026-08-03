@@ -298,6 +298,19 @@ def reorganisation_plans(
         _raise(exc)
 
 
+@app.get("/api/control-plane/reorganisation/tree")
+def reorganisation_tree(
+    authorization: str | None = Header(default=None),
+) -> Any:
+    try:
+        return client.get(
+            "/api/v1/reorganisation/tree",
+            authorization=_auth(authorization),
+        )
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
 @app.post("/api/control-plane/reorganisation/plans", status_code=201)
 def create_reorganisation_plan(
     body: dict[str, Any],

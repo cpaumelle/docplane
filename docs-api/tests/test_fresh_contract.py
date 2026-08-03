@@ -276,6 +276,29 @@ def test_nav_validation_rejects_leaf_section_collision():
         raise AssertionError("navigation collision was accepted")
 
 
+def test_move_page_repairs_backlinks_and_reports_impact(monkeypatch):
+    pages = [
+        {"resource_id": "11111111-1111-1111-1111-111111111111", "path": "reference/example.md", "title": "Example", "nav_path": "Reference/Example", "nav_order": 0, "content": "# Example\n", "revision": "r1", "version": 1, "status": "active"},
+        {"resource_id": "22222222-2222-2222-2222-222222222222", "path": "reference/source.md", "title": "Source", "nav_path": "Reference/Source", "nav_order": 10, "content": "# Source\n\n[Example](example.md)\n", "revision": "r2", "version": 1, "status": "active"},
+    ]
+    monkeypatch.setattr(publication, "_load_pages", lambda conn, for_update=False: pages)
+    monkeypatch.setattr(publication, "_load_redirects", lambda conn: {})
+    monkeypatch.setattr(publication, "_load_sections", lambda conn: {})
+    monkeypatch.setattr(publication, "state_identity", lambda pages, sections, redirects: "base")
+    evaluation = publication.evaluate_change(None, {"workspace_key": "reference"}, [{
+        "operation_id": "33333333-3333-3333-3333-333333333333", "sequence": 0,
+        "operation_type": "MOVE_PAGE", "page_resource_id": pages[0]["resource_id"],
+        "expected_revision": "r1", "expected_section_hash": None,
+        "payload": {"to_path": "guides/example.md", "to_nav_path": "Guides/Example", "create_redirect": True},
+    }])
+    assert evaluation["passed"] is True
+    source = next(page for page in evaluation["pages"] if page["path"] == "reference/source.md")
+    assert "[Example](../guides/example.md)" in source["content"]
+    assert source["resource_id"] in evaluation["touched"]
+    assert evaluation["redirects"] == {"reference/example.md": "guides/example.md"}
+    assert evaluation["operations"][0]["link_impacts"][0]["rewrites"][0]["resolved_old"] == "reference/example.md"
+
+
 def test_genesis_contains_only_contributor_publication_model():
     sql = (ROOT / "db/migrations/000_docplane_genesis.sql").read_text()
     assert "workspace_memberships" not in sql

@@ -21,6 +21,11 @@ let classifyTotal = null;
 const previewCache = new Map();
 let modelKind = "";
 let modelKinds = [];
+let navOriginal = [];
+let navDraft = [];
+let navUndo = [];
+let navRedo = [];
+let navDraggedId = null;
 
 function headers(extra = {}) {
   const token = authentication?.token();
@@ -605,6 +610,134 @@ async function loadExplore() {
   }
 }
 
+function navParent(navPath) {
+  const parts = String(navPath || "").split("/").map((part) => part.trim()).filter(Boolean);
+  return parts.slice(0, -1).join("/");
+}
+function navSectionParent(section) { const parts = String(section).split("/").filter(Boolean); return parts.slice(0, -1).join("/"); }
+function navLeaf(navPath) { return String(navPath || "").split("/").filter(Boolean).pop() || ""; }
+function navSlug(value) { return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+function navSuggestedPath(page, section) {
+  const peers = navDraft.filter((item) => navParent(item.nav_path) === section && item.resource_id !== page.resource_id);
+  const directories = peers.map((item) => item.path.split("/").slice(0, -1).join("/")).filter(Boolean);
+  const counts = new Map(); directories.forEach((path) => counts.set(path, (counts.get(path) || 0) + 1));
+  const directory = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0]
+    || section.split("/").map(navSlug).filter(Boolean).join("/");
+  return `${directory}/${page.path.split("/").pop()}`;
+}
+function navSnapshot() { return navDraft.map((page) => ({...page})); }
+function navRemember() { navUndo.push(navSnapshot()); navRedo = []; }
+function navChangedPages() {
+  const original = new Map(navOriginal.map((page) => [page.resource_id, page]));
+  return navDraft.filter((page) => {
+    const before = original.get(page.resource_id);
+    return before && (before.nav_path !== page.nav_path || Number(before.nav_order) !== Number(page.nav_order) || before.path !== page.path);
+  });
+}
+function normalizeSection(section) {
+  const pages = navDraft.filter((page) => navParent(page.nav_path) === section)
+    .sort((a, b) => Number(a.nav_order) - Number(b.nav_order) || navLeaf(a.nav_path).localeCompare(navLeaf(b.nav_path)));
+  const overview = pages.filter((page) => navLeaf(page.nav_path).toLowerCase() === "overview");
+  const rest = pages.filter((page) => !overview.includes(page));
+  [...overview, ...rest].forEach((page, index) => { page.nav_order = index * 10; });
+}
+function moveNavPage(resourceId, targetSection, targetIndex = null) {
+  const page = navDraft.find((item) => item.resource_id === resourceId);
+  if (!page) return;
+  const sourceSection = navParent(page.nav_path);
+  if (navLeaf(page.nav_path).toLowerCase() === "overview" && sourceSection === targetSection) return;
+  if (navLeaf(page.nav_path).toLowerCase() === "overview" && navDraft.some((item) => item.resource_id !== resourceId && navParent(item.nav_path) === targetSection && navLeaf(item.nav_path).toLowerCase() === "overview")) {
+    notify("That section already has an Overview page.", "warn"); return;
+  }
+  navRemember();
+  const leaf = navLeaf(page.nav_path);
+  page.nav_path = `${targetSection}/${leaf}`;
+  if (sourceSection !== targetSection) page.path = navSuggestedPath(page, targetSection);
+  const siblings = navDraft.filter((item) => navParent(item.nav_path) === targetSection && item.resource_id !== resourceId)
+    .sort((a, b) => Number(a.nav_order) - Number(b.nav_order));
+  siblings.splice(targetIndex == null ? siblings.length : targetIndex, 0, page);
+  siblings.forEach((item, index) => { item.nav_order = index * 10; });
+  normalizeSection(sourceSection); normalizeSection(targetSection); renderNavTree();
+}
+function navSections() {
+  const sections = new Set();
+  navDraft.forEach((page) => {
+    const parts = navParent(page.nav_path).split("/").filter(Boolean);
+    for (let index = 1; index <= parts.length; index += 1) sections.add(parts.slice(0, index).join("/"));
+  });
+  return [...sections].sort();
+}
+function renderNavSection(section) {
+  const direct = navDraft.filter((page) => navParent(page.nav_path) === section)
+    .sort((a, b) => Number(a.nav_order) - Number(b.nav_order) || navLeaf(a.nav_path).localeCompare(navLeaf(b.nav_path)));
+  const children = navSections().filter((candidate) => navSectionParent(candidate) === section);
+  const pageHtml = direct.map((page, index) => {
+    const overview = navLeaf(page.nav_path).toLowerCase() === "overview";
+    return `<div class="nav-item ${overview ? "nav-overview" : ""}" role="treeitem" draggable="${overview ? "false" : "true"}" data-page-id="${esc(page.resource_id)}" data-section="${esc(section)}" data-index="${index}">
+      <button class="nav-handle" aria-label="Drag ${esc(page.title)}" ${overview ? "disabled" : ""}>${overview ? "⌂" : "⋮⋮"}</button>
+      <div class="nav-item__identity"><strong>${esc(navLeaf(page.nav_path))} ${overview ? '<span class="nav-pin">Overview · pinned first</span>' : ""}</strong><code>${esc(page.path)}</code></div>
+      <div class="nav-item__actions"><button class="nav-up" aria-label="Move ${esc(page.title)} up" ${overview || index === 0 ? "disabled" : ""}>↑</button><button class="nav-down" aria-label="Move ${esc(page.title)} down" ${overview || index === direct.length - 1 ? "disabled" : ""}>↓</button></div>
+    </div>`;
+  }).join("");
+  const nested = children.map(renderNavSection).join("");
+  return `<section class="nav-section" role="treeitem" aria-expanded="true" data-section="${esc(section)}"><div class="nav-section__head"><button class="nav-section__toggle" aria-label="Collapse ${esc(section)}">▾</button><button class="nav-section__drop" title="Drop a page here">${esc(section.split("/").pop())}</button></div><div class="nav-children" role="group">${pageHtml}${nested}</div></section>`;
+}
+function renderNavImpact() {
+  const changed = navChangedPages();
+  $("nav-stage").disabled = !changed.length; $("nav-reset").disabled = !changed.length;
+  $("nav-undo").disabled = !navUndo.length; $("nav-redo").disabled = !navRedo.length;
+  $("nav-impact").innerHTML = changed.length ? `<strong>${changed.length} page${changed.length === 1 ? "" : "s"} changed</strong><ul>${changed.map((page) => {
+    const before = navOriginal.find((item) => item.resource_id === page.resource_id);
+    return `<li><code>${esc(before.path)}</code> → <input class="nav-path-edit" data-id="${esc(page.resource_id)}" value="${esc(page.path)}" aria-label="New URL path for ${esc(page.title)}"> <span class="muted">${esc(page.nav_path)}</span></li>`;
+  }).join("")}</ul><p class="muted">Analysis will list every rewritten backlink and preserved evidence reference before publication.</p>` : `<p class="muted">No unsaved navigation changes.</p>`;
+  document.querySelectorAll(".nav-path-edit").forEach((input) => input.addEventListener("change", () => {
+    const page = navDraft.find((item) => item.resource_id === input.dataset.id); if (page) page.path = input.value.trim(); renderNavImpact();
+  }));
+}
+function renderNavTree() {
+  const query = $("nav-search")?.value.trim().toLowerCase() || "";
+  const top = navSections().filter((section) => !section.includes("/"));
+  $("nav-tree").innerHTML = top.map(renderNavSection).join("");
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    const page = navDraft.find((candidate) => candidate.resource_id === item.dataset.pageId);
+    if (query && !`${page?.title} ${page?.path} ${page?.nav_path}`.toLowerCase().includes(query)) item.hidden = true;
+    item.addEventListener("dragstart", () => { navDraggedId = item.dataset.pageId; item.classList.add("dragging"); });
+    item.addEventListener("dragend", () => { navDraggedId = null; item.classList.remove("dragging"); });
+    item.addEventListener("dragover", (event) => { event.preventDefault(); item.classList.add(event.offsetY < item.offsetHeight / 2 ? "drop-before" : "drop-after"); });
+    item.addEventListener("dragleave", () => item.classList.remove("drop-before", "drop-after"));
+    item.addEventListener("drop", (event) => { event.preventDefault(); const before = item.classList.contains("drop-before"); item.classList.remove("drop-before", "drop-after"); if (navDraggedId) moveNavPage(navDraggedId, item.dataset.section, Number(item.dataset.index) + (before ? 0 : 1)); });
+    item.querySelector(".nav-up")?.addEventListener("click", () => moveNavPage(item.dataset.pageId, item.dataset.section, Math.max(0, Number(item.dataset.index) - 1)));
+    item.querySelector(".nav-down")?.addEventListener("click", () => moveNavPage(item.dataset.pageId, item.dataset.section, Number(item.dataset.index) + 1));
+  });
+  document.querySelectorAll(".nav-section").forEach((section) => {
+    section.querySelector(":scope > .nav-section__head > .nav-section__toggle")?.addEventListener("click", (event) => { const open = section.getAttribute("aria-expanded") === "true"; section.setAttribute("aria-expanded", String(!open)); event.currentTarget.textContent = open ? "▸" : "▾"; });
+    const head = section.querySelector(":scope > .nav-section__head");
+    head?.addEventListener("dragover", (event) => { event.preventDefault(); section.classList.add("drop-target"); });
+    head?.addEventListener("dragleave", () => section.classList.remove("drop-target"));
+    head?.addEventListener("drop", (event) => { event.preventDefault(); section.classList.remove("drop-target"); if (navDraggedId) moveNavPage(navDraggedId, section.dataset.section); });
+  });
+  renderNavImpact();
+}
+async function loadNavOrganizer() {
+  const data = await api("/api/control-plane/reorganisation/tree");
+  navOriginal = (data.pages || []).filter((page) => page.status === "active").map((page) => ({...page}));
+  navDraft = navOriginal.map((page) => ({...page}));
+  navUndo = []; navRedo = []; renderNavTree();
+}
+async function stageNavigationPlan() {
+  const changed = navChangedPages(); if (!changed.length) return;
+  $("nav-stage").disabled = true;
+  try {
+    const plan = await api("/api/control-plane/reorganisation/plans", {method:"POST", headers:{"Content-Type":"application/json","Idempotency-Key":key("nav-plan")}, body:JSON.stringify({title:`Reorganize navigation (${changed.length} pages)`, purpose:"First-class Dashboard navigation arrangement with URL, redirect, and backlink impact analysis.", workspace_key:"reference"})});
+    for (const page of changed) {
+      const before = navOriginal.find((item) => item.resource_id === page.resource_id);
+      const moved = before.path !== page.path;
+      await api(`/api/control-plane/reorganisation/plans/${plan.plan_id}/operations`, {method:"POST", headers:{"Content-Type":"application/json","Idempotency-Key":key("nav-op")}, body:JSON.stringify({operation_type:moved ? "MOVE_PAGE" : "REPARENT_NAV", page_resource_id:page.resource_id, expected_revision:String(page.revision), payload:moved ? {to_path:page.path,to_nav_path:page.nav_path,nav_order:page.nav_order,create_redirect:true} : {to_nav_path:page.nav_path,nav_order:page.nav_order}})});
+    }
+    notify("Navigation plan staged — analyzing URL and backlink impact."); navigate("review"); await loadReorganisation(); const plans = await api("/api/control-plane/reorganisation/plans?status=open"); const staged = (plans.plans || []).find((item) => item.plan_id === plan.plan_id); if (staged) { selectPlan(staged); await planAction("analyze"); }
+  } catch (error) { notify(error.message, "warn"); } finally { $("nav-stage").disabled = false; }
+}
+
 async function stageMovePlan() {
   const target = $("explore-move-target").value.trim().replace(/^\/+|\/+$/g, "");
   if (!selectedPages.size) return;
@@ -751,7 +884,11 @@ function describeOperation(operation) {
         : `<span class="chip chip--ok">ok</span>`)
     : "";
   const errors = (analysis?.errors || []).map((error) => `<li>${esc(typeof error === "string" ? error : error.code || JSON.stringify(error))}</li>`).join("");
-  return `<div class="op-row"><span>${esc(parts.filter(Boolean).join(" "))}</span>${verdict}</div>${errors ? `<ul class="op-errors">${errors}</ul>` : ""}`;
+  const impacts = analysis?.link_impacts || [];
+  const rewrites = impacts.reduce((count, item) => count + (item.rewrites || []).length, 0);
+  const preserved = impacts.reduce((count, item) => count + (item.preservations || []).length, 0);
+  const impact = impacts.length ? `<details><summary>${rewrites} link rewrite${rewrites === 1 ? "" : "s"} across ${impacts.length} page${impacts.length === 1 ? "" : "s"}; ${preserved} preserved</summary><pre>${esc(JSON.stringify(impacts, null, 2))}</pre></details>` : "";
+  return `<div class="op-row"><span>${esc(parts.filter(Boolean).join(" "))}</span>${verdict}</div>${errors ? `<ul class="op-errors">${errors}</ul>` : ""}${impact}`;
 }
 function renderPlanDetail() {
   if (!selectedPlan) { $("reorg-detail").innerHTML = `<p class="muted">No plan selected.</p>`; return; }
@@ -1178,6 +1315,17 @@ if (typeof document !== "undefined") {
   $("explore-more").addEventListener("click", () => loadPageBatch(false).catch((error) => { $("explore-pages").textContent = error.message; }));
   $("explore-move-stage").addEventListener("click", () => stageMovePlan());
   $("explore-selection-clear").addEventListener("click", () => { selectedPages.clear(); renderPages(); });
+  $("nav-organize-toggle").addEventListener("click", async () => {
+    const body = $("nav-organizer-body"); const opening = body.hidden;
+    body.hidden = !opening; $("nav-organize-toggle").setAttribute("aria-expanded", String(opening));
+    $("nav-organize-toggle").textContent = opening ? "Close organizer" : "Organize navigation";
+    if (opening && !navOriginal.length) await loadNavOrganizer().catch((error) => notify(error.message, "warn"));
+  });
+  $("nav-search").addEventListener("input", renderNavTree);
+  $("nav-undo").addEventListener("click", () => { if (!navUndo.length) return; navRedo.push(navSnapshot()); navDraft = navUndo.pop(); renderNavTree(); });
+  $("nav-redo").addEventListener("click", () => { if (!navRedo.length) return; navUndo.push(navSnapshot()); navDraft = navRedo.pop(); renderNavTree(); });
+  $("nav-reset").addEventListener("click", () => { navUndo.push(navSnapshot()); navDraft = navOriginal.map((page) => ({...page})); navRedo = []; renderNavTree(); });
+  $("nav-stage").addEventListener("click", stageNavigationPlan);
   $("review-more").addEventListener("click", async () => {
     if (!candidateCursor) return;
     try {
