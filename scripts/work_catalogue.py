@@ -26,7 +26,7 @@ Environment:
   DOCPLANE_API                  routed front
   DOCPLANE_WORK_CATALOGUE_TOKEN named AUTOMATION bearer (never logged)
 
-Usage: work_catalogue.py [--dry-run]
+Usage: work_catalogue.py [--dry-run] [--status-json] [--metrics-file PATH]
 """
 from __future__ import annotations
 
@@ -35,6 +35,8 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -136,6 +138,36 @@ def fingerprint(state: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(_projection(state), sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
     ).hexdigest()
+
+
+def _required_environment(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"{name} is required; refusing to fall back to another principal")
+    return value
+
+
+def _write_metrics(path: str, *, drift: bool, success: bool) -> None:
+    """Atomically publish low-cardinality textfile metrics for node_exporter."""
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    now = int(time.time())
+    content = (
+        "# HELP docplane_generated_projection_drift Whether live source state differs from the published generation fingerprint.\n"
+        "# TYPE docplane_generated_projection_drift gauge\n"
+        f'docplane_generated_projection_drift{{artifact="{ARTIFACT_KEY}"}} {int(drift)}\n'
+        "# HELP docplane_generated_projection_reconcile_success Whether the most recent reconciliation completed successfully.\n"
+        "# TYPE docplane_generated_projection_reconcile_success gauge\n"
+        f'docplane_generated_projection_reconcile_success{{artifact="{ARTIFACT_KEY}"}} {int(success)}\n'
+        "# HELP docplane_generated_projection_last_run_unixtime Unix time of the most recent reconciliation status check.\n"
+        "# TYPE docplane_generated_projection_last_run_unixtime gauge\n"
+        f'docplane_generated_projection_last_run_unixtime{{artifact="{ARTIFACT_KEY}"}} {now}\n'
+    )
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=destination.parent, delete=False) as handle:
+        handle.write(content)
+        temporary = Path(handle.name)
+    temporary.chmod(0o644)
+    temporary.replace(destination)
 
 
 def _by_state(projection: dict[str, Any], work_state: str) -> list[dict[str, Any]]:
@@ -329,13 +361,33 @@ def ensure_source_entity(client: Client, fp: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true", help="render and report; perform no writes")
+    parser.add_argument("--status-json", action="store_true", help="report live-versus-published fingerprint state; perform no writes")
+    parser.add_argument("--metrics-file", help="atomically write projection status in Prometheus textfile format")
+    parser.add_argument("--reconcile-success", choices=("0", "1"), default="1", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
-    client = Client(os.environ["DOCPLANE_API"], os.environ.get("DOCPLANE_WORK_CATALOGUE_TOKEN", os.environ.get("DOCPLANE_TOKEN", "")))
+    client = Client(_required_environment("DOCPLANE_API"), _required_environment("DOCPLANE_WORK_CATALOGUE_TOKEN"))
     state = fetch_state(client)
     fp = fingerprint(state)
     pages = render_pages(state, fp)
     open_count = sum(1 for row in state["initiatives"] if row.get("work_state") in _QUEUE_STATES)
+    if args.status_json or args.metrics_file:
+        artifact = sc.current_artifact(client, ARTIFACT_KEY)
+        published = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
+        drift = published != fp
+        status = {
+            "artifact_key": ARTIFACT_KEY,
+            "artifact_id": artifact.get("artifact_id") if artifact else None,
+            "live_fingerprint": fp,
+            "published_fingerprint": published,
+            "drift": drift,
+            "reconcile_success": args.reconcile_success == "1",
+        }
+        if args.metrics_file:
+            _write_metrics(args.metrics_file, drift=drift, success=args.reconcile_success == "1")
+        if args.status_json:
+            print(json.dumps(status, sort_keys=True))
+        return 0
     print(f"work fingerprint {fp[:16]} — {open_count} open initiative(s), {len(pages)} page(s)")
 
     if args.dry_run:

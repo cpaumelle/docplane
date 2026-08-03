@@ -50,6 +50,7 @@ def test_model_routes_exist_and_prior_surfaces_survive():
         "/api/v1/model/entities/{entity_id}/page-links",
         "/api/v1/model/artifacts",
         "/api/v1/model/artifacts/{artifact_id}/retire",
+        "/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody",
     ):
         assert new in paths, new
     for prior in ("/api/v1/initiatives", "/api/v1/work/queues", "/api/v1/work/captures"):
@@ -66,6 +67,10 @@ def test_model_mutations_declare_required_idempotency_header():
     ):
         parameters = schema["paths"][path]["post"].get("parameters", [])
         assert any(item["name"] == "Idempotency-Key" for item in parameters), path
+
+    custody = schema["paths"]["/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody"]["post"]
+    names = {item["name"] for item in custody.get("parameters", [])}
+    assert {"Idempotency-Key", "X-DocPlane-Bootstrap-Token"} <= names
 
 
 def test_contracts_document_publishes_every_kind_with_schema():

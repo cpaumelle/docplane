@@ -5,6 +5,7 @@ rendering — plus the UNCHANGED main path never publishing."""
 from __future__ import annotations
 
 import sys
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,3 +166,40 @@ def test_dry_run_performs_no_writes(monkeypatch, capsys):
     monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
     assert work_catalogue.main(["--dry-run"]) == 0
     assert "DRY-RUN" in capsys.readouterr().out
+
+
+def test_missing_dedicated_token_fails_fast_without_fallback(monkeypatch):
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_TOKEN", "wrong-principal")
+    monkeypatch.delenv("DOCPLANE_WORK_CATALOGUE_TOKEN", raising=False)
+    try:
+        work_catalogue.main(["--dry-run"])
+        raise AssertionError("missing dedicated automation token must fail")
+    except RuntimeError as exc:
+        assert "DOCPLANE_WORK_CATALOGUE_TOKEN is required" in str(exc)
+
+
+def test_status_reports_drift_and_writes_atomic_metrics(monkeypatch, tmp_path, capsys):
+    state = _state([_initiative()])
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(sc, "current_artifact", lambda *a: {"artifact_id": "artifact"})
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: "stale")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+    metrics = tmp_path / "work.prom"
+
+    assert work_catalogue.main(["--status-json", "--metrics-file", str(metrics), "--reconcile-success", "0"]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["drift"] is True
+    assert status["reconcile_success"] is False
+    text = metrics.read_text(encoding="utf-8")
+    assert 'docplane_generated_projection_drift{artifact="work-catalogue"} 1' in text
+    assert 'docplane_generated_projection_reconcile_success{artifact="work-catalogue"} 0' in text
