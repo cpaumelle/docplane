@@ -73,6 +73,27 @@ _PAYLOAD_SCHEMAS: dict[str, dict[str, Any]] = {
         required=["content"],
         description="Replace the complete Markdown document and optionally its title or navigation path.",
     ),
+    "PATCH_TEXT": _object_schema(
+        {
+            "edits": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 100,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["old_text", "new_text"],
+                    "properties": {
+                        "old_text": {"type": "string", "minLength": 1, "maxLength": 262144},
+                        "new_text": {"type": "string", "maxLength": 262144},
+                        "expected_occurrences": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1},
+                    },
+                },
+            }
+        },
+        required=["edits"],
+        description="Apply exact-text edits to one revision. Missing, ambiguous or overlapping anchors fail the complete operation.",
+    ),
     "PATCH_METADATA": _object_schema(
         {
             "title": {"type": "string", "minLength": 1},
@@ -159,6 +180,16 @@ _REQUEST_EXAMPLES: dict[str, dict[str, Any]] = {
         "page_resource_id": _PAGE_ID,
         "expected_revision": _REVISION,
         "payload": {"content": "# Example\n\nCorrected content.\n"},
+    },
+    "PATCH_TEXT": {
+        "operation_type": "PATCH_TEXT",
+        "page_resource_id": _PAGE_ID,
+        "expected_revision": _REVISION,
+        "payload": {"edits": [{
+            "old_text": "The old exact passage.",
+            "new_text": "The corrected exact passage.",
+            "expected_occurrences": 1,
+        }]},
     },
     "PATCH_METADATA": {
         "operation_type": "PATCH_METADATA",

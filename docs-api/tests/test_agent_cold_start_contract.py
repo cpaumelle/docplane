@@ -87,13 +87,22 @@ def test_discovery_is_the_complete_unauthenticated_starting_point():
     response = client.get("/.well-known/docplane.json")
     assert response.status_code == 200
     body = response.json()
-    assert body["contract_version"] == "docplane-agent-discovery-v3"
+    assert body["contract_version"] == "docplane-agent-discovery-v4"
     assert body["authentication"]["token_acquisition"]["mode"] == "operator-issued"
     assert body["authentication"]["token_acquisition"]["self_service"] is False
     assert body["authentication"]["token_acquisition"]["credentials_returned_by_discovery"] is False
     assert body["required_headers"]["mutations"] == ["Authorization", "Idempotency-Key"]
     assert "REPLACE_DOCUMENT" in body["operation_types"]
     assert body["surfaces"]["single_page_replace"] == "/api/v1/pages/{resource_id}/replace"
+    assert body["surfaces"]["single_page_patch"] == "/api/v1/pages/{resource_id}/patch"
+    assert set(body["document_metadata"]) == {
+        "contract_version", "identity_and_location", "corpus_and_category",
+        "content_discovery", "revision_and_history", "lifecycle_and_publication",
+        "trust_and_maintenance",
+    }
+    assert "knowledge_class" in body["document_metadata"]["corpus_and_category"]
+    assert "provenance" in body["document_metadata"]["lifecycle_and_publication"]
+    assert "facets" in body["discoverability_and_categorisation"]
     assert body["errors"]["PAGE_REVISION_STALE"]["remedy"]
     assert body["legacy"]["legacy_docs_api_contract_applies"] is False
 

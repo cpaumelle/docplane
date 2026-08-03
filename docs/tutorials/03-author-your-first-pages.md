@@ -52,7 +52,7 @@ curl -fsS -X POST -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: fp-vali
 curl -fsS -X POST -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: fp-publish"  "$API/api/v1/changes/$CHANGE_ID/publish"
 ```
 
-For a small *edit* to an existing page there's a one-call shortcut, `POST /api/v1/pages/{resource_id}/replace` with `expected_revision` — the README shows it end to end. And if an agent is doing the typing, the MCP `write_doc` tool wraps all of this ([Tutorial 7](07-connect-your-agents.md)).
+For a small edit, use `POST /api/v1/pages/{resource_id}/patch` with the revision returned by your read and exact `old_text`/`new_text` edits. The server rejects stale revisions, ambiguous anchors, overlaps and no-ops, while recording the same full revision and audit trail as every other publication. Use `/replace` only when the complete page really is the intended unit of change. Agents can use `read_doc_outline`, `read_doc_section` and `patch_doc` ([Tutorial 7](07-connect-your-agents.md)).
 
 ## Give every page a knowledge class
 

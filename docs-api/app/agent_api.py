@@ -30,7 +30,7 @@ from app.agent_models import (
 from app.corpus_structure import build as build_structure
 from app.db import get_conn
 from app.event_store import append_event
-from app.markdown_sections import outline, summary
+from app.markdown_sections import find_section, outline, summary
 from app.publication import change_view, publish_change, validate_change
 from app.runtime import certification_status, deploy_current_state
 
@@ -56,7 +56,7 @@ def _page_dict(row, *, include_content: bool = False) -> dict[str, Any]:
         "resource_id", "path", "title", "nav_path", "content", "revision", "version",
         "status", "workspace_id", "workspace_key", "publication_state", "knowledge_class",
         "verification_state", "owner_principal_id", "review_due_at", "criticality",
-        "metadata_review_required", "metadata_version", "updated_at", "updated_by",
+        "metadata_review_required", "metadata_version", "provenance", "updated_at", "updated_by",
     )
     page = dict(zip(keys, row))
     for key in ("resource_id", "workspace_id", "owner_principal_id"):
@@ -77,7 +77,7 @@ def _page_select() -> str:
                p.revision, p.version, p.status, p.workspace_id, w.workspace_key,
                p.publication_state, p.knowledge_class, p.verification_state,
                p.owner_principal_id, p.review_due_at, p.criticality,
-               p.metadata_review_required, p.metadata_version, p.updated_at, p.updated_by
+               p.metadata_review_required, p.metadata_version, p.provenance, p.updated_at, p.updated_by
           FROM docs.pages p
           JOIN docplane.workspaces w ON w.workspace_id = p.workspace_id
     """
@@ -236,7 +236,7 @@ def list_pages(
 @router.get("/api/v1/pages/{resource_id}")
 def get_page(
     resource_id: UUID,
-    view: str = Query(default="full", pattern="^(full|edit_context|summary)$"),
+    view: str = Query(default="full", pattern="^(full|edit_context|summary|outline)$"),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     with get_conn() as conn:
@@ -249,7 +249,42 @@ def get_page(
     if view == "summary":
         page.pop("content", None)
         page.pop("outline", None)
+    elif view == "outline":
+        page.pop("content", None)
     return page
+
+
+@router.get("/api/v1/pages/{resource_id}/sections/{heading_id}")
+def get_page_section(
+    resource_id: UUID,
+    heading_id: str,
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    del principal
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(_page_select() + " WHERE p.resource_id = %s", (str(resource_id),))
+        row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "PAGE_NOT_FOUND"})
+    page = _page_dict(row, include_content=True)
+    section = find_section(page["content"], heading_id)
+    if section is None:
+        raise HTTPException(status_code=404, detail={"code": "PAGE_SECTION_NOT_FOUND"})
+    return {
+        "resource_id": page["resource_id"],
+        "path": page["path"],
+        "revision": page["revision"],
+        "version": page["version"],
+        "heading_id": section.heading_id,
+        "title": section.title,
+        "level": section.level,
+        "start_line": section.start_line,
+        "end_line": section.end_line,
+        "content_hash": section.content_hash,
+        "explicit_id": section.explicit_id,
+        "content": section.content,
+    }
 
 
 @router.get("/api/v1/search")

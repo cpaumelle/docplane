@@ -20,10 +20,10 @@ claude mcp add docplane --transport http http://localhost:8049/mcp \
 
 | Domain | Tools |
 | --- | --- |
-| know | `search_docs`, `read_doc`, `list_docs`, `write_doc`, `archive_doc`, `know_classify_doc`, `resolve_concept` |
+| know | `search_docs`, `read_doc`, `read_doc_outline`, `read_doc_section`, `patch_doc`, `list_docs`, `write_doc`, `archive_doc`, `know_classify_doc`, `resolve_concept` |
 | work | `work_capture`, `work_inbox`, `work_triage`, `work_promote`, `work_list`, `work_get`, `work_note`, `work_transition`, `work_link`, `work_dispositions` |
 
-`write_doc` wraps the whole governed flow (change → operation → validate → publish) in one call and accepts `knowledge_class` for birth classification. `resolve_concept` answers "where does X live?" so agents stop guessing paths.
+`patch_doc` is the preferred small-edit path: read an outline or section, retain its revision, then submit exact replacements. Ambiguous anchors and concurrent updates fail closed. `write_doc` creates pages or deliberately replaces a complete page; replacing an existing page requires the revision from the caller's earlier read. Both use the governed change → operation → validate → publish flow. `resolve_concept` answers "where does X live?" so agents stop guessing paths.
 
 ## Or go straight to HTTP
 
