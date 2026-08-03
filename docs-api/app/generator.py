@@ -366,7 +366,13 @@ def build_nav(pages: list[dict], *, strict: bool = True, section_order: dict[str
             if strict:
                 raise
             conflicts.append({"kind": exc.kind, "segment": exc.segment, "detail": exc.message, "paths": [path]})
-    nav_orders = {str(page["nav_path"]): int(page.get("nav_order", 1000)) for page in pages}
+    # Use the same normalized segments as the tree keys. Raw nav_path padding
+    # must not silently discard an authored sibling order.
+    nav_orders = {
+        "/".join(part.strip() for part in str(page["nav_path"]).split("/") if part.strip()):
+            int(page.get("nav_order", 1000))
+        for page in pages
+    }
     serialized = _serialize(
         tree,
         top_level=True,

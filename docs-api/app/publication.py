@@ -255,6 +255,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
     touched: set[str] = set()
     created: set[str] = set()
     moves: dict[str, str] = {}
+    move_results: dict[str, dict[str, Any]] = {}
 
     base_identity = state_identity(original_pages, original_sections, original_redirects)
     if change.get("base_state_identity") and change["base_state_identity"] != base_identity:
@@ -409,6 +410,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                 if payload.get("create_redirect", True):
                     redirects[old_path] = new_path
                 moves[old_path] = new_path
+                move_results[old_path] = result
                 touched.add(page["resource_id"])
             elif op_type == "REPARENT_NAV":
                 _require_payload(operation, "to_nav_path")
@@ -455,7 +457,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
     # exposed in the analysis receipt.
     if moves and not errors:
         original_by_id = {item["resource_id"]: item for item in original_pages}
-        impacts: list[dict[str, Any]] = []
+        impacts_by_move: dict[str, list[dict[str, Any]]] = {source: [] for source in moves}
         try:
             for page in pages:
                 previous = original_by_id.get(page["resource_id"])
@@ -471,23 +473,26 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                 if content != page["content"]:
                     page["content"] = content
                     touched.add(page["resource_id"])
-                rewrites = list(inbound.rewrites) + (list(outbound.rewrites) if outbound else [])
-                preserved = list(inbound.preservations) + (list(outbound.preservations) if outbound else [])
-                if rewrites or preserved:
-                    impacts.append({
-                        "resource_id": page["resource_id"],
-                        "path": page["path"],
-                        "rewrites": [vars(item) for item in rewrites],
-                        "preservations": [
-                            {"page": item.page, "line": item.line, "target": item.target,
-                             "resolved": item.resolved, "reason": item.reason.value}
-                            for item in preserved
-                        ],
-                    })
-            for result in results:
-                if result["operation_type"] == "MOVE_PAGE":
-                    result["link_impacts"] = impacts
-        except (RuntimeError, ValueError) as exc:
+                for source in moves:
+                    rewrites = [item for item in inbound.rewrites if item.resolved_old == source]
+                    preserved = [item for item in inbound.preservations if item.resolved == source]
+                    if outbound is not None and previous["path"] == source:
+                        rewrites.extend(outbound.rewrites)
+                        preserved.extend(outbound.preservations)
+                    if rewrites or preserved:
+                        impacts_by_move[source].append({
+                            "resource_id": page["resource_id"],
+                            "path": page["path"],
+                            "rewrites": [vars(item) for item in rewrites],
+                            "preservations": [
+                                {"page": item.page, "line": item.line, "target": item.target,
+                                 "resolved": item.resolved, "reason": item.reason.value}
+                                for item in preserved
+                            ],
+                        })
+            for source, result in move_results.items():
+                result["link_impacts"] = impacts_by_move[source]
+        except Exception as exc:  # fail the complete move closed on parser defects
             errors.append({"code": "LINK_REWRITE_UNSAFE", "detail": str(exc)})
 
     if not operations:

@@ -81,3 +81,12 @@ def test_explicit_page_order_is_respected_and_overview_is_always_first():
     know = nav[0]["Know"]
     topic = know[0]["Reference"][0]["Topic"]
     assert [next(iter(item)) for item in topic] == ["Overview", "Zebra", "Alpha"]
+
+
+def test_page_order_uses_normalized_nav_segments():
+    pages = [
+        {"path": "reference/z.md", "nav_path": "Reference / Topic / Zebra", "nav_order": 0, "content": "# Z"},
+        {"path": "reference/a.md", "nav_path": "Reference/Topic/Alpha", "nav_order": 10, "content": "# A"},
+    ]
+    topic = build_nav(pages)[0]["Know"][0]["Reference"][0]["Topic"]
+    assert [next(iter(item)) for item in topic] == ["Zebra", "Alpha"]

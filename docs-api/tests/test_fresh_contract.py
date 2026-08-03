@@ -308,6 +308,7 @@ def test_genesis_contains_only_contributor_publication_model():
     assert "APPROVED" not in sql
     assert "scopes text[]" not in sql
     assert "docs.changes" in sql
+    assert "nav_order" not in sql
     assert "PUBLISHED" in sql
 
 

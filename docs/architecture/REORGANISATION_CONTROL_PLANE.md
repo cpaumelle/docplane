@@ -31,3 +31,16 @@ reports rewritten references and deliberately preserved evidence references;
 unsafe or uncertain parsing fails the plan closed. The link graph is derived on
 demand from authoritative Markdown rather than maintained as a second source of
 truth.
+
+Link repair deliberately scans the corpus during both validation and publish.
+Inbound pages changed by that repair are implicit revision participants: they
+are locked with the corpus at publish, their prior versions are archived, and
+their new revisions are included in the receipt even though the author did not
+name them as separate operations. This keeps references atomic with the move
+without creating a second link-index authority. The scan is currently O(corpus)
+and must be revisited before corpus size makes validation latency material.
+
+Because `nav_order` participates in the corpus state identity, first deployment
+of this schema changes the working identity for the whole corpus. Drain or
+abandon open pre-deployment changes before rollout, then complete one governed
+publication so deployed certification is sealed against the new identity.
