@@ -203,3 +203,44 @@ def test_status_reports_drift_and_writes_atomic_metrics(monkeypatch, tmp_path, c
     text = metrics.read_text(encoding="utf-8")
     assert 'docplane_generated_projection_drift{artifact="work-catalogue"} 1' in text
     assert 'docplane_generated_projection_reconcile_success{artifact="work-catalogue"} 0' in text
+
+
+def test_status_probe_does_not_render_pages(monkeypatch, tmp_path):
+    """The 15-minute probe needs the fingerprint only; rendering every page
+    would double each tick's cost for output it discards."""
+    state = _state([_initiative()])
+    rendered = []
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(sc, "current_artifact", lambda *a: {"artifact_id": "artifact"})
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: "stale")
+    original_render = work_catalogue.render_pages
+    monkeypatch.setattr(
+        work_catalogue, "render_pages",
+        lambda *args, **kwargs: rendered.append(1) or original_render(*args, **kwargs),
+    )
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main(["--metrics-file", str(tmp_path / "work.prom")]) == 0
+    assert rendered == []
+
+
+def test_scheduler_wrapper_treats_a_lock_conflict_as_skipped_not_failed():
+    """flock's conflict exit must not be reported as a failed reconciliation:
+    the lock doing its job would otherwise raise the failure alert and fail
+    the systemd unit. The lock also lives outside /tmp, which PrivateTmp=true
+    would otherwise make private to the timer."""
+    script = (ROOT / "scripts" / "run_work_catalogue_reconciliation.sh").read_text(encoding="utf-8")
+    assert "FLOCK_CONFLICT_EXIT=75" in script
+    assert 'flock -n -E "$FLOCK_CONFLICT_EXIT"' in script
+    assert "reconcile_status=0" in script
+    assert "/run/lock/docplane-work-catalogue.lock" in script
+    assert "/tmp/docplane-work-catalogue.lock" not in script

@@ -42,6 +42,16 @@ the latest reconciliation result, and the latest check time. Override the
 path with `DOCPLANE_WORK_CATALOGUE_METRICS_FILE` only when the node's canonical
 textfile collector path differs.
 
+The wrapper's lock defaults to `/run/lock/docplane-work-catalogue.lock`,
+deliberately outside `/tmp`: a scheduler unit running with `PrivateTmp=true`
+gets a private `/tmp`, so a lock there would exclude nothing from an
+operator's concurrent manual run — the exact overlap the lock exists to
+prevent. Override with `DOCPLANE_WORK_CATALOGUE_LOCK_FILE` only to a path
+that every caller shares. When the lock is already held the wrapper reports
+`SKIPPED`, still publishes drift metrics, and exits successfully: a skipped
+overlap is the lock working, not a failed reconciliation, and must not raise
+the failure alert.
+
 ## What it owns
 
 - Pages under `work/` (`knowledge_class=REFERENCE`; the section lands in the

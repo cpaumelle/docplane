@@ -688,6 +688,11 @@ def reassign_artifact_custody(
             "UPDATE model.generated_artifacts SET declared_by = %s, version = version + 1, updated_at = now() WHERE artifact_id = %s AND version = %s",
             (str(request.destination_principal_id), str(artifact_id), request.expected_version),
         )
+        # The row is already locked and version-checked, so this cannot fail
+        # today — assert it anyway: a receipt and an append-only custody event
+        # must never be produced for an update that did not land.
+        if cur.rowcount != 1:
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_VERSION_STALE", "current": artifact["version"]})
         cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
         response = jsonable_encoder(_artifact(cur.fetchone()))
         append_event(

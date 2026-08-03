@@ -369,8 +369,9 @@ def main(argv: list[str] | None = None) -> int:
     client = Client(_required_environment("DOCPLANE_API"), _required_environment("DOCPLANE_WORK_CATALOGUE_TOKEN"))
     state = fetch_state(client)
     fp = fingerprint(state)
-    pages = render_pages(state, fp)
-    open_count = sum(1 for row in state["initiatives"] if row.get("work_state") in _QUEUE_STATES)
+    # The status/metrics probe needs the fingerprint only. Rendering every page
+    # first would double the per-tick cost of a 15-minute timer for output it
+    # discards.
     if args.status_json or args.metrics_file:
         artifact = sc.current_artifact(client, ARTIFACT_KEY)
         published = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
@@ -388,6 +389,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.status_json:
             print(json.dumps(status, sort_keys=True))
         return 0
+
+    pages = render_pages(state, fp)
+    open_count = sum(1 for row in state["initiatives"] if row.get("work_state") in _QUEUE_STATES)
     print(f"work fingerprint {fp[:16]} — {open_count} open initiative(s), {len(pages)} page(s)")
 
     if args.dry_run:
