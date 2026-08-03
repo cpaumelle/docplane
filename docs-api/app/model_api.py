@@ -698,7 +698,10 @@ def reassign_artifact_custody(
         append_event(
             conn,
             event_type="MODEL_ARTIFACT_CUSTODY_REASSIGNED",
-            channel="BOOTSTRAP",
+            # Bootstrap is the authorization surface, not an event transport.
+            # The request still arrived through the canonical HTTP API, whose
+            # channel is part of the persisted event vocabulary.
+            channel="API",
             producer_id="docplane-bootstrap",
             idempotency_key=event_key,
             resource_type="MODEL_ARTIFACT",

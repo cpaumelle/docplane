@@ -119,6 +119,17 @@ def test_sql_and_api_vocabularies_cannot_drift():
         assert f"'{relation}'" in MODEL_SQL
 
 
+def test_event_channels_used_by_api_are_allowed_by_schema():
+    genesis = (ROOT / "db" / "migrations" / "000_docplane_genesis.sql").read_text(encoding="utf-8")
+    match = re.search(r"channel text NOT NULL CHECK \(channel IN \(([^)]+)\)\)", genesis)
+    assert match
+    allowed = {item.strip().strip("'") for item in match.group(1).split(",")}
+    used = set()
+    for path in (ROOT / "docs-api" / "app").glob("*.py"):
+        used.update(re.findall(r'channel="([A-Z]+)"', path.read_text(encoding="utf-8")))
+    assert used <= allowed
+
+
 def test_harvested_checklists_enforce_ratified_kinds_only():
     vm_ok = {"vmid": 5513, "host_node": "px5-lemans", "ip": "10.35.1.113", "hostname": "browan-fw-dev"}
     assert checklist_errors("VM", vm_ok) == []
