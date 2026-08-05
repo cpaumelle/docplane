@@ -115,6 +115,8 @@ def discovery() -> dict[str, Any]:
         "search": {
             "endpoint": "/api/v1/search?q=<term>",
             "indexed_fields": ["title", "path", "nav_path", "content"],
+            "matching": "All distinct query terms must match across the indexed fields; contiguous phrase and title/path matches rank first.",
+            "maximum_terms": 12,
             "result_context": ["matched_in", "snippet", "summary", "workspace_key", "revision"],
         },
         "resolve": {"endpoint": "/api/v1/resolve", "keys": ["path", "title"]},

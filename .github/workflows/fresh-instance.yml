@@ -76,6 +76,39 @@ jobs:
           END;
           $$;
           SQL
+      - name: Prove token-aware search uses trigram indexes
+        run: |
+          PLAN=$(psql "postgresql://docs:docs-test@localhost:5432/docs" -v ON_ERROR_STOP=1 <<'SQL'
+          BEGIN;
+          INSERT INTO docs.pages (path, title, nav_path, content, workspace_id, updated_by)
+          SELECT
+            'work/planner-' || n || '.md',
+            'Synthetic planner page ' || n,
+            'Planner / Synthetic / ' || n,
+            CASE WHEN n = 100000
+              THEN 'A stale systemd unit can block ceph-volume activation by FSID.'
+              ELSE 'Ordinary corpus filler for trigram planner verification row ' || n
+            END,
+            (SELECT workspace_id FROM docplane.workspaces WHERE workspace_key = 'work'),
+            'fresh-instance-search-plan'
+          FROM generate_series(1, 100000) AS n;
+          ANALYZE docs.pages;
+          EXPLAIN (COSTS OFF)
+          SELECT p.resource_id
+          FROM docs.pages p
+          WHERE (
+            p.title ILIKE '%stale%' OR p.path ILIKE '%stale%'
+            OR p.nav_path ILIKE '%stale%' OR p.content ILIKE '%stale%'
+          ) AND (
+            p.title ILIKE '%systemd%' OR p.path ILIKE '%systemd%'
+            OR p.nav_path ILIKE '%systemd%' OR p.content ILIKE '%systemd%'
+          );
+          ROLLBACK;
+          SQL
+          )
+          printf '%s\n' "$PLAN"
+          grep -q 'Bitmap Index Scan' <<<"$PLAN"
+          ! grep -q 'Seq Scan on pages' <<<"$PLAN"
       - name: Compile and test
         env:
           PYTHONPATH: docs-api:dashboard
