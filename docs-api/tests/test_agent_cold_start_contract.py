@@ -174,6 +174,60 @@ def test_search_returns_total_match_count_and_context_snippet(monkeypatch):
     assert "content" in hit["matched_in"]
 
 
+def test_search_matches_non_contiguous_terms_and_ranks_exact_phrase_first(monkeypatch):
+    cursor = FakeCursor(
+        total=1,
+        rows=[_page_row("# Example\n\nA stale systemd unit can block Ceph-volume activation by FSID.")],
+    )
+    monkeypatch.setattr(agent_contract_api, "get_conn", lambda: FakeConnection(cursor))
+
+    result = agent_contract_api.search_pages(
+        q="stale ceph-volume activation fsid systemd",
+        include_archived=False,
+        limit=10,
+        principal=_principal(),
+    )
+
+    assert result["count"] == 1
+    assert "stale" in result["results"][0]["snippet"].lower()
+    assert result["results"][0]["matched_in"] == ["content"]
+    count_query, count_params = cursor.calls[0]
+    rows_query, rows_params = cursor.calls[1]
+    assert count_query.count("ILIKE %s") == 20
+    assert count_params == [
+        pattern
+        for term in ("stale", "ceph-volume", "activation", "fsid", "systemd")
+        for pattern in [f"%{term}%"] * 4
+    ]
+    assert " AND " in count_query
+    assert "CASE WHEN p.title ILIKE %s THEN 0" in rows_query
+    assert rows_params[-1] == 10
+
+
+def test_search_terms_are_unique_and_bounded():
+    query = " ".join(["repeat", "repeat", *(f"term-{index}" for index in range(20))])
+
+    terms = agent_contract_api._search_terms(query)
+
+    assert terms[0] == "repeat"
+    assert len(terms) == agent_contract_api._MAX_SEARCH_TERMS
+    assert len(terms) == len(set(terms))
+
+
+def test_search_keeps_archived_filter_out_when_requested(monkeypatch):
+    cursor = FakeCursor(total=1, rows=[_page_row()])
+    monkeypatch.setattr(agent_contract_api, "get_conn", lambda: FakeConnection(cursor))
+
+    agent_contract_api.search_pages(
+        q="target missing-gap phrase",
+        include_archived=True,
+        limit=5,
+        principal=_principal(),
+    )
+
+    assert all("p.status = 'active'" not in query for query, _params in cursor.calls)
+
+
 def test_bootstrap_helper_matches_deployed_port_and_bounds_agent_tokens():
     script = (ROOT / "scripts/bootstrap-contributor.sh").read_text(encoding="utf-8")
     assert "DOCPLANE_API_PORT:-127.0.0.1:18010" in script

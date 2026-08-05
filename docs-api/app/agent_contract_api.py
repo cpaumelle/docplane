@@ -385,23 +385,63 @@ def search_snippet(content: str, query: str, radius: int = 180) -> str:
     text = re.sub(r"\s+", " ", str(content)).strip()
     if not text:
         return ""
+    matched_query = query
     index = text.casefold().find(query.casefold())
+    if index < 0:
+        for term in _search_terms(query):
+            index = text.casefold().find(term)
+            if index >= 0:
+                matched_query = term
+                break
     if index < 0:
         return text[: radius * 2] + ("…" if len(text) > radius * 2 else "")
     start = max(0, index - radius)
-    end = min(len(text), index + len(query) + radius)
+    end = min(len(text), index + len(matched_query) + radius)
     return ("…" if start else "") + text[start:end] + ("…" if end < len(text) else "")
 
 
 def _matched_in(page: dict[str, Any], query: str) -> list[str]:
-    needle = query.casefold()
+    terms = _search_terms(query)
     fields = {
         "title": page.get("title"),
         "path": page.get("path"),
         "nav_path": page.get("nav_path"),
         "content": page.get("content"),
     }
-    return [name for name, value in fields.items() if needle in str(value or "").casefold()]
+    return [
+        name
+        for name, value in fields.items()
+        if any(term in str(value or "").casefold() for term in terms)
+    ]
+
+
+_SEARCH_FIELDS = ("p.title", "p.path", "p.nav_path", "p.content")
+_MAX_SEARCH_TERMS = 12
+
+
+def _search_terms(query: str) -> list[str]:
+    """Return stable, bounded technical search terms in caller order."""
+    terms = re.findall(r"\w+(?:[-.]\w+)*", query.casefold())
+    unique_terms = list(dict.fromkeys(terms))
+    return unique_terms[:_MAX_SEARCH_TERMS] or [query.casefold().strip()]
+
+
+def _term_predicate(terms: list[str]) -> tuple[str, list[str]]:
+    field_predicate = "(" + " OR ".join(f"{field} ILIKE %s" for field in _SEARCH_FIELDS) + ")"
+    predicates = [field_predicate for _term in terms]
+    params = [f"%{term}%" for term in terms for _field in _SEARCH_FIELDS]
+    return " AND ".join(predicates), params
+
+
+def _term_rank(terms: list[str]) -> tuple[str, list[str]]:
+    weights = {"p.title": 8, "p.path": 4, "p.nav_path": 2, "p.content": 1}
+    clauses: list[str] = []
+    params: list[str] = []
+    for term in terms:
+        for field in _SEARCH_FIELDS:
+            clauses.append(f"CASE WHEN {field} ILIKE %s THEN {weights[field]} ELSE 0 END")
+            params.append(f"%{term}%")
+    return " + ".join(clauses), params
 
 
 @router.get("/api/v1/search")
@@ -412,10 +452,12 @@ def search_pages(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     del principal
-    pattern = f"%{q}%"
+    terms = _search_terms(q)
+    term_predicate, filter_params = _term_predicate(terms)
+    term_rank, rank_params = _term_rank(terms)
+    phrase_pattern = f"%{q}%"
     active_clause = "" if include_archived else " AND p.status = 'active'"
-    predicate = " WHERE (p.title ILIKE %s OR p.path ILIKE %s OR p.nav_path ILIKE %s OR p.content ILIKE %s)" + active_clause
-    filter_params = [pattern, pattern, pattern, pattern]
+    predicate = " WHERE " + term_predicate + active_clause
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -426,8 +468,10 @@ def search_pages(
         cur.execute(
             _page_select()
             + predicate
-            + " ORDER BY CASE WHEN p.title ILIKE %s THEN 0 WHEN p.path ILIKE %s THEN 1 ELSE 2 END, p.path LIMIT %s",
-            [*filter_params, pattern, pattern, limit],
+            + " ORDER BY CASE WHEN p.title ILIKE %s THEN 0 WHEN p.path ILIKE %s THEN 1 "
+            + "WHEN p.nav_path ILIKE %s THEN 2 WHEN p.content ILIKE %s THEN 3 ELSE 4 END, "
+            + "(" + term_rank + ") DESC, p.path LIMIT %s",
+            [*filter_params, *([phrase_pattern] * 4), *rank_params, limit],
         )
         rows = cur.fetchall()
     results = []
