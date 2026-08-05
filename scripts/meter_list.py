@@ -23,7 +23,8 @@ Environment:
   METER_RULES_DIR            Prometheus rules directory in the checkout,
                              e.g. /srv/monitoring/prometheus/rules
   METER_SOURCE_KEY           entity key for the monitoring source
-                             (required; stable — it is entity identity)
+                             (required; stable — it is entity identity;
+                             production is hub2.prometheus)
   METER_SERVICE_MAP          optional versioned YAML overlay for otherwise
                              unlabelled rules (default config/meter-list-service-map.yml)
 
@@ -61,7 +62,7 @@ _PATH_SLUG_RE = re.compile(r"[^a-z0-9_-]+")
 
 
 def _slug(value: str) -> str:
-    """Entity-key charset: dots are legal (example.prometheus, rule.job-up-ratio)."""
+    """Entity-key charset: dots are legal (hub2.prometheus, rule.job-up-ratio)."""
     slug = _SLUG_RE.sub("-", value.strip().lower()).strip("-.")
     return slug[:120] or "unnamed"
 
@@ -69,7 +70,7 @@ def _slug(value: str) -> str:
 def _path_slug(value: str) -> str:
     """Page-path segment charset. The deployed path contract
     (publication._PATH_RE) forbids dots everywhere except the .md suffix,
-    so identities that legally carry dots — a dotted source key like example.prometheus,
+    so identities that legally carry dots — a dotted source key like hub2.prometheus,
     a foo.rules file stem — must be slugged separately for paths. The
     entity key stays the stable identity; the path slug is display routing.
     Found by the Sprint 6 fabric canary: PATH_INVALID on all 36 pages."""
@@ -337,7 +338,7 @@ def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
 
 # ── The run ─────────────────────────────────────────────────────────────────
 
-def rule_attributes(file_stem: str, group_name: str, rule: dict[str, Any], source_key: str = "example.prometheus") -> dict[str, Any]:
+def rule_attributes(file_stem: str, group_name: str, rule: dict[str, Any], source_key: str = "hub2.prometheus") -> dict[str, Any]:
     attributes = {
         "rule_kind": rule["rule_kind"],
         "expr": rule["expr"],
@@ -563,7 +564,7 @@ def main(argv: list[str] | None = None) -> int:
     # set and orphans existing WATCHES wires, so refuse to run without it.
     source_key = os.environ.get("METER_SOURCE_KEY", "").strip()
     if not source_key:
-        print("METER_SOURCE_KEY is required (stable monitoring-source entity key, e.g. prometheus.main)", file=sys.stderr)
+        print("METER_SOURCE_KEY is required (stable monitoring-source entity key; production is hub2.prometheus)", file=sys.stderr)
         return 1
     default_overlay = ROOT / "config" / "meter-list-service-map.yml"
     overlay_path = Path(os.environ.get("METER_SERVICE_MAP", str(default_overlay)))

@@ -16,7 +16,7 @@ discipline in `DOMAIN_MODEL.md`.
 DOCPLANE_API=https://docplane.example.internal
 DOCPLANE_METER_LIST_TOKEN=<named AUTOMATION bearer>
 METER_RULES_DIR=/srv/monitoring/prometheus/rules
-METER_SOURCE_KEY=prometheus.main   # required; stable — it is entity identity
+METER_SOURCE_KEY=hub2.prometheus   # required; production identity — never guess or substitute
 METER_SERVICE_MAP=/srv/docplane/config/meter-list-service-map.yml
 DOCPLANE_COVERAGE_GAP_BATCH_LIMIT=10
 ```
@@ -53,9 +53,19 @@ owners before adding an overlay entry.
 Dry-run first:
 
 ```bash
+export METER_RULES_DIR=/srv/monitoring/prometheus/rules
+export METER_SOURCE_KEY=hub2.prometheus
 python3 scripts/meter_list.py --dry-run
 python3 scripts/meter_list.py
 ```
+
+`METER_SOURCE_KEY` is required even for `--dry-run`: it controls generated page
+paths and is the stable monitoring-source entity identity. Production uses the
+existing `hub2.prometheus` SERVICE entity and generated meter-list namespace.
+The scheduled wrapper passes flags through but supplies no environment; its
+timer/config source must provide the same required values. Manual invocations
+must export them explicitly as above, plus the routed API and named automation
+bearer from **Required environment** before the non-dry run.
 
 The schedulable entrypoint is a lock-protected wrapper around that exact
 importer, not a second code path:
@@ -106,6 +116,8 @@ The first 1.3.0 run on the Sprint 6 corpus should:
 Exact production commands:
 
 ```bash
+export METER_RULES_DIR=/srv/monitoring/prometheus/rules
+export METER_SOURCE_KEY=hub2.prometheus
 python3 scripts/meter_list.py --dry-run
 python3 scripts/meter_list.py --suggest-services \
   > /tmp/meter-list-service-map-suggestions.json
