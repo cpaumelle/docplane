@@ -117,6 +117,10 @@ term — it is a per-term hint, not a guarantee that a single field held the who
 query. Use `total` (the full match count) versus `count` (the returned page
 count) to decide whether to narrow `q` or raise `limit` (max `100`).
 
+The published reference page `reference/token-aware-search.md` ("Token-aware
+document search") carries the full ranking table and worked examples; search
+`token aware search` to find it.
+
 ## 4. Replace one existing page
 
 The common single-page edit uses the audited one-call replacement endpoint.
