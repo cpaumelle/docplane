@@ -140,6 +140,7 @@ jobs:
             mcp/tests/test_allowed_hosts.py \
             mcp/tests/test_work_tools.py \
             mcp/tests/test_content_path.py \
+            mcp/tests/test_docs_tools.py \
             dashboard/tests/test_authoring.py \
             dashboard/tests/test_work_view.py \
             dashboard/tests/test_observatory.py
