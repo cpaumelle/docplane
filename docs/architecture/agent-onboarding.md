@@ -299,4 +299,14 @@ A successful close-out records content-free identifiers such as page resource ID
 
 ## MCP boundary
 
-The bundled DocPlane MCP server is a client of the same contributor API; it does not own document state. Deployments may expose a local MCP adapter for convenient `search_docs`, `read_doc_outline`, `read_doc_section`, `patch_doc`, `read_doc`, `list_docs`, `write_doc` and `archive_doc` tools. `patch_doc` is the discoverable default for small edits. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
+The bundled DocPlane MCP server is a client of the same contributor API; it does not own document state. Deployments may expose a local MCP adapter for convenient `search_docs`, `read_doc_outline`, `read_doc_section`, `patch_doc`, `replace_doc_section`, `insert_doc_before_heading`, `insert_doc_after_heading`, `read_doc`, `list_docs`, `write_doc` and `archive_doc` tools. `patch_doc` is the discoverable default for small text edits; `replace_doc_section` and the `insert_doc_*_heading` tools operate on a whole explicit-`{#id}` section with an exact revision and section hash. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
+
+### Redacted pages
+
+Migration redaction markers such as `<REDACTED:...>` are sanitised authored bytes. They are not references that DocPlane rehydrates during publication, and clear replacement secrets must never be restored to documentation. The bundled MCP therefore fails closed around them:
+
+- `read_doc` reports marker presence, count, and whether full-document replacement is allowed;
+- `write_doc` refuses a full replacement when the current page or the submitted document contains a marker, and `patch_doc` refuses an edit that introduces or targets one;
+- the section tools operate only on marker-free explicit sections with marker-free submitted content.
+
+Marker-bearing sections belong to a separately governed redaction-remediation workflow through raw HTTP; ordinary agents should never replay, remove, relocate, or reconstruct redaction markers through a full-page rewrite.

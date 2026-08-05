@@ -1,7 +1,17 @@
-"""DocPlane MCP tools using the same contributor API as the dashboard."""
+"""DocPlane MCP tools using the same contributor API as the dashboard.
+
+Migration redaction markers (``<REDACTED:...>``) are sanitised authored bytes,
+not references that DocPlane rehydrates during publication. The convenience
+layer therefore fails closed around them: full-document replacement is refused
+for a page (or submitted document) that contains a marker, and a bounded section
+edit may proceed only when both its addressed section and its submitted content
+are marker-free. Repopulating a marker with a clear secret is never allowed here.
+"""
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import httpx
@@ -83,6 +93,258 @@ def _find_path(path: str, *, include_archived: bool = True) -> dict | None:
     return pages[0] if pages else None
 
 
+_REDACTION_MARKER_RE = re.compile(r"<REDACTED:[^>\r\n]+>")
+_EXPLICIT_HEADING_RE = re.compile(
+    r"^(?P<marks>#{1,6})[ \t]+.*?[ \t]+\{#(?P<heading_id>[A-Za-z0-9_-]+)\}[ \t]*$"
+)
+_CODE_FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
+
+_REDACTION_REMEDY = (
+    "Use a bounded edit on a marker-free explicit section, or route the page "
+    "through a separately governed redaction-remediation workflow. Do not restore "
+    "clear secrets to documentation."
+)
+
+
+def _redaction_count(content: str) -> int:
+    return len(_REDACTION_MARKER_RE.findall(content or ""))
+
+
+def _redaction_read_metadata(content: str) -> dict[str, Any]:
+    """Report marker presence so a caller knows full replacement is refused."""
+    count = _redaction_count(content)
+    return {
+        "redactions_present": count > 0,
+        "redaction_marker_count": count,
+        "full_document_replace_allowed": count == 0,
+    }
+
+
+def _redaction_error(
+    *,
+    code: str,
+    path: str,
+    resource_id: str | None,
+    marker_count: int,
+    detail: str,
+    heading_id: str | None = None,
+) -> dict:
+    result: dict[str, Any] = {
+        "error": code,
+        "detail": detail,
+        "path": path,
+        "resource_id": resource_id,
+        "redaction_marker_count": marker_count,
+        "remedy": _REDACTION_REMEDY,
+    }
+    if heading_id is not None:
+        result["heading_id"] = heading_id
+    return result
+
+
+def _explicit_section_content(content: str, heading_id: str) -> str | None:
+    """Return one explicit-``{#id}`` section, ignoring headings inside fenced code."""
+    lines = content.splitlines(keepends=True)
+    headings: list[tuple[int, int, str]] = []
+    in_fence = False
+    fence_marker = ""
+
+    for index, raw in enumerate(lines):
+        line = raw.rstrip("\r\n")
+        fence = _CODE_FENCE_RE.match(line)
+        if fence:
+            marker = fence.group(1)[0]
+            if not in_fence:
+                in_fence = True
+                fence_marker = marker
+            elif marker == fence_marker:
+                in_fence = False
+                fence_marker = ""
+            continue
+        if in_fence:
+            continue
+        match = _EXPLICIT_HEADING_RE.match(line)
+        if match:
+            headings.append((index, len(match.group("marks")), match.group("heading_id")))
+
+    for position, (start, level, current_id) in enumerate(headings):
+        if current_id != heading_id:
+            continue
+        end = len(lines)
+        for candidate_start, candidate_level, _candidate_id in headings[position + 1:]:
+            if candidate_level <= level:
+                end = candidate_start
+                break
+        return "".join(lines[start:end])
+    return None
+
+
+def _page_edit_context(resource_id: str) -> tuple[int, Any]:
+    return _request("GET", f"/api/v1/pages/{resource_id}?view=edit_context")
+
+
+def _conflict(path: str, resource_id: str | None, detail: Any) -> dict:
+    current = _find_path(path)
+    return {
+        "error": "conflict",
+        "detail": "The page revision or section hash is stale. Re-read the page and retry with the current values.",
+        "path": path,
+        "resource_id": resource_id,
+        "current_revision": (current or {}).get("revision"),
+        "server_detail": detail,
+    }
+
+
+def _abandon(change_id: str, reason: str) -> None:
+    _request(
+        "POST",
+        f"/api/v1/changes/{change_id}/abandon",
+        body={"reason": reason},
+        idempotency_key=_key("abandon"),
+    )
+
+
+def _run_change(
+    *,
+    workspace_key: str,
+    title: str,
+    purpose: str,
+    operation: dict,
+    path: str,
+    resource_id: str | None,
+) -> dict:
+    """Create, add one operation, validate and publish; abandon on any failure."""
+    code, change = _request(
+        "POST",
+        "/api/v1/changes",
+        body={"title": title, "purpose": purpose, "workspace_key": workspace_key},
+        idempotency_key=_key("change"),
+    )
+    if code != 201 or not isinstance(change, dict):
+        return _error(code, change)
+    change_id = change.get("change_id")
+    if not change_id:
+        return {"error": "DocPlane change creation returned no change_id", "detail": change}
+
+    code, body = _request(
+        "POST",
+        f"/api/v1/changes/{change_id}/operations",
+        body=operation,
+        idempotency_key=_key("operation"),
+    )
+    if code != 201:
+        _abandon(change_id, "MCP operation creation failed")
+        if code in {409, 412}:
+            return _conflict(path, resource_id, body)
+        return _error(code, body)
+
+    code, body = _request("POST", f"/api/v1/changes/{change_id}/validate", body={})
+    passed = (
+        code == 200
+        and isinstance(body, dict)
+        and body.get("validation_summary", {}).get("passed") is True
+    )
+    if not passed:
+        _abandon(change_id, "MCP change validation failed")
+        if code in {409, 412} or "STALE" in str(body):
+            return _conflict(path, resource_id, body)
+        return _error(code, body)
+
+    code, body = _request(
+        "POST",
+        f"/api/v1/changes/{change_id}/publish",
+        body={},
+        idempotency_key=_key("publish"),
+    )
+    if code != 200:
+        # Publication may have crossed the commit boundary; abandon safely
+        # refuses a published change, so this is best-effort cleanup.
+        _abandon(change_id, "MCP publication failed")
+        if code in {409, 412} or "STALE" in str(body):
+            return _conflict(path, resource_id, body)
+        return _error(code, body)
+    return body
+
+
+def _bounded_section_edit(
+    *,
+    path: str,
+    operation_type: str,
+    heading_id: str,
+    expected_revision: str,
+    expected_section_hash: str,
+    content: str,
+    purpose: str,
+) -> dict:
+    """Shared body for the heading-anchored section tools, with redaction guards."""
+    page = _find_path(path, include_archived=False)
+    if page is None:
+        return {"error": "active page not found", "path": path}
+
+    submitted_markers = _redaction_count(content)
+    if submitted_markers:
+        return _redaction_error(
+            code="redaction_marker_in_submitted_content",
+            path=path,
+            resource_id=page.get("resource_id"),
+            heading_id=heading_id,
+            marker_count=submitted_markers,
+            detail="The bounded edit content contains migration redaction markers.",
+        )
+
+    code, current = _page_edit_context(page["resource_id"])
+    if code != 200 or not isinstance(current, dict):
+        return _error(code, current)
+    if current.get("revision") != expected_revision:
+        return _conflict(
+            path,
+            page.get("resource_id"),
+            {"code": "PAGE_REVISION_STALE", "expected": expected_revision, "current": current.get("revision")},
+        )
+
+    section = _explicit_section_content(str(current.get("content") or ""), heading_id)
+    if section is None:
+        return {
+            "error": "explicit_section_not_found",
+            "detail": (
+                "The requested explicit heading ID was not found outside fenced code. "
+                "Re-read the outline and choose an explicit heading ID."
+            ),
+            "path": path,
+            "resource_id": page.get("resource_id"),
+            "heading_id": heading_id,
+        }
+    target_markers = _redaction_count(section)
+    if target_markers:
+        return _redaction_error(
+            code="redacted_section_edit_forbidden",
+            path=path,
+            resource_id=page.get("resource_id"),
+            heading_id=heading_id,
+            marker_count=target_markers,
+            detail=(
+                "The addressed section contains migration redaction markers. "
+                "The MCP convenience layer will not replace or insert adjacent to it."
+            ),
+        )
+
+    operation = {
+        "operation_type": operation_type,
+        "page_resource_id": page["resource_id"],
+        "expected_revision": expected_revision,
+        "expected_section_hash": expected_section_hash,
+        "payload": {"heading_id": heading_id, "content": content},
+    }
+    return _run_change(
+        workspace_key=page.get("workspace_key", "reference"),
+        title=f"{operation_type.replace('_', ' ').title()} in {path}",
+        purpose=purpose,
+        operation=operation,
+        path=path,
+        resource_id=page.get("resource_id"),
+    )
+
+
 def register(mcp) -> None:
     @mcp.tool()
     def search_docs(query: str, top_k: int = 10) -> list[dict]:
@@ -95,7 +357,12 @@ def register(mcp) -> None:
 
     @mcp.tool()
     def read_doc(path_or_slug: str) -> dict:
-        """Read a canonical Markdown page by exact path, title or search term."""
+        """Read a page with revision, section hashes and redaction safety metadata.
+
+        The response carries ``redactions_present``, ``redaction_marker_count``
+        and ``full_document_replace_allowed`` so a caller knows before editing
+        whether a full write_doc replacement is refused for this page.
+        """
         page = _find_path(path_or_slug)
         if page is None:
             params = httpx.QueryParams({"q": path_or_slug, "limit": 5})
@@ -107,7 +374,11 @@ def register(mcp) -> None:
                 return {"error": "page is not uniquely resolved", "query": path_or_slug, "matches": results}
             page = results[0]
         code, body = _request("GET", f"/api/v1/pages/{page['resource_id']}?view=edit_context")
-        return body if code == 200 else _error(code, body)
+        if code != 200 or not isinstance(body, dict):
+            return _error(code, body)
+        result = dict(body)
+        result.update(_redaction_read_metadata(str(body.get("content") or "")))
+        return result
 
     def _resolve_page(path_or_slug: str) -> dict:
         page = _find_path(path_or_slug)
@@ -155,6 +426,22 @@ def register(mcp) -> None:
             return {"error": "purpose is required"}
         if not edits:
             return {"error": "at least one edit is required"}
+        edit_marker_count = sum(
+            _redaction_count(str(edit.get("old_text", "")))
+            + _redaction_count(str(edit.get("new_text", "")))
+            for edit in edits
+        )
+        if edit_marker_count:
+            return _redaction_error(
+                code="redaction_marker_in_submitted_content",
+                path=path,
+                resource_id=None,
+                marker_count=edit_marker_count,
+                detail=(
+                    "A patch edit introduces or targets a migration redaction marker. "
+                    "Redacted regions belong to a separately governed remediation workflow."
+                ),
+            )
         existing = _find_path(path)
         if existing is None:
             return {"error": "page not found", "path": path}
@@ -165,6 +452,71 @@ def register(mcp) -> None:
             idempotency_key=idempotency_key.strip() or _key("patch"),
         )
         return body if code == 200 else _error(code, body)
+
+    @mcp.tool()
+    def replace_doc_section(
+        path: str,
+        heading_id: str,
+        expected_revision: str,
+        expected_section_hash: str,
+        content: str,
+        purpose: str,
+    ) -> dict:
+        """Replace one marker-free explicit section without resending the page.
+
+        Read the outline or section first and pass its revision and content hash
+        unchanged; a stale revision or hash, a missing heading, or a marker in the
+        target section or submitted content fails closed before any change is made.
+        """
+        return _bounded_section_edit(
+            path=path,
+            operation_type="REPLACE_SECTION",
+            heading_id=heading_id,
+            expected_revision=expected_revision,
+            expected_section_hash=expected_section_hash,
+            content=content,
+            purpose=purpose,
+        )
+
+    @mcp.tool()
+    def insert_doc_before_heading(
+        path: str,
+        heading_id: str,
+        expected_revision: str,
+        expected_section_hash: str,
+        content: str,
+        purpose: str,
+    ) -> dict:
+        """Insert marker-free Markdown before a marker-free explicit section."""
+        return _bounded_section_edit(
+            path=path,
+            operation_type="INSERT_BEFORE_HEADING",
+            heading_id=heading_id,
+            expected_revision=expected_revision,
+            expected_section_hash=expected_section_hash,
+            content=content,
+            purpose=purpose,
+        )
+
+    @mcp.tool()
+    def insert_doc_after_heading(
+        path: str,
+        heading_id: str,
+        expected_revision: str,
+        expected_section_hash: str,
+        content: str,
+        purpose: str,
+    ) -> dict:
+        """Insert marker-free Markdown after a marker-free explicit section."""
+        return _bounded_section_edit(
+            path=path,
+            operation_type="INSERT_AFTER_HEADING",
+            heading_id=heading_id,
+            expected_revision=expected_revision,
+            expected_section_hash=expected_section_hash,
+            content=content,
+            purpose=purpose,
+        )
 
     @mcp.tool()
     def list_docs(status: str = "active") -> list[dict]:
@@ -246,12 +598,42 @@ def register(mcp) -> None:
             if failure is not None:
                 return failure
             content = loaded
+        submitted_markers = _redaction_count(content)
+        if submitted_markers:
+            return _redaction_error(
+                code="redaction_marker_in_submitted_content",
+                path=path,
+                resource_id=None,
+                marker_count=submitted_markers,
+                detail=(
+                    "The submitted document contains migration redaction markers. "
+                    "The MCP convenience layer will not author or replay marker-bearing documents."
+                ),
+            )
         existing = _find_path(path)
         if existing and not expected_revision.strip():
             return {
                 "error": "expected_revision is required when replacing an existing page",
                 "remedy": "Call read_doc first, or prefer patch_doc for a small exact edit.",
             }
+        if existing:
+            # A full replace of a page that currently carries markers would
+            # strip or relocate sanitised bytes. Markers are not rehydrated at
+            # publish time, so refuse and steer to a bounded, marker-free edit.
+            code, current = _page_edit_context(existing["resource_id"])
+            if code == 200 and isinstance(current, dict):
+                current_markers = _redaction_count(str(current.get("content") or ""))
+                if current_markers:
+                    return _redaction_error(
+                        code="redacted_full_document_replace_forbidden",
+                        path=path,
+                        resource_id=existing.get("resource_id"),
+                        marker_count=current_markers,
+                        detail=(
+                            "The current page contains migration redaction markers, which are "
+                            "sanitised authored bytes and are not rehydrated during publication."
+                        ),
+                    )
         change_key = _key("change")
         code, change = _request(
             "POST",
