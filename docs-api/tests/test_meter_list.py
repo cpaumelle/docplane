@@ -216,6 +216,18 @@ def test_importer_payloads_validate_against_the_deployed_api_models(tmp_path):
     )
 
 
+def test_rule_attributes_default_to_production_monitoring_source_identity():
+    rule = {
+        "rule_kind": "alert",
+        "expr": "up == 0",
+        "description": "Example",
+    }
+
+    attributes = meter_list.rule_attributes("backup-alerts", "backup", rule)
+
+    assert attributes["source_page_path"] == "observe/meter-list/hub2-prometheus/backup-alerts.md"
+
+
 def test_idempotency_keys_are_versioned_and_fingerprint_bound():
     fp = "ab" * 32
     key = meter_list._key(fp, "operation", "observe/meter-list/example.prometheus/backup-alerts.md")
