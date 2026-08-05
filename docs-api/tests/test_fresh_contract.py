@@ -221,7 +221,12 @@ def test_replace_shortcut_uses_canonical_change_pipeline(monkeypatch):
     )
 
     assert result["status"] == "PUBLISHED"
-    assert [call[0] for call in calls] == ["lookup", "create", "operation", "validate", "publish"]
+    # The trailing "lookup" is the page-identity read that attaches
+    # resource_id/revision/version to the replace response so a caller can
+    # confirm the write without a second resolve.
+    assert [call[0] for call in calls] == [
+        "lookup", "create", "operation", "validate", "publish", "lookup",
+    ]
     create_request = calls[1][1]
     assert create_request.workspace_key == "reference"
     assert create_request.purpose == "Correct the runbook"

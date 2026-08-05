@@ -305,6 +305,19 @@ def discovery() -> dict[str, Any]:
                 "Read the page and retain resource_id plus revision.",
                 "POST /api/v1/pages/{resource_id}/replace with expected_revision, content and purpose.",
                 "Treat HTTP 409 PAGE_REVISION_STALE as a required rebase, never as success.",
+                "Publication rebuilds the served corpus before responding: allow at least "
+                "publication.client_timeout_seconds_min for the request.",
+                "If the request times out, the write may still have committed. Re-read the page, "
+                "or replay the identical Idempotency-Key. Never retry with a new key.",
+                "Confirm the result from page.revision and page.version in the response rather "
+                "than assuming success.",
+            ],
+            "targeted_edit": [
+                "Prefer a bounded operation over replacing a whole document for a small edit.",
+                "REPLACE_SECTION, INSERT_AFTER_HEADING and INSERT_BEFORE_HEADING send only the "
+                "affected region instead of the entire page.",
+                "Use them through the multi_operation_change flow; see operation_contracts for "
+                "the exact payload schema of each operation type.",
             ],
             "multi_operation_change": [
                 "POST /api/v1/changes",
@@ -326,6 +339,18 @@ def discovery() -> dict[str, Any]:
             "events": "/api/v1/events",
             "work": "/api/v1/initiatives",
             "certification": "/api/v1/certification/status",
+        },
+        "publication": {
+            "model": "synchronous",
+            "note": (
+                "A successful mutation rebuilds and seals the served corpus before it responds. "
+                "Response time therefore scales with corpus size, not with the size of the edit."
+            ),
+            "client_timeout_seconds_min": 120,
+            "retry_rule": (
+                "A timed-out mutation may still have committed. Re-read the page or replay the "
+                "identical Idempotency-Key; never retry with a new key."
+            ),
         },
         "result_counts": {
             "count": "number of records returned in this response",
