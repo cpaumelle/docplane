@@ -88,6 +88,39 @@ curl -fsS -H "$AUTH" \
 
 Use stable `resource_id` values for existing pages. Paths can move; resource identities persist.
 
+### How `q` is matched (token-aware search)
+
+`/api/v1/search` is token-aware, not a single contiguous-substring match. Read
+`search.matching` and `search.maximum_terms` from `.well-known/docplane.json`
+for the machine-readable contract; the behaviour is:
+
+- **Tokenisation.** `q` is split into distinct terms. A term is a word run that
+  keeps internal hyphens and dots, so `ceph-volume`, `fsid` and `v1.2` each stay
+  one term. Purely non-word characters are separators and are dropped — `c++`
+  searches for `c`, and `a & b` searches for `a` and `b`.
+- **AND across terms, OR across fields.** Every distinct term must match at
+  least one indexed field (`title`, `path`, `nav_path`, `content`). Terms need
+  not be adjacent or in order: `stale ceph-volume activation fsid systemd`
+  finds a page that contains all five terms anywhere.
+- **Deduplication and cap.** Terms are deduplicated in first-seen order and
+  bounded to `search.maximum_terms` (currently `12`). Terms beyond the cap are
+  silently ignored, so put the most selective terms first.
+- **Ranking.** An exact contiguous phrase match, and matches in `title` then
+  `path`, rank ahead of `nav_path` and `content` matches; within that, a
+  field-weighted score (title > path > nav_path > content, summed across terms)
+  orders the rest, with `path` as the final tiebreak. Query the most specific
+  phrase you have to keep the intended page at the top.
+
+Each hit reports `matched_in`, `snippet`, `summary`, `workspace_key` and
+`revision`. `matched_in` lists every field containing **at least one** query
+term — it is a per-term hint, not a guarantee that a single field held the whole
+query. Use `total` (the full match count) versus `count` (the returned page
+count) to decide whether to narrow `q` or raise `limit` (max `100`).
+
+The published reference page `reference/token-aware-search.md` ("Token-aware
+document search") carries the full ranking table and worked examples; search
+`token aware search` to find it.
+
 ## 4. Replace one existing page
 
 The common single-page edit uses the audited one-call replacement endpoint.
