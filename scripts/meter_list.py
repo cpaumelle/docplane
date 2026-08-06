@@ -537,6 +537,31 @@ def artifact_needs_succession(artifact: dict[str, Any], desired_paths: list[str]
     )
 
 
+def retire_artifact_for_succession(
+    client: Client,
+    artifact: dict[str, Any] | None,
+    desired_paths: list[str],
+    structure_hash: str,
+) -> dict[str, Any] | None:
+    """Release stale generated-page ownership before replacing its pages.
+
+    Generated pages are protected by the standing artifact declaration.  A
+    target-set or generator-contract change therefore has to retire that
+    declaration before the publication change can replace/archive the old
+    targets.  Retiring after publication is too late: the generated-page guard
+    rejects the publication while the stale declaration still stands.
+    """
+    if artifact is None or not artifact_needs_succession(artifact, desired_paths):
+        return artifact
+    client.call(
+        "POST", f"/api/v1/model/artifacts/{artifact['artifact_id']}/retire",
+        {"expected_version": artifact["version"], "note": f"superseded by rule set {structure_hash[:16]}"},
+        _key(structure_hash, "artifact-retire"),
+    )
+    print(f"RETIRED artifact {artifact['artifact_id']} — target set or generator contract moved")
+    return None
+
+
 def should_reconcile_gap_work(*, source_changed: bool, explicit: bool) -> bool:
     """Scheduled steady-state ticks never churn the Work queue."""
     return source_changed or explicit
@@ -661,6 +686,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"UNCHANGED {structure_hash[:16]} — nothing to regenerate")
             return 0
 
+    desired_paths = sorted(page["path"] for page in pages)
+    previously_declared_paths = set((artifact or {}).get("target_page_paths") or [])
+    artifact = retire_artifact_for_succession(client, artifact, desired_paths, structure_hash)
+
     def lookup(path: str) -> dict[str, Any] | None:
         found = client.call("GET", f"/api/v1/pages?path={path}").get("pages", [])
         return found[0] if found else None
@@ -677,8 +706,7 @@ def main(argv: list[str] | None = None) -> int:
     # Pages the previous declaration owned but this rule set no longer
     # produces (a rule file removed from git) are archived in the same
     # governed change — "rule files are authoritative" includes absence.
-    desired_paths = sorted(page["path"] for page in pages)
-    stale_paths = sorted(set((artifact or {}).get("target_page_paths") or []) - set(desired_paths) - {PRESENCE_PATH})
+    stale_paths = sorted(previously_declared_paths - set(desired_paths) - {PRESENCE_PATH})
     for path in stale_paths:
         current = lookup(path)
         if current is not None:
@@ -715,18 +743,6 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"published page not found after publication: {page['path']}")
         page_ids[page["path"]] = found["resource_id"]
 
-    if artifact is not None and artifact_needs_succession(artifact, sorted(page_ids)):
-        # Retire-then-redeclare under the same key (migration 007's successor
-        # path): retirement releases the old target set and its provenance
-        # arming, the successor binds the current one. Both calls are
-        # fingerprint-keyed, so a resumed run replays rather than double-acts.
-        client.call(
-            "POST", f"/api/v1/model/artifacts/{artifact['artifact_id']}/retire",
-            {"expected_version": artifact["version"], "note": f"superseded by rule set {structure_hash[:16]}"},
-            _key(structure_hash, "artifact-retire"),
-        )
-        print(f"RETIRED artifact {artifact['artifact_id']} — target set or generator contract moved")
-        artifact = None
     if artifact is None:
         artifact = client.call(
             "POST", "/api/v1/model/artifacts",

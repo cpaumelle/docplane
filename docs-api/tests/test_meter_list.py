@@ -459,6 +459,49 @@ def test_artifact_succession_triggers_on_target_or_contract_change():
     assert meter_list.artifact_needs_succession({**artifact, "generator_version": "1.0.0"}, ["a.md", "b.md"])
 
 
+def test_artifact_succession_retires_before_generated_pages_are_replaced():
+    calls = []
+
+    class RecordingClient:
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            return {"status": "RETIRED"}
+
+    artifact = {
+        "artifact_id": "artifact-1",
+        "version": 4,
+        "generator_version": meter_list.GENERATOR_VERSION,
+        "target_page_paths": ["old.md"],
+    }
+    fp = "ab" * 32
+
+    assert meter_list.retire_artifact_for_succession(RecordingClient(), artifact, ["new.md"], fp) is None
+    assert calls == [
+        (
+            "POST",
+            "/api/v1/model/artifacts/artifact-1/retire",
+            {"expected_version": 4, "note": "superseded by rule set abababababababab"},
+            meter_list._key(fp, "artifact-retire"),
+        )
+    ]
+
+
+def test_artifact_succession_keeps_matching_declaration():
+    class RefusingClient:
+        def call(self, *args, **kwargs):
+            raise AssertionError("matching artifact must not be retired")
+
+    artifact = {
+        "artifact_id": "artifact-1",
+        "version": 4,
+        "generator_version": meter_list.GENERATOR_VERSION,
+        "target_page_paths": ["a.md", "b.md"],
+    }
+    assert meter_list.retire_artifact_for_succession(
+        RefusingClient(), artifact, ["b.md", "a.md"], "cd" * 32
+    ) is artifact
+
+
 def test_scheduled_unchanged_run_does_not_write_work():
     assert not meter_list.should_reconcile_gap_work(source_changed=False, explicit=False)
     assert meter_list.should_reconcile_gap_work(source_changed=True, explicit=False)
