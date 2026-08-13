@@ -236,7 +236,12 @@ def _badge_markup(page: dict) -> str:
             '<span class="dp-meta">Updated '
             f"{rendered}{f' · v{version}' if version else ''}</span>"
         )
-    return f'<p class="dp-badges" data-domain="{domain}">' + "".join(chips) + "</p>"
+    version_attr = f' data-page-version="{int(version)}"' if version else ""
+    return (
+        f'<p class="dp-badges" data-domain="{domain}"{version_attr}>'
+        + "".join(chips)
+        + "</p>"
+    )
 
 
 def _augment_content(page: dict) -> str:

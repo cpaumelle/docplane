@@ -113,6 +113,21 @@ def test_completed_page_shows_closure_gate_and_closed_initiatives_get_no_page():
     assert "work/initiatives/shipped.md" not in pages
 
 
+def test_abandoned_transition_disappears_from_now_and_archives_its_page():
+    active = _initiative(initiative_key="retired-plan", title="Retired plan", work_state="ACTIVE")
+    before = _state([active])
+    before_pages = {page["path"]: page for page in work_catalogue.render_pages(before, work_catalogue.fingerprint(before))}
+    assert "retired-plan" in before_pages["work/now.md"]["content"]
+    assert "work/initiatives/retired-plan.md" in before_pages
+
+    abandoned = _initiative(initiative_key="retired-plan", title="Retired plan", work_state="ABANDONED")
+    after = _state([abandoned])
+    after_pages = {page["path"]: page for page in work_catalogue.render_pages(after, work_catalogue.fingerprint(after))}
+    assert "retired-plan" not in after_pages["work/now.md"]["content"]
+    assert "work/initiatives/retired-plan.md" not in after_pages
+    assert work_catalogue.fingerprint(before) != work_catalogue.fingerprint(after)
+
+
 def test_rendering_is_deterministic():
     state = _state([_initiative()])
     fp = work_catalogue.fingerprint(state)
@@ -244,3 +259,20 @@ def test_scheduler_wrapper_treats_a_lock_conflict_as_skipped_not_failed():
     assert "reconcile_status=0" in script
     assert "/run/lock/docplane-work-catalogue.lock" in script
     assert "/tmp/docplane-work-catalogue.lock" not in script
+
+
+def test_scheduler_units_bound_work_drift_and_use_the_single_writer():
+    service = (ROOT / "config" / "systemd" / "docplane-work-catalogue.service").read_text(encoding="utf-8")
+    timer = (ROOT / "config" / "systemd" / "docplane-work-catalogue.timer").read_text(encoding="utf-8")
+    assert "scripts/run_work_catalogue_reconciliation.sh" in service
+    assert "scripts/work_catalogue.py" not in service
+    assert "EnvironmentFile=/etc/docplane/work-catalogue.env" in service
+    assert "OnUnitInactiveSec=1min" in timer
+    assert "Persistent=true" in timer
+
+
+def test_reader_download_filename_is_prefixed_with_page_version():
+    template = (ROOT / "mkdocs" / "overrides" / "main.html").read_text(encoding="utf-8")
+    assert "strip.dataset.pageVersion" in template
+    assert "'v' + pageVersion + '_'" in template
+    assert "+ basename + '.md'" in template
