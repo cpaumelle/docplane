@@ -1,0 +1,13 @@
+[Unit]
+Description=Keep DocPlane generated Work pages aligned with initiative state
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=10s
+RandomizedDelaySec=10s
+Persistent=true
+Unit=docplane-work-catalogue.service
+
+[Install]
+WantedBy=timers.target

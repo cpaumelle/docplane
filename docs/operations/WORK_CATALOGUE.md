@@ -31,10 +31,29 @@ python3 scripts/work_catalogue.py             # reconcile
 scripts/run_work_catalogue_reconciliation.sh  # flocked scheduler entrypoint + metrics
 ```
 
-Run it after meaningful work-state changes (transitions, closures), or on a
-schedule; steady-state ticks are cheap no-ops by fingerprint. Initiative
+Production installs `config/systemd/docplane-work-catalogue.{service,timer}`.
+The timer reconciles one minute after boot and one minute after each completed
+run, with a small randomized delay. This bounds normal generated-view lag
+without making the Work API a second writer for generated pages; steady-state
+ticks are cheap no-ops by fingerprint. Initiative
 pages for closed initiatives are archived automatically in the same change
 that stops rendering them.
+
+Install the units from the pull-only deployment checkout, after placing the
+named automation environment in `/etc/docplane/work-catalogue.env`:
+
+```bash
+install -o root -g root -m 0644 config/systemd/docplane-work-catalogue.service /etc/systemd/system/
+install -o root -g root -m 0644 config/systemd/docplane-work-catalogue.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now docplane-work-catalogue.timer
+systemctl start docplane-work-catalogue.service
+```
+
+The environment file must be root-owned mode `0600` and define only
+`DOCPLANE_API` (the routed DocPlane origin) and
+`DOCPLANE_WORK_CATALOGUE_TOKEN` (the named AUTOMATION bearer). Never place the
+token in the unit, repository, command line, or journal.
 
 The wrapper writes `docplane_generated_projection_*` metrics atomically to
 the node-exporter textfile collector. It records live-versus-published drift,
@@ -63,7 +82,9 @@ the failure alert.
 ## Failure behaviour
 
 Publication failures follow the platform contract: authored state stays
-durable, `POST /api/v1/publication/retry` resumes, and all mutation calls
+durable, `POST /api/v1/publication/retry` resumes a failed publication of the
+already-authored corpus. It does **not** re-project changed `work.*` source
+state; the work-catalogue timer owns that reconciliation. All mutation calls
 are fingerprint-keyed so a resumed run replays instead of double-acting.
 The generator fails before any API call when the dedicated work-catalogue
 token is absent; it never falls back to `DOCPLANE_TOKEN` or another principal.

@@ -42,12 +42,20 @@ document.addEventListener('DOMContentLoaded', function() {
   const candidates = path === ''
     ? ['index.md']
     : [path + '.md', path + '/index.md'];
-  const filename = (path === '' ? 'index' : path.split('/').pop()) + '.md';
+  const basename = path === '' ? 'index' : path.split('/').pop();
 
   // The generator's meta strip declares the page's domain; the body stamp
   // drives the domain page tint (theme.css).
   const strip = document.querySelector('.dp-badges');
   if (strip && strip.dataset.domain) document.body.dataset.dpDomain = strip.dataset.domain;
+
+  // The generator exposes the authoritative docs.pages.version on the same
+  // metadata strip that renders "Updated … · vN". Keep downloads traceable
+  // without parsing presentation text.
+  const pageVersion = strip && /^\d+$/.test(strip.dataset.pageVersion || '')
+    ? strip.dataset.pageVersion
+    : '';
+  const filename = (pageVersion ? 'v' + pageVersion + '_' : '') + basename + '.md';
 
   async function download() {
     for (const candidate of candidates) {

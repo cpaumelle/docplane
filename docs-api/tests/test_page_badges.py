@@ -58,6 +58,7 @@ def test_updated_meta_lives_in_the_strip_not_an_italic_line():
     out = _augment_content(_page(updated_at="2026-07-30T14:51:00", version=10))
     strip = next(l for l in out.splitlines() if l.startswith('<p class="dp-badges"'))
     assert '<span class="dp-meta">Updated 2026-07-30 14:51 UTC · v10</span>' in strip
+    assert 'data-page-version="10"' in strip
     assert not re.search(r"^\*Last updated:", out, flags=re.M)
 
 
