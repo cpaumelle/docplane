@@ -136,6 +136,7 @@ jobs:
             docs-api/tests/test_domain_e2e.py \
             docs-api/tests/test_schema_catalogue.py \
             docs-api/tests/test_meter_list.py \
+            docs-api/tests/test_work_catalogue.py \
             docs-api/tests/test_coverage_burndown_contract.py \
             mcp/tests/test_allowed_hosts.py \
             mcp/tests/test_work_tools.py \
