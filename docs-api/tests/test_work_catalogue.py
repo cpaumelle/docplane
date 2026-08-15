@@ -165,6 +165,65 @@ def test_unchanged_main_replays_observation_and_never_publishes(monkeypatch, cap
     assert [path for _, path in calls] == ["/api/v1/observations"]
 
 
+def test_reopened_initiative_restores_then_replaces_archived_page(monkeypatch, capsys):
+    """A closed initiative's path remains unique while archived.  Reopening
+    must restore that resource, not try to create a duplicate page, and the
+    restore/replace operations need distinct idempotency identities."""
+    state = _state([_initiative(work_state="ACTIVE")])
+    fp = work_catalogue.fingerprint(state)
+    pages = work_catalogue.render_pages(state, fp)
+    desired_paths = sorted(page["path"] for page in pages)
+    reopened_path = "work/initiatives/example-upgrade.md"
+    calls = []
+
+    class RecordingClient:
+        published = False
+
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            if method == "GET" and path.startswith("/api/v1/pages?path="):
+                requested = path.removeprefix("/api/v1/pages?path=").removesuffix("&status=all")
+                page = next(candidate for candidate in pages if candidate["path"] == requested)
+                return {"pages": [{
+                    "resource_id": f"resource-{desired_paths.index(requested)}",
+                    "path": requested,
+                    "revision": "revision-1",
+                    "status": "active" if self.published or requested != reopened_path else "archived",
+                    "title": page["title"],
+                }]}
+            if method == "POST" and path == "/api/v1/changes":
+                return {"change_id": "change-1"}
+            if method == "POST" and path.endswith("/publish"):
+                self.published = True
+                return {"publication_receipt": {"deployment": {"status": "COMPLETED"}}}
+            return {}
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(sc, "current_artifact", lambda *a: {
+        "artifact_id": "artifact", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "target_page_paths": desired_paths, "version": 1,
+    })
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: "stale")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main([]) == 0
+    assert "PUBLISHED" in capsys.readouterr().out
+    operations = [call for call in calls if call[0] == "POST" and call[1].endswith("/operations")]
+    reopened_resource = f"resource-{desired_paths.index(reopened_path)}"
+    reopened = [call for call in operations if call[2].get("page_resource_id") == reopened_resource]
+    assert [call[2]["operation_type"] for call in reopened] == ["RESTORE_PAGE", "REPLACE_DOCUMENT"]
+    assert reopened[0][2]["payload"] == {}
+    assert reopened[0][3] != reopened[1][3]
+    assert all(f":{work_catalogue.GENERATOR_VERSION}:" in call[3] for call in reopened)
+
+
 def test_dry_run_performs_no_writes(monkeypatch, capsys):
     state = _state([_initiative()])
 
@@ -218,6 +277,33 @@ def test_status_reports_drift_and_writes_atomic_metrics(monkeypatch, tmp_path, c
     text = metrics.read_text(encoding="utf-8")
     assert 'docplane_generated_projection_drift{artifact="work-catalogue"} 1' in text
     assert 'docplane_generated_projection_reconcile_success{artifact="work-catalogue"} 0' in text
+
+
+def test_status_reports_generator_contract_drift_at_same_fingerprint(monkeypatch, capsys):
+    state = _state([_initiative()])
+    fp = work_catalogue.fingerprint(state)
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(sc, "current_artifact", lambda *a: {
+        "artifact_id": "artifact",
+        "generator_version": "1.0.0",
+        "target_page_paths": work_catalogue.desired_page_paths(state),
+    })
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: fp)
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main(["--status-json"]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["live_fingerprint"] == status["published_fingerprint"] == fp
+    assert status["drift"] is True
 
 
 def test_status_probe_does_not_render_pages(monkeypatch, tmp_path):

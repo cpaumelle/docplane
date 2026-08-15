@@ -16,9 +16,9 @@ Contract, identical to the sibling generators:
   - an UNCHANGED fingerprint publishes nothing and replays one NOMINAL
     GENERATION observation;
   - a changed fingerprint publishes one governed change (CREATE_PAGE /
-    REPLACE_DOCUMENT, plus ARCHIVE_PAGE for pages the previous declaration
-    owned that are no longer produced), then retires/redeclares the artifact
-    when its target set or generator contract moved;
+    RESTORE_PAGE / REPLACE_DOCUMENT, plus ARCHIVE_PAGE for pages the previous
+    declaration owned that are no longer produced), then retires/redeclares
+    the artifact when its target set or generator contract moved;
   - inbox captures are surfaced as a COUNT only. Pre-triage thoughts are not
     documentation and never appear on the site.
 
@@ -47,7 +47,7 @@ from schema_catalogue import Client  # noqa: E402  (shared API client)
 import schema_catalogue as sc  # noqa: E402
 
 GENERATOR_NAME = "work-catalogue"
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.0.1"
 ARTIFACT_KEY = "work-catalogue"
 SOURCE_ENTITY_KIND = "SYSTEM"
 SOURCE_ENTITY_KEY = "docplane-work"
@@ -67,7 +67,10 @@ _COMPLETED_LIMIT = 20
 
 def _key(fingerprint: str, verb: str, discriminator: str = "") -> str:
     suffix = f":{discriminator}" if discriminator else ""
-    return f"work-catalogue:{fingerprint}:{verb}{suffix}"
+    # The generator version is part of the mutation contract.  A contract fix
+    # must not replay an abandoned or incompatible change created by an older
+    # implementation for the same source-state fingerprint.
+    return f"work-catalogue:{GENERATOR_VERSION}:{fingerprint}:{verb}{suffix}"
 
 
 def fetch_state(client: Client) -> dict[str, Any]:
@@ -340,6 +343,25 @@ def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
     return pages
 
 
+def desired_page_paths(state: dict[str, Any]) -> list[str]:
+    """Return the deterministic target set without rendering page content.
+
+    Status probes use this to detect generator-contract and target-set drift
+    without paying the cost of rendering every page on each timer tick.
+    """
+    paths = [
+        "work/index.md",
+        *(f"work/{slug}.md" for slug, _title, _description in _QUEUE_PAGES.values()),
+        "work/recently-completed.md",
+    ]
+    paths.extend(
+        f"work/initiatives/{initiative['initiative_key']}.md"
+        for initiative in state["initiatives"]
+        if initiative.get("work_state") in _QUEUE_STATES
+    )
+    return sorted(paths)
+
+
 def ensure_source_entity(client: Client, fp: str) -> str:
     listing = client.call("GET", f"/api/v1/model/entities?entity_kind={SOURCE_ENTITY_KIND}&limit=1000")
     for entity in listing.get("entities", []):
@@ -375,7 +397,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.status_json or args.metrics_file:
         artifact = sc.current_artifact(client, ARTIFACT_KEY)
         published = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
-        drift = published != fp
+        drift = (
+            artifact is None
+            or published != fp
+            or needs_succession(artifact, desired_page_paths(state))
+        )
         status = {
             "artifact_key": ARTIFACT_KEY,
             "artifact_id": artifact.get("artifact_id") if artifact else None,
@@ -428,7 +454,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
     def lookup(path: str) -> dict[str, Any] | None:
-        found = client.call("GET", f"/api/v1/pages?path={path}").get("pages", [])
+        # Paths remain unique when archived.  Include archived rows so a
+        # closed -> reopened initiative restores its protected generated page
+        # instead of attempting a duplicate CREATE_PAGE.
+        found = client.call("GET", f"/api/v1/pages?path={path}&status=all").get("pages", [])
         return found[0] if found else None
 
     operations = []
@@ -437,13 +466,15 @@ def main(argv: list[str] | None = None) -> int:
         if current is None:
             operations.append(("CREATE_PAGE", None, None, page))
         else:
+            if current.get("status") == "archived":
+                operations.append(("RESTORE_PAGE", current["resource_id"], current["revision"], page))
             operations.append(("REPLACE_DOCUMENT", current["resource_id"], current["revision"], page))
     # Initiative pages the previous declaration owned but that no longer
     # render (initiative closed or renamed) are archived in the same change.
     stale_paths = sorted(set((artifact or {}).get("target_page_paths") or []) - set(desired_paths))
     for path in stale_paths:
         current = lookup(path)
-        if current is not None:
+        if current is not None and current.get("status") != "archived":
             operations.append(("ARCHIVE_PAGE", current["resource_id"], current["revision"], {"path": path}))
 
     change = client.call(
@@ -458,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
     change_id = change["change_id"]
     for operation_type, resource_id, revision, page in operations:
         request: dict[str, Any] = {"operation_type": operation_type, "payload": {}}
-        if operation_type != "ARCHIVE_PAGE":
+        if operation_type in {"CREATE_PAGE", "REPLACE_DOCUMENT"}:
             request["payload"] = {
                 "path": page["path"], "title": page["title"], "nav_path": page["nav_path"],
                 "content": page["content"], "knowledge_class": "REFERENCE",
@@ -466,7 +497,13 @@ def main(argv: list[str] | None = None) -> int:
         if resource_id:
             request["page_resource_id"] = resource_id
             request["expected_revision"] = revision
-        client.call("POST", f"/api/v1/changes/{change_id}/operations", request, _key(fp, "operation", page["path"]))
+        # RESTORE_PAGE and REPLACE_DOCUMENT intentionally target the same path
+        # in one atomic publication.  Operation type therefore belongs in the
+        # idempotency discriminator.
+        client.call(
+            "POST", f"/api/v1/changes/{change_id}/operations", request,
+            _key(fp, "operation", f"{operation_type}:{page['path']}"),
+        )
     client.call("POST", f"/api/v1/changes/{change_id}/validate", {}, _key(fp, "validate"))
     receipt = client.call("POST", f"/api/v1/changes/{change_id}/publish", {}, _key(fp, "publish"))
     deployment = (receipt.get("publication_receipt") or receipt).get("deployment", {})
