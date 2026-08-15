@@ -66,7 +66,7 @@ def _seed_page(path: str, knowledge_class: str = "REFERENCE") -> dict[str, str]:
             VALUES (%s, %s, %s, %s, %s, %s, 'PUBLISHED', %s, 'e2e')
             RETURNING resource_id::text
             """,
-            (path, f"E2E {RUN}", f"E2E/{RUN}", f"# E2E {RUN}\n", revision, workspace_id, knowledge_class),
+            (path, f"E2E {RUN}", f"E2E/{path.rsplit('/', 1)[-1].removesuffix('.md')}", f"# E2E {RUN}\n", revision, workspace_id, knowledge_class),
         )
         resource_id = cur.fetchone()[0]
         conn.commit()
