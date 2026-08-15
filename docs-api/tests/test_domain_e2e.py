@@ -417,6 +417,102 @@ def test_generated_page_guard_fails_closed_at_publish_evaluation():
     assert any(item.get("code") == "PROVENANCE_GENERATED_PAGE_PROTECTED" for item in errors)
 
 
+def test_archived_page_requires_restore_and_restore_replace_publishes_atomically():
+    page = _seed_page(f"reference/e2e-{RUN}-reopen.md")
+
+    archive = client.post(
+        "/api/v1/changes",
+        json={"title": "Archive E2E page", "purpose": "exercise reopen lifecycle", "workspace_key": "reference"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    archive_id = archive.json()["change_id"]
+    operation = client.post(
+        f"/api/v1/changes/{archive_id}/operations",
+        json={
+            "operation_type": "ARCHIVE_PAGE", "page_resource_id": page["resource_id"],
+            "expected_revision": page["revision"], "payload": {},
+        },
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert operation.status_code == 201, operation.text
+    assert client.post(f"/api/v1/changes/{archive_id}/validate", json={}, headers=AGENT).status_code == 200
+    archived = client.post(
+        f"/api/v1/changes/{archive_id}/publish", json={},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert archived.status_code == 200, archived.text
+
+    archived_page = client.get(
+        f"/api/v1/pages/{page['resource_id']}", headers=AGENT,
+    ).json()
+    assert archived_page["status"] == "archived"
+
+    duplicate = client.post(
+        "/api/v1/changes",
+        json={"title": "Invalid duplicate", "purpose": "prove structured refusal", "workspace_key": "reference"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    duplicate_id = duplicate.json()["change_id"]
+    duplicate_op = client.post(
+        f"/api/v1/changes/{duplicate_id}/operations",
+        json={
+            "operation_type": "CREATE_PAGE",
+            "payload": {
+                "path": page["path"], "title": "Duplicate", "nav_path": "E2E/Duplicate",
+                "content": "# duplicate must fail\n",
+            },
+        },
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert duplicate_op.status_code == 201, duplicate_op.text
+    duplicate_validation = client.post(
+        f"/api/v1/changes/{duplicate_id}/validate", json={}, headers=AGENT,
+    )
+    assert duplicate_validation.status_code == 200, duplicate_validation.text
+    errors = duplicate_validation.json()["validation_summary"]["errors"]
+    assert errors[0] == {
+        "code": "CREATE_PATH_ARCHIVED_RESTORE_REQUIRED",
+        "detail": page["resource_id"],
+    }
+    refused_publish = client.post(
+        f"/api/v1/changes/{duplicate_id}/publish", json={},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert refused_publish.status_code == 409, refused_publish.text
+
+    restore = client.post(
+        "/api/v1/changes",
+        json={"title": "Restore E2E page", "purpose": "prove atomic reopen", "workspace_key": "reference"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    restore_id = restore.json()["change_id"]
+    for operation_type, payload in (
+        ("RESTORE_PAGE", {}),
+        ("REPLACE_DOCUMENT", {
+            "path": page["path"], "title": "Restored E2E", "nav_path": "E2E/Restored",
+            "content": "# restored and replaced\n", "knowledge_class": "REFERENCE",
+        }),
+    ):
+        response = client.post(
+            f"/api/v1/changes/{restore_id}/operations",
+            json={
+                "operation_type": operation_type, "page_resource_id": page["resource_id"],
+                "expected_revision": archived_page["revision"], "payload": payload,
+            },
+            headers={**AGENT, "Idempotency-Key": _key()},
+        )
+        assert response.status_code == 201, response.text
+    assert client.post(f"/api/v1/changes/{restore_id}/validate", json={}, headers=AGENT).status_code == 200
+    restored = client.post(
+        f"/api/v1/changes/{restore_id}/publish", json={},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert restored.status_code == 200, restored.text
+    current = client.get(f"/api/v1/pages/{page['resource_id']}", headers=AGENT).json()
+    assert current["status"] == "active"
+    assert current["content"] == "# restored and replaced\n"
+
+
 def test_concurrent_same_key_promotions_serialize_to_one_mutation():
     """Concurrent duplicate delivery, not just sequential replay: two
     simultaneous same-key requests must both return the winner's response,

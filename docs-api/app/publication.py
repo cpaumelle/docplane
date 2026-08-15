@@ -322,7 +322,17 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     raise ValueError("KNOWLEDGE_CLASS_INVALID:" + str(knowledge_class))
                 if not _PATH_RE.fullmatch(path):
                     raise ValueError("PATH_INVALID")
-                if any(candidate["path"] == path and candidate["status"] != "archived" for candidate in pages):
+                existing = next((candidate for candidate in pages if candidate["path"] == path), None)
+                if existing is not None:
+                    if existing["status"] == "archived":
+                        # docs.pages.path is globally unique across lifecycle
+                        # states.  Fail during validation with the canonical
+                        # recovery operation instead of allowing publication
+                        # to reach a raw UNIQUE(path) database error.
+                        raise ValueError(
+                            "CREATE_PATH_ARCHIVED_RESTORE_REQUIRED:"
+                            + existing["resource_id"]
+                        )
                     raise ValueError("CREATE_PATH_EXISTS")
                 workspace_key = str(payload.get("workspace_key") or change["workspace_key"])
                 resource_id = str(payload.get("resource_id") or uuid4())

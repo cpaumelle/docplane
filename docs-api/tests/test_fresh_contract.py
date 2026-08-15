@@ -158,6 +158,42 @@ def test_unsupported_operation_is_a_change_level_failure(monkeypatch):
     assert evaluation["errors"][0]["code"] == "OPERATION_UNSUPPORTED"
 
 
+def test_create_over_archived_path_requires_restore_before_publish(monkeypatch):
+    archived = {
+        "resource_id": "11111111-1111-1111-1111-111111111111",
+        "path": "reference/example.md", "title": "Example",
+        "nav_path": "Reference/Example", "content": "# Current\n",
+        "revision": "current-revision", "version": 7, "status": "archived",
+    }
+    monkeypatch.setattr(publication, "_load_pages", lambda conn, for_update=False: [archived])
+    monkeypatch.setattr(publication, "_load_redirects", lambda conn: {})
+    monkeypatch.setattr(publication, "_load_sections", lambda conn: {})
+    monkeypatch.setattr(publication, "state_identity", lambda pages, sections, redirects: "base")
+    monkeypatch.setattr(publication.generator, "build_nav", lambda pages, section_order: [])
+    evaluation = publication.evaluate_change(
+        None,
+        {"workspace_key": "reference", "base_state_identity": None},
+        [{
+            "operation_id": "44444444-4444-4444-4444-444444444444",
+            "sequence": 0,
+            "operation_type": "CREATE_PAGE",
+            "page_resource_id": None,
+            "expected_revision": None,
+            "expected_section_hash": None,
+            "payload": {
+                "path": "reference/example.md", "title": "Replacement identity",
+                "nav_path": "Reference/Replacement", "content": "# Must not insert\n",
+            },
+        }],
+    )
+    assert evaluation["passed"] is False
+    error = evaluation["errors"][0]
+    assert error == {
+        "code": "CREATE_PATH_ARCHIVED_RESTORE_REQUIRED",
+        "detail": archived["resource_id"],
+    }
+
+
 def test_replace_shortcut_uses_canonical_change_pipeline(monkeypatch):
     resource_id = UUID("11111111-1111-1111-1111-111111111111")
     change_id = "22222222-2222-2222-2222-222222222222"

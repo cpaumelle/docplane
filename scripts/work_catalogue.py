@@ -343,6 +343,25 @@ def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
     return pages
 
 
+def desired_page_paths(state: dict[str, Any]) -> list[str]:
+    """Return the deterministic target set without rendering page content.
+
+    Status probes use this to detect generator-contract and target-set drift
+    without paying the cost of rendering every page on each timer tick.
+    """
+    paths = [
+        "work/index.md",
+        *(f"work/{slug}.md" for slug, _title, _description in _QUEUE_PAGES.values()),
+        "work/recently-completed.md",
+    ]
+    paths.extend(
+        f"work/initiatives/{initiative['initiative_key']}.md"
+        for initiative in state["initiatives"]
+        if initiative.get("work_state") in _QUEUE_STATES
+    )
+    return sorted(paths)
+
+
 def ensure_source_entity(client: Client, fp: str) -> str:
     listing = client.call("GET", f"/api/v1/model/entities?entity_kind={SOURCE_ENTITY_KIND}&limit=1000")
     for entity in listing.get("entities", []):
@@ -378,7 +397,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.status_json or args.metrics_file:
         artifact = sc.current_artifact(client, ARTIFACT_KEY)
         published = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
-        drift = published != fp
+        drift = (
+            artifact is None
+            or published != fp
+            or needs_succession(artifact, desired_page_paths(state))
+        )
         status = {
             "artifact_key": ARTIFACT_KEY,
             "artifact_id": artifact.get("artifact_id") if artifact else None,
