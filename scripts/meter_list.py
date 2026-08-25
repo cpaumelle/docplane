@@ -53,7 +53,7 @@ from migration.redaction import redact  # noqa: E402
 from schema_catalogue import ApiError, Client  # noqa: E402  (shared API client)
 
 GENERATOR_NAME = "docplane-meter-list"
-GENERATOR_VERSION = "1.3.0"
+GENERATOR_VERSION = "1.3.1"
 SECTION = "observe/meter-list"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
@@ -262,7 +262,11 @@ def render_pages(source_key: str, structure: dict[str, Any], structure_hash: str
         groups = structure[file_stem]
         stem_slug = _path_slug(file_stem)
         rule_count = sum(len(rules) for rules in groups.values())
-        index_lines.append(f"- [`{file_stem}`]({source_slug}/{stem_slug}.md) — {rule_count} rules")
+        # Sibling link, not `{source_slug}/…`: this index is emitted at
+        # SECTION/<source_slug>/index.md and the per-file pages are its siblings in
+        # that same directory, so prefixing the source slug again resolves to
+        # SECTION/<source_slug>/<source_slug>/<stem> and lands nowhere.
+        index_lines.append(f"- [`{file_stem}`]({stem_slug}.md) — {rule_count} rules")
         body = [f"# Meter list — `{file_stem}`", "", stamp, ""]
         for group_name in sorted(groups):
             body += [f"## Group `{group_name}`", ""]
