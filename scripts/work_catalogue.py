@@ -27,6 +27,10 @@ Environment:
   DOCPLANE_WORK_CATALOGUE_TOKEN named AUTOMATION bearer (never logged)
 
 Usage: work_catalogue.py [--dry-run] [--status-json] [--metrics-file PATH]
+
+Attended source probe (same exclusion domain as reconciliation):
+  flock -n -E 75 /run/lock/docplane-work-catalogue.lock \
+    work_catalogue.py --observe-source --status-json
 """
 from __future__ import annotations
 
@@ -39,6 +43,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -148,6 +153,112 @@ def _required_environment(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required; refusing to fall back to another principal")
     return value
+
+
+def _probe_id(value: str) -> str:
+    """Return one canonical invocation identity for receipt-bound retries."""
+    try:
+        return str(UUID(value))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("probe ID must be a UUID") from exc
+
+
+def resolve_source_entity(client: Client) -> dict[str, Any]:
+    """Resolve the declared WORK authority without repairing MODEL state."""
+    listing = client.call(
+        "GET", f"/api/v1/model/entities?entity_kind={SOURCE_ENTITY_KIND}&limit=1000"
+    )
+    matches = [
+        entity for entity in listing.get("entities", [])
+        if entity.get("entity_key") == SOURCE_ENTITY_KEY
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected exactly one {SOURCE_ENTITY_KIND} {SOURCE_ENTITY_KEY} source entity; "
+            f"found {len(matches)}"
+        )
+    return matches[0]
+
+
+def _record_source_observation(
+    client: Client,
+    *,
+    source: dict[str, Any],
+    probe_id: str,
+    outcome: str,
+    source_fingerprint: str | None = None,
+    failure_stage: str | None = None,
+    error_class: str | None = None,
+) -> dict[str, Any]:
+    payload = {"probe": "work-catalogue-source"}
+    if failure_stage is not None:
+        payload.update({"stage": failure_stage, "error_class": error_class})
+    observation = {
+        "subject_entity_id": source["entity_id"],
+        "observation_kind": "FRESHNESS_CHECK",
+        "outcome": outcome,
+        "summary": (
+            "Observed authoritative WORK state for work-catalogue"
+            if outcome == "NOMINAL"
+            else f"Work-catalogue source observation failed during {failure_stage}"
+        ),
+        "payload": payload,
+        "idempotency_key": f"work-catalogue:source-probe:{probe_id}:observation",
+    }
+    if source_fingerprint is not None:
+        observation["source_fingerprint"] = source_fingerprint
+    response = client.call(
+        "POST",
+        "/api/v1/observations",
+        {"observations": [observation]},
+        f"work-catalogue:source-probe:{probe_id}:batch",
+    )
+    receipt = (response.get("recorded") or [{}])[0]
+    return {
+        "probe_id": probe_id,
+        "source_entity": {
+            "entity_id": source["entity_id"],
+            "entity_kind": source.get("entity_kind", SOURCE_ENTITY_KIND),
+            "entity_key": source.get("entity_key", SOURCE_ENTITY_KEY),
+        },
+        "source_fingerprint": source_fingerprint,
+        "observation_id": receipt.get("observation_id"),
+        "outcome": outcome,
+    }
+
+
+def observe_source(client: Client, probe_id: str) -> tuple[dict[str, Any], bool]:
+    """Observe WORK only; the sole permitted write is OBSERVE evidence."""
+    source = resolve_source_entity(client)
+    try:
+        state = fetch_state(client)
+    except Exception as exc:
+        return _record_source_observation(
+            client,
+            source=source,
+            probe_id=probe_id,
+            outcome="FAILED",
+            failure_stage="FETCH_WORK_STATE",
+            error_class=type(exc).__name__,
+        ), False
+    try:
+        source_fingerprint = fingerprint(state)
+    except Exception as exc:
+        return _record_source_observation(
+            client,
+            source=source,
+            probe_id=probe_id,
+            outcome="FAILED",
+            failure_stage="CANONICALIZE_SOURCE",
+            error_class=type(exc).__name__,
+        ), False
+    return _record_source_observation(
+        client,
+        source=source,
+        probe_id=probe_id,
+        outcome="NOMINAL",
+        source_fingerprint=source_fingerprint,
+    ), True
 
 
 def _write_metrics(path: str, *, drift: bool, success: bool) -> None:
@@ -383,12 +494,43 @@ def ensure_source_entity(client: Client, fp: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true", help="render and report; perform no writes")
-    parser.add_argument("--status-json", action="store_true", help="report live-versus-published fingerprint state; perform no writes")
+    parser.add_argument(
+        "--observe-source", action="store_true",
+        help="read WORK and record one FRESHNESS_CHECK; never generate or reconcile",
+    )
+    parser.add_argument(
+        "--probe-id", type=_probe_id,
+        help="UUID invocation identity for an exact idempotent source-probe retry",
+    )
+    parser.add_argument(
+        "--status-json", action="store_true",
+        help="emit machine-readable status or source-probe receipt output",
+    )
     parser.add_argument("--metrics-file", help="atomically write projection status in Prometheus textfile format")
     parser.add_argument("--reconcile-success", choices=("0", "1"), default="1", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
+    if args.probe_id and not args.observe_source:
+        parser.error("--probe-id requires --observe-source")
+    if args.observe_source and (args.dry_run or args.metrics_file or args.reconcile_success != "1"):
+        parser.error("--observe-source cannot generate, reconcile, or write metrics")
+
     client = Client(_required_environment("DOCPLANE_API"), _required_environment("DOCPLANE_WORK_CATALOGUE_TOKEN"))
+    if args.observe_source:
+        probe_id = args.probe_id or str(uuid4())
+        try:
+            result, succeeded = observe_source(client, probe_id)
+        except Exception as exc:
+            # OBSERVE payloads never receive uncontrolled exception text. The
+            # attended caller gets only a bounded local failure classification.
+            print(
+                json.dumps({"probe_id": probe_id, "outcome": "FAILED", "error_class": type(exc).__name__}, sort_keys=True),
+                file=sys.stderr,
+            )
+            return 1
+        print(json.dumps(result, sort_keys=True))
+        return 0 if succeeded else 1
+
     state = fetch_state(client)
     fp = fingerprint(state)
     # The status/metrics probe needs the fingerprint only. Rendering every page
