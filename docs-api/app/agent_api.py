@@ -765,6 +765,11 @@ def _observatory_snapshot() -> dict[str, Any]:
             """
         )
         rows = cur.fetchall()
+        # docs.redirects has no read API; link resolution needs it, and it lives
+        # in this same database, so read it here rather than exposing a new
+        # endpoint purely to feed the observatory.
+        cur.execute("SELECT from_path, to_path FROM docs.redirects")
+        redirects = {row[0]: row[1] for row in cur.fetchall()}
     keys = (
         "resource_id", "path", "title", "nav_path", "content", "revision",
         "version", "status", "updated_at", "updated_by", "workspace_key",
@@ -772,7 +777,9 @@ def _observatory_snapshot() -> dict[str, Any]:
         "owner_principal_id", "review_due_at", "criticality",
         "metadata_review_required", "metadata_version", "provenance",
     )
-    return build_structure([dict(zip(keys, row)) for row in rows])
+    return build_structure(
+        [dict(zip(keys, row)) for row in rows], redirects=redirects
+    )
 
 
 def _cursor(value: str | None) -> int:
