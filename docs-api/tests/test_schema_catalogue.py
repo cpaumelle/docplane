@@ -273,3 +273,34 @@ def test_introspection_of_the_canary_is_deterministic_and_rowless():
         "docplane", "DocPlane PostgreSQL", first, canonical
     )
     assert all("applied_at" in page["content"] or "index" in page["path"] for page in rendered[:1])
+
+
+def test_index_links_resolve_to_pages_the_generator_actually_emits():
+    """Promoted invariant: for a generated artifact with an index, every internal
+    link the index emits must resolve against the pages emitted in that same run.
+
+    Asserted through the observatory's public link analyser rather than a
+    particular relative-link spelling, so the test survives any future change to
+    how the path is written and still catches the thing that broke in production:
+    an index that names a directory it already lives in.
+
+    This defect shipped twice — docplane-meter-list and docplane-schema-catalogue,
+    independently — so the invariant belongs on every indexed generator.
+    """
+    from app.corpus_structure import analyse_links
+
+    structure = {
+        schema: {"t1": {"comment": None, "columns": [], "constraints": [], "indexes": []}}
+        for schema in ("docs", "model", "observe")
+    }
+    pages = schema_catalogue.render_pages("docplane", "DocPlane", structure, "ab" * 32)
+    rendered = [
+        {"path": page["path"], "status": "active", "content": page["content"]}
+        for page in pages
+    ]
+
+    result = analyse_links(rendered, [], {})
+    assert result["counts"]["internal"] == len(structure), (
+        "the index should link every schema page exactly once"
+    )
+    assert result["counts"]["broken"] == 0, result["broken_pages"]
