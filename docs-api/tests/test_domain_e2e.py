@@ -238,6 +238,67 @@ def test_observe_ingest_projection_freshness_and_safety():
     assert rejected.status_code == 422
 
 
+def test_entity_status_preserves_all_artifacts_during_freshness_lookup():
+    entity = client.post(
+        "/api/v1/model/entities",
+        json={
+            "entity_kind": "DATABASE",
+            "entity_key": f"e2e-status-db-{RUN}",
+            "display_name": "E2E status DB",
+            "attributes": {"engine": "postgres"},
+        },
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert entity.status_code == 201, entity.text
+    entity_id = entity.json()["entity_id"]
+
+    expected = {}
+    for number in (1, 2):
+        fingerprint = f"abcd123{number}"
+        artifact = client.post(
+            "/api/v1/model/artifacts",
+            json={
+                "artifact_key": f"e2e-status-artifact-{RUN}-{number}",
+                "generator_name": "status-regression",
+                "generator_version": "1",
+                "source_entity_id": entity_id,
+            },
+            headers={**AUTOMATION, "Idempotency-Key": _key()},
+        )
+        assert artifact.status_code == 201, artifact.text
+        artifact_id = artifact.json()["artifact_id"]
+        expected[artifact_id] = fingerprint
+        generation = client.post(
+            "/api/v1/observations",
+            json={"observations": [{
+                "subject_artifact_id": artifact_id,
+                "observation_kind": "GENERATION",
+                "source_fingerprint": fingerprint,
+            }]},
+            headers={**AGENT, "Idempotency-Key": _key()},
+        )
+        assert generation.status_code == 201, generation.text
+
+    entity_status = client.get(f"/api/v1/model/entities/{entity_id}/status", headers=AGENT)
+    assert entity_status.status_code == 200, entity_status.text
+    returned = entity_status.json()["generated_artifacts"]
+    assert {item["artifact_id"] for item in returned} == set(expected)
+    assert [item["artifact_key"] for item in returned] == sorted(item["artifact_key"] for item in returned)
+    for item in returned:
+        freshness = item["freshness"]
+        assert freshness["state"] == "UNKNOWN"
+        assert freshness["reason"] == "SOURCE_UNOBSERVED"
+        assert freshness["source_observation"] is None
+        assert freshness["generated_fingerprint"] == expected[item["artifact_id"]]
+
+        artifact_status = client.get(
+            f"/api/v1/model/artifacts/{item['artifact_id']}/status",
+            headers=AGENT,
+        )
+        assert artifact_status.status_code == 200, artifact_status.text
+        assert artifact_status.json()["freshness"] == freshness
+
+
 def test_closure_and_soak_gates_are_evidence_bound():
     workspace_id = _work_workspace_id()
     made = client.post("/api/v1/initiatives", json={"initiative_key": f"e2e-close-{RUN}", "workspace_id": workspace_id, "title": "E2E closure", "objective": "prove gates", "work_state": "ACTIVE"}, headers={**AGENT, "Idempotency-Key": _key()})

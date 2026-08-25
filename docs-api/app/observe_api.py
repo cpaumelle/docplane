@@ -742,9 +742,10 @@ def entity_status(entity_id: UUID, principal: Principal = Depends(require_contri
             "SELECT artifact_id::text, artifact_key FROM model.generated_artifacts WHERE source_entity_id = %s AND status = 'DECLARED' ORDER BY artifact_key",
             (str(entity_id),),
         )
+        artifact_rows = cur.fetchall()
         artifacts = []
         source_observation = _latest_source_observation(cur, str(entity_id))
-        for artifact_id, artifact_key in cur.fetchall():
+        for artifact_id, artifact_key in artifact_rows:
             artifacts.append({
                 "artifact_id": artifact_id,
                 "artifact_key": artifact_key,
