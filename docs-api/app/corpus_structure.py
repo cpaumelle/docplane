@@ -58,10 +58,207 @@ def _depth(path: str) -> int:
     return path.count("/") + 1
 
 
+# ---------------------------------------------------------------------------
+# Internal link integrity.
+#
+# A link between two corpus pages is a structural fact the corpus already owns:
+# resolving one needs the page list, the archived list and the redirect map, all
+# of which live in this database. Nothing here interprets meaning — a link either
+# lands on a page that exists or it does not.
+#
+# This is deliberately server-side. Link resolution depends on conventions only
+# DocPlane knows: which prefixes are application routes rather than pages, that a
+# directory URL is served by its `index.md`, and the contents of `docs.redirects`
+# (which has no read API at all). An external checker has to guess all three, and
+# guessing produces false positives in both directions.
+# ---------------------------------------------------------------------------
+
+# `[^\]]` already matches newline. Do NOT write `(?:[^\]]|\n)*?` — that ambiguous
+# alternation backtracks catastrophically on long link-free prose.
+_LINK_RE = re.compile(r"(?<!\!)\[[^\]]{0,400}\]\(\s*([^)\s]+)")
+
+# Served by the application, not by the page corpus. A link to /dashboard/ is
+# correct and must never be reported as a dangling page reference.
+APP_ROUTE_PREFIXES = frozenset({
+    "dashboard", "api", "healthz", "openapi.json", ".well-known", "static", "assets",
+})
+
+# Retired documentation origins. Content there is a frozen pre-migration snapshot,
+# so a link to one is stale by definition even though the host still answers.
+RETIRED_DOC_HOSTS = ("docs.charliehub.net", "docs-api.charliehub.net")
+
+_ASSET_SUFFIXES = (
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf", ".json", ".yml",
+    ".yaml", ".sh", ".py", ".sql", ".conf", ".service", ".timer", ".txt", ".csv",
+    ".zip", ".tar", ".gz", ".ico", ".css", ".js",
+)
+_EXTERNAL_SCHEMES = ("http://", "https://", "mailto:", "tel:", "ftp://", "data:")
+
+
+def _strip_md(path: str) -> str:
+    return path[:-3] if path.endswith(".md") else path
+
+
+def follow_redirects(path_md: str, redirects: dict[str, str]) -> str | None:
+    """Terminal target of a redirect chain, or None if the chain cycles.
+
+    A cycle resolves nowhere, so it must stay broken rather than loop forever or
+    be waved through as if it landed somewhere.
+    """
+    seen: set[str] = set()
+    current = path_md
+    while current in redirects:
+        if current in seen:
+            return None
+        seen.add(current)
+        current = redirects[current]
+    return current
+
+
+def resolve_link(source_path: str, target: str) -> str | None:
+    """Page id a markdown link points at, or None when it is not a page link."""
+    cleaned = target.split("#", 1)[0].split("?", 1)[0].strip()
+    if not cleaned:
+        return None
+    if cleaned.startswith("/"):
+        base = cleaned.lstrip("/")
+    else:
+        base = posixpath.normpath(
+            posixpath.join(posixpath.dirname(source_path), cleaned)
+        )
+    base = base.strip("/")
+    # normpath leaves leading `..` when a link escapes the corpus root; the served
+    # site clamps to root, so match that rather than inventing a parent.
+    while base.startswith("../"):
+        base = base[3:]
+    if base in ("", ".", ".."):
+        base = "index"
+    return _strip_md(base)
+
+
+def analyse_links(
+    active: list[dict[str, Any]],
+    archived: list[dict[str, Any]],
+    redirects: dict[str, str],
+) -> dict[str, Any]:
+    """Classify every markdown link on every active page.
+
+    Counted, never mutated. Links to archived pages are reported separately from
+    broken ones: citing archived doctrine is usually deliberate, so it is an
+    advisory rather than a defect.
+    """
+    active_ids = {_strip_md(page["path"]) for page in active}
+    archived_ids = {_strip_md(page["path"]) for page in archived}
+
+    counts: collections.Counter = collections.Counter()
+    broken: dict[str, list[dict[str, str]]] = collections.defaultdict(list)
+    archived_refs: dict[str, list[dict[str, str]]] = collections.defaultdict(list)
+    retired_refs: dict[str, list[str]] = collections.defaultdict(list)
+
+    for page in active:
+        source = page["path"]
+        source_id = _strip_md(source)
+        for match in _LINK_RE.finditer(page.get("content") or ""):
+            target = match.group(1)
+            counts["total"] += 1
+            lowered = target.lower()
+            if any(host in lowered for host in RETIRED_DOC_HOSTS):
+                retired_refs[source].append(target)
+                counts["retired_host"] += 1
+                continue
+            if lowered.startswith(_EXTERNAL_SCHEMES):
+                counts["external"] += 1
+                continue
+            if target.startswith("#"):
+                counts["anchor"] += 1
+                continue
+            if lowered.split("#")[0].split("?")[0].endswith(_ASSET_SUFFIXES):
+                counts["asset"] += 1
+                continue
+            resolved = resolve_link(source, target)
+            if resolved is None or resolved == source_id:
+                counts["self"] += 1
+                continue
+            if resolved.split("/", 1)[0] in APP_ROUTE_PREFIXES:
+                counts["app_route"] += 1
+                continue
+            counts["internal"] += 1
+            # A directory URL is served by its index page, so try both forms
+            # before calling anything broken.
+            forms = (resolved, f"{resolved}/index")
+            if any(form in active_ids for form in forms):
+                counts["active"] += 1
+                continue
+            if any(form in archived_ids for form in forms):
+                archived_refs[source].append({"link": target, "resolved": resolved})
+                counts["archived"] += 1
+                continue
+            terminal = None
+            for form in forms:
+                candidate = follow_redirects(f"{form}.md", redirects)
+                if candidate is not None and candidate != f"{form}.md":
+                    terminal = _strip_md(candidate)
+                    break
+            if terminal and (terminal in active_ids or terminal in archived_ids):
+                counts["redirect"] += 1
+                continue
+            broken[source].append({"link": target, "resolved": resolved})
+            counts["broken"] += 1
+
+    # A 100% broken result means this resolver is wrong, not that every link in
+    # the corpus died. Report the anomaly instead of a confident falsehood.
+    resolver_suspect = bool(counts["internal"]) and counts["broken"] == counts["internal"]
+
+    dead_targets = collections.Counter(
+        entry["resolved"] for entries in broken.values() for entry in entries
+    )
+    return {
+        "checked_pages": len(active),
+        "counts": {
+            "total_links": counts["total"],
+            "external": counts["external"],
+            "anchor_only": counts["anchor"],
+            "asset": counts["asset"],
+            "self_reference": counts["self"],
+            "application_route": counts["app_route"],
+            "internal": counts["internal"],
+            "resolved_active": counts["active"],
+            "resolved_archived": counts["archived"],
+            "resolved_via_redirect": counts["redirect"],
+            "broken": counts["broken"],
+            "retired_host": counts["retired_host"],
+        },
+        "broken_pages": [
+            {"path": path, "links": entries}
+            for path, entries in sorted(broken.items())
+        ],
+        "dead_targets": [
+            {"target": target, "references": n}
+            for target, n in dead_targets.most_common()
+        ],
+        "archived_reference_pages": [
+            {"path": path, "links": entries}
+            for path, entries in sorted(archived_refs.items())
+        ],
+        "retired_host_pages": [
+            {"path": path, "links": sorted(set(links))}
+            for path, links in sorted(retired_refs.items())
+        ],
+        "resolver_suspect": resolver_suspect,
+        "interpretation": (
+            "Deterministic link resolution against the active page list, the archived "
+            "page list and docs.redirects. Links to archived pages are advisory, not "
+            "defects. resolver_suspect is true only when every internal link reports "
+            "broken, which indicates a resolver fault rather than corpus damage."
+        ),
+    }
+
+
 def build(
     pages: list[dict[str, Any]],
     *,
     now: datetime | None = None,
+    redirects: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Build a structural review model without interpreting document meaning."""
     normalized = [dict(page) for page in pages if page.get("path")]
@@ -152,6 +349,7 @@ def build(
         for index in range(1, len(parts) + 1):
             directories.setdefault("/".join(parts[:index]) or "(root)", [])
 
+    link_integrity = analyse_links(active, archived, redirects or {})
     now = now or datetime.now(timezone.utc)
     due_cutoff = now + timedelta(days=30)
     directory_rows: list[dict[str, Any]] = []
@@ -265,6 +463,26 @@ def build(
                     "shared maintenance policy."
                 ),
             })
+        broken_here = sum(
+            len(entry["links"])
+            for entry in link_integrity["broken_pages"]
+            if _directory(entry["path"]) == directory
+        )
+        if broken_here:
+            reasons.append({
+                "code": "BROKEN_INTERNAL_LINKS",
+                "measured": broken_here,
+                "threshold": 1,
+                "explanation": (
+                    f"{broken_here} internal link(s) on pages directly in {directory} "
+                    "resolve to no active page, archived page or redirect."
+                ),
+                "affected_paths": sorted(
+                    entry["path"]
+                    for entry in link_integrity["broken_pages"]
+                    if _directory(entry["path"]) == directory
+                ),
+            })
         if not descendants and archived_descendants:
             reasons.append({
                 "code": "ARCHIVED_ONLY_SECTION",
@@ -370,6 +588,7 @@ def build(
             "legacy_lifecycle_canonical": False,
         },
         "signals": {
+            "link_integrity": link_integrity,
             "duplicate_titles": duplicate_titles,
             "missing_lifecycle": missing_lifecycle,
             "unknown_lifecycle": unknown_lifecycle,
