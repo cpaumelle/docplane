@@ -160,9 +160,14 @@ def test_every_rendered_path_satisfies_the_deployed_path_contract(tmp_path):
         "observe/meter-list/example-prometheus/backup-alerts.md",
         "observe/meter-list/example-prometheus/ceph-rules.md",
     }
-    # Index links point at the slugged paths, relative to the source dir.
+    # Index links are siblings. The index is emitted INSIDE the source dir, so a
+    # `example-prometheus/` prefix resolves to
+    # observe/meter-list/example-prometheus/example-prometheus/ceph-rules and lands
+    # nowhere. This assertion previously required the prefixed form and so pinned
+    # the defect in place.
     index = pages[0]["content"]
-    assert "(example-prometheus/ceph-rules.md)" in index
+    assert "(ceph-rules.md)" in index
+    assert "(example-prometheus/ceph-rules.md)" not in index
     assert "`ceph.rules`" in index
 
 
@@ -554,3 +559,31 @@ def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_pa
     assert "UNCHANGED" in capsys.readouterr().out
     assert [path for _, path, _, _ in calls] == ["/api/v1/observations"]
     assert all("/work" not in path for _, path, _, _ in calls)
+
+
+def test_index_links_resolve_to_pages_the_generator_actually_emits(tmp_path):
+    """Every index link must resolve to a page in the same run.
+
+    Checked with the observatory's own resolver rather than a string match, so the
+    generator is held to the same contract as the link-integrity signal that
+    surfaced this defect: 35 dead links on the live hub2.prometheus index, every
+    one of them a doubled source slug.
+    """
+    from app.corpus_structure import _LINK_RE, resolve_link
+
+    (tmp_path / "ceph.rules.yml").write_text(RULES_YML, encoding="utf-8")
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    pages = meter_list.render_pages(
+        "example.prometheus", structure, meter_list.fingerprint(structure)
+    )
+    index = next(page for page in pages if page["path"].endswith("/index.md"))
+    page_ids = {page["path"][:-3] for page in pages}
+
+    links = [match.group(1) for match in _LINK_RE.finditer(index["content"])]
+    assert links, "index emitted no links — the fixture should produce at least one"
+    for raw in links:
+        resolved = resolve_link(index["path"], raw)
+        assert resolved in page_ids, (
+            f"index link {raw!r} resolved to {resolved!r}, which this run does not emit; "
+            f"emitted: {sorted(page_ids)}"
+        )
