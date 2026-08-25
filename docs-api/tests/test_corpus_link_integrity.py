@@ -12,6 +12,7 @@ import pytest
 
 from app.corpus_structure import (
     APP_ROUTE_PREFIXES,
+    RESOLVER_SUSPECT_MIN_SAMPLE,
     analyse_links,
     build,
     follow_redirects,
@@ -197,19 +198,63 @@ def test_retired_documentation_hosts_are_flagged():
     assert result["counts"]["external"] == 0
 
 
-def test_resolver_suspect_flags_a_total_failure():
-    # If every internal link reports broken, the resolver is wrong — say so
-    # rather than claim the corpus is entirely dead.
-    active = [page("guide.md", "[a](x.md) [b](y.md)")]
-    result = analyse_links(active, [], {})
-    assert result["counts"]["broken"] == result["counts"]["internal"] == 2
+def _all_broken_corpus(n):
+    """A corpus of n internal links that every resolve to nothing."""
+    body = " ".join(f"[l{i}](missing-{i}.md)" for i in range(n))
+    return [page("area/guide.md", body)]
+
+
+def test_resolver_suspect_flags_a_corpus_scale_total_failure():
+    # At corpus scale, every internal link resolving nowhere means this resolver is
+    # wrong — not that the corpus died.
+    result = analyse_links(_all_broken_corpus(RESOLVER_SUSPECT_MIN_SAMPLE), [], {})
+    assert result["counts"]["broken"] == result["counts"]["internal"]
     assert result["resolver_suspect"] is True
 
 
-def test_resolver_not_suspect_when_some_links_resolve():
-    active = [page("guide.md", "[a](x.md) [b](y.md)"), page("x.md")]
-    result = analyse_links(active, [], {})
+def test_small_all_broken_sample_is_not_a_resolver_fault():
+    # THE REFINEMENT: "all broken" is not a meaningful invariant on a tiny dataset.
+    # Two genuinely dead links on a two-link page are two dead links, and must be
+    # reported as findings rather than dismissed as a resolver anomaly.
+    result = analyse_links(_all_broken_corpus(2), [], {})
+    assert result["counts"]["broken"] == result["counts"]["internal"] == 2
     assert result["resolver_suspect"] is False
+    assert result["scoring_suppressed"] is False
+
+
+def test_sample_floor_is_exact_at_the_boundary():
+    below = analyse_links(_all_broken_corpus(RESOLVER_SUSPECT_MIN_SAMPLE - 1), [], {})
+    at = analyse_links(_all_broken_corpus(RESOLVER_SUSPECT_MIN_SAMPLE), [], {})
+    assert below["resolver_suspect"] is False
+    assert at["resolver_suspect"] is True
+
+
+def test_resolver_not_suspect_when_any_link_resolves():
+    # One surviving link is enough to show the resolver works, however rotten the
+    # rest of the corpus is.
+    body = " ".join(f"[l{i}](missing-{i}.md)" for i in range(RESOLVER_SUSPECT_MIN_SAMPLE))
+    active = [page("area/guide.md", body + " [ok](other.md)"), page("area/other.md")]
+    result = analyse_links(active, [], {})
+    assert result["counts"]["broken"] == RESOLVER_SUSPECT_MIN_SAMPLE
+    assert result["resolver_suspect"] is False
+
+
+def test_suspect_result_still_reports_full_diagnostics():
+    # Suppression is about scoring, not about hiding evidence. An operator must still
+    # be able to see exactly what the suspect resolver produced.
+    result = analyse_links(_all_broken_corpus(RESOLVER_SUSPECT_MIN_SAMPLE), [], {})
+    assert result["resolver_suspect"] is True
+    assert len(result["broken_pages"][0]["links"]) == RESOLVER_SUSPECT_MIN_SAMPLE
+    assert len(result["dead_targets"]) == RESOLVER_SUSPECT_MIN_SAMPLE
+
+
+def test_suspect_contract_is_self_describing():
+    result = analyse_links(_all_broken_corpus(RESOLVER_SUSPECT_MIN_SAMPLE), [], {})
+    contract = result["resolver_suspect_contract"]
+    assert contract["min_sample"] == RESOLVER_SUSPECT_MIN_SAMPLE
+    assert contract["observed_internal"] == RESOLVER_SUSPECT_MIN_SAMPLE
+    assert contract["observed_broken"] == RESOLVER_SUSPECT_MIN_SAMPLE
+    assert "min_sample" in contract["rule"]
 
 
 # --------------------------------------------------------------------------
@@ -269,3 +314,69 @@ def test_link_regex_does_not_backtrack_on_long_prose():
     active = [page("big.md", ("lorem ipsum dolor sit amet " * 4000) + "[x](y.md)")]
     result = analyse_links(active, [], {})
     assert result["counts"]["total_links"] == 1
+
+
+# --------------------------------------------------------------------------
+# The guard must actually guard: a suspect resolver cannot drive review
+# --------------------------------------------------------------------------
+
+def test_suspect_resolver_does_not_flood_review_candidates():
+    """A resolver-wide failure must not generate a single BROKEN_INTERNAL_LINKS reason.
+
+    This is the contradiction the guard exists to prevent: declaring the findings
+    untrustworthy and then scoring every one of them into the review queue.
+    """
+    body = " ".join(f"[l{i}](missing-{i}.md)" for i in range(RESOLVER_SUSPECT_MIN_SAMPLE))
+    pages = [page(f"area/guide-{n}.md", body) for n in range(5)]
+    model = build(pages)
+
+    signal = model["signals"]["link_integrity"]
+    assert signal["resolver_suspect"] is True
+    assert signal["scoring_suppressed"] is True
+
+    codes = {
+        reason["code"]
+        for candidate in model["review_candidates"]
+        for reason in candidate["reasons"]
+    }
+    assert "BROKEN_INTERNAL_LINKS" not in codes
+    assert "BROKEN_INTERNAL_LINKS" not in model["review_contract"]["reason_codes"]
+
+
+def test_suspect_resolver_retains_raw_findings_in_the_signal():
+    # Suppressed from scoring, still fully visible as diagnostics.
+    body = " ".join(f"[l{i}](missing-{i}.md)" for i in range(RESOLVER_SUSPECT_MIN_SAMPLE))
+    pages = [page(f"area/guide-{n}.md", body) for n in range(5)]
+    signal = build(pages)["signals"]["link_integrity"]
+    assert signal["counts"]["broken"] == RESOLVER_SUSPECT_MIN_SAMPLE * 5
+    assert len(signal["broken_pages"]) == 5
+
+
+def test_suspect_resolver_does_not_inflate_directory_scores():
+    """Scores must match a run with no link findings at all."""
+    body = " ".join(f"[l{i}](missing-{i}.md)" for i in range(RESOLVER_SUSPECT_MIN_SAMPLE))
+    suspect = build([page(f"area/guide-{n}.md", body) for n in range(5)])
+    clean = build([page(f"area/guide-{n}.md", "no links here") for n in range(5)])
+
+    def scores(model):
+        return {c["path"]: c["score"] for c in model["review_candidates"]}
+
+    assert scores(suspect) == scores(clean)
+
+
+def test_genuine_findings_below_the_floor_still_score():
+    # The suppression must not become a blanket excuse: a small number of real
+    # broken links on an otherwise-healthy corpus still reaches the review queue.
+    pages = [
+        page("area/guide.md", "[gone](missing.md) [ok](other.md)"),
+        page("area/other.md"),
+    ]
+    model = build(pages)
+    signal = model["signals"]["link_integrity"]
+    assert signal["resolver_suspect"] is False
+    codes = {
+        reason["code"]
+        for candidate in model["review_candidates"]
+        for reason in candidate["reasons"]
+    }
+    assert "BROKEN_INTERNAL_LINKS" in codes

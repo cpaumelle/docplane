@@ -87,6 +87,20 @@ APP_ROUTE_PREFIXES = frozenset({
 # so a link to one is stale by definition even though the host still answers.
 RETIRED_DOC_HOSTS = ("docs.charliehub.net", "docs-api.charliehub.net")
 
+# The all-broken catastrophe detector is observatory-scale by construction, and the
+# minimum sample is what makes it meaningful rather than universal. On the live corpus
+# (~3.7k internal links) a 100%-broken result cannot arise naturally and always means
+# the resolver is wrong. On a handful of links it is unremarkable: two genuinely dead
+# links on a two-link page are simply two dead links, not evidence of a fault. Below
+# this sample size the guard therefore stays off and real findings are reported
+# normally.
+#
+# The condition is deliberately "every internal link", not a high ratio. A partial
+# resolver fault — say the redirect map failing to load — moves a bounded slice of
+# links into `broken` and is indistinguishable from genuine rot, so widening the
+# ratio would trade a precise catastrophe detector for a vague one.
+RESOLVER_SUSPECT_MIN_SAMPLE = 50
+
 _ASSET_SUFFIXES = (
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf", ".json", ".yml",
     ".yaml", ".sh", ".py", ".sql", ".conf", ".service", ".timer", ".txt", ".csv",
@@ -205,9 +219,14 @@ def analyse_links(
             broken[source].append({"link": target, "resolved": resolved})
             counts["broken"] += 1
 
-    # A 100% broken result means this resolver is wrong, not that every link in
-    # the corpus died. Report the anomaly instead of a confident falsehood.
-    resolver_suspect = bool(counts["internal"]) and counts["broken"] == counts["internal"]
+    # A 100% broken result on a corpus-sized sample means this resolver is wrong, not
+    # that every link in the corpus died. Report the anomaly instead of a confident
+    # falsehood — and, in build(), decline to score findings we have just declared
+    # untrustworthy.
+    resolver_suspect = (
+        counts["internal"] >= RESOLVER_SUSPECT_MIN_SAMPLE
+        and counts["broken"] == counts["internal"]
+    )
 
     dead_targets = collections.Counter(
         entry["resolved"] for entries in broken.values() for entry in entries
@@ -245,11 +264,25 @@ def analyse_links(
             for path, links in sorted(retired_refs.items())
         ],
         "resolver_suspect": resolver_suspect,
+        "scoring_suppressed": resolver_suspect,
+        "resolver_suspect_contract": {
+            "min_sample": RESOLVER_SUSPECT_MIN_SAMPLE,
+            "observed_internal": counts["internal"],
+            "observed_broken": counts["broken"],
+            "rule": (
+                "Set when the corpus presents at least min_sample internal links and "
+                "every one of them resolves nowhere. Below min_sample the guard is off, "
+                "because a fully-broken handful of links is an ordinary outcome rather "
+                "than evidence of a resolver fault."
+            ),
+        },
         "interpretation": (
             "Deterministic link resolution against the active page list, the archived "
             "page list and docs.redirects. Links to archived pages are advisory, not "
-            "defects. resolver_suspect is true only when every internal link reports "
-            "broken, which indicates a resolver fault rather than corpus damage."
+            "defects. resolver_suspect marks a suspected fault in this resolver rather "
+            "than corpus damage; while it is set, broken links are still reported here "
+            "in full but are NOT scored into review candidates, because findings we "
+            "have declared untrustworthy must not drive the review queue."
         ),
     }
 
@@ -463,7 +496,11 @@ def build(
                     "shared maintenance policy."
                 ),
             })
-        broken_here = sum(
+        # When the resolver is suspect its findings are diagnostics, not defects. They
+        # stay in the signal for an operator to inspect, but they must not generate
+        # reasons or inflate scores — otherwise the guard would announce that the
+        # results are untrustworthy and then flood the review queue with them.
+        broken_here = 0 if link_integrity["resolver_suspect"] else sum(
             len(entry["links"])
             for entry in link_integrity["broken_pages"]
             if _directory(entry["path"]) == directory
