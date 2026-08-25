@@ -8,6 +8,8 @@ import sys
 import json
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -132,6 +134,211 @@ def test_rendering_is_deterministic():
     state = _state([_initiative()])
     fp = work_catalogue.fingerprint(state)
     assert work_catalogue.render_pages(state, fp) == work_catalogue.render_pages(state, fp)
+
+
+def test_source_probe_records_only_entity_scoped_canonical_freshness(monkeypatch, capsys):
+    state = _state([_initiative()])
+    expected = work_catalogue.fingerprint(state)
+    calls = []
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            if method == "GET" and path.startswith("/api/v1/model/entities?"):
+                return {"entities": [{
+                    "entity_id": "00000000-0000-0000-0000-000000000099",
+                    "entity_kind": "SYSTEM",
+                    "entity_key": "docplane-work",
+                }]}
+            if method == "POST" and path == "/api/v1/observations":
+                return {"recorded": [{"observation_id": "observation-1", "replayed": False}]}
+            raise AssertionError(f"unexpected probe call: {method} {path}")
+
+    probe_id = "00000000-0000-0000-0000-000000000123"
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main(["--observe-source", "--probe-id", probe_id, "--status-json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "observation_id": "observation-1",
+        "outcome": "NOMINAL",
+        "probe_id": probe_id,
+        "source_entity": {
+            "entity_id": "00000000-0000-0000-0000-000000000099",
+            "entity_key": "docplane-work",
+            "entity_kind": "SYSTEM",
+        },
+        "source_fingerprint": expected,
+    }
+    writes = [call for call in calls if call[0] != "GET"]
+    assert len(writes) == 1
+    method, path, body, key = writes[0]
+    assert (method, path, key) == (
+        "POST", "/api/v1/observations", f"work-catalogue:source-probe:{probe_id}:batch"
+    )
+    observation = body["observations"][0]
+    assert observation == {
+        "subject_entity_id": "00000000-0000-0000-0000-000000000099",
+        "observation_kind": "FRESHNESS_CHECK",
+        "outcome": "NOMINAL",
+        "summary": "Observed authoritative WORK state for work-catalogue",
+        "payload": {"probe": "work-catalogue-source"},
+        "idempotency_key": f"work-catalogue:source-probe:{probe_id}:observation",
+        "source_fingerprint": expected,
+    }
+
+
+@pytest.mark.parametrize("entities", [[], [
+    {"entity_id": "one", "entity_kind": "SYSTEM", "entity_key": "docplane-work"},
+    {"entity_id": "two", "entity_kind": "SYSTEM", "entity_key": "docplane-work"},
+]])
+def test_source_probe_never_repairs_missing_or_ambiguous_source(monkeypatch, capsys, entities):
+    calls = []
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            return {"entities": entities}
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main(["--observe-source"]) == 1
+    assert json.loads(capsys.readouterr().err)["error_class"] == "RuntimeError"
+    assert calls and all(call[0] == "GET" for call in calls)
+    assert all(call[1] != "/api/v1/model/entities" for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("stage", "failure"),
+    [
+        ("FETCH_WORK_STATE", "fetch_state"),
+        ("CANONICALIZE_SOURCE", "fingerprint"),
+    ],
+)
+def test_source_probe_records_bounded_failed_evidence(monkeypatch, capsys, stage, failure):
+    state = _state([_initiative()])
+    calls = []
+
+    class ProbeFailure(Exception):
+        pass
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            if method == "GET":
+                return {"entities": [{
+                    "entity_id": "source-entity", "entity_kind": "SYSTEM", "entity_key": "docplane-work",
+                }]}
+            return {"recorded": [{"observation_id": "failed-observation", "replayed": False}]}
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    if failure == "fetch_state":
+        monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: (_ for _ in ()).throw(ProbeFailure()))
+    else:
+        monkeypatch.setattr(work_catalogue, "fingerprint", lambda value: (_ for _ in ()).throw(ProbeFailure()))
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main([
+        "--observe-source", "--probe-id", "00000000-0000-0000-0000-000000000124"
+    ]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["outcome"] == "FAILED"
+    observation = next(call[2]["observations"][0] for call in calls if call[0] == "POST")
+    assert "source_fingerprint" not in observation
+    assert observation["payload"] == {
+        "probe": "work-catalogue-source", "stage": stage, "error_class": "ProbeFailure",
+    }
+    assert "ProbeFailure" not in observation["summary"]
+
+
+def test_source_probe_does_not_claim_failed_evidence_when_observation_write_fails(monkeypatch, capsys):
+    class SourceReadFailure(Exception):
+        pass
+
+    class ObservationWriteFailure(Exception):
+        pass
+
+    class FailingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            if method == "GET":
+                return {"entities": [{
+                    "entity_id": "source-entity", "entity_kind": "SYSTEM", "entity_key": "docplane-work",
+                }]}
+            raise ObservationWriteFailure()
+
+    monkeypatch.setattr(work_catalogue, "Client", FailingClient)
+    monkeypatch.setattr(
+        work_catalogue, "fetch_state",
+        lambda client: (_ for _ in ()).throw(SourceReadFailure()),
+    )
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main(["--observe-source"]) == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert json.loads(output.err)["error_class"] == "ObservationWriteFailure"
+
+
+def test_probe_and_generation_emit_the_same_fingerprint_for_identical_work(monkeypatch):
+    state = _state([_initiative()])
+    expected = work_catalogue.fingerprint(state)
+    paths = work_catalogue.desired_page_paths(state)
+    observations = []
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            if method == "GET" and path.startswith("/api/v1/model/entities?"):
+                return {"entities": [{
+                    "entity_id": "source-entity", "entity_kind": "SYSTEM", "entity_key": "docplane-work",
+                }]}
+            if method == "POST" and path == "/api/v1/observations":
+                observations.append(body["observations"][0])
+                return {"recorded": [{"observation_id": f"observation-{len(observations)}", "replayed": False}]}
+            raise AssertionError(f"unexpected call: {method} {path}")
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(sc, "current_artifact", lambda *args: {
+        "artifact_id": "artifact", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "target_page_paths": paths, "version": 1,
+    })
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *args: expected)
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main([
+        "--observe-source", "--probe-id", "00000000-0000-0000-0000-000000000125"
+    ]) == 0
+    assert work_catalogue.main([]) == 0
+    probe, generation = observations
+    assert probe["observation_kind"] == "FRESHNESS_CHECK"
+    assert generation["observation_kind"] == "GENERATION"
+    assert probe["source_fingerprint"] == generation["source_fingerprint"] == expected
 
 
 def test_unchanged_main_replays_observation_and_never_publishes(monkeypatch, capsys):
@@ -345,6 +552,12 @@ def test_scheduler_wrapper_treats_a_lock_conflict_as_skipped_not_failed():
     assert "reconcile_status=0" in script
     assert "/run/lock/docplane-work-catalogue.lock" in script
     assert "/tmp/docplane-work-catalogue.lock" not in script
+
+
+def test_attended_source_probe_uses_the_existing_reconciliation_lock():
+    script = (ROOT / "scripts" / "work_catalogue.py").read_text(encoding="utf-8")
+    assert "flock -n -E 75 /run/lock/docplane-work-catalogue.lock" in script
+    assert "work_catalogue.py --observe-source --status-json" in script
 
 
 def test_scheduler_units_bound_work_drift_and_use_the_single_writer():

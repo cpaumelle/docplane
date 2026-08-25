@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +28,10 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.application import app  # noqa: E402
 from app.db import get_conn  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+import work_catalogue  # noqa: E402
 
 RUN = uuid.uuid4().hex[:8]
 client = TestClient(app)
@@ -297,6 +303,169 @@ def test_entity_status_preserves_all_artifacts_during_freshness_lookup():
         )
         assert artifact_status.status_code == 200, artifact_status.text
         assert artifact_status.json()["freshness"] == freshness
+
+
+def test_work_catalogue_probe_drives_freshness_without_other_domain_mutation(monkeypatch):
+    """Exercise the canary probe through the real API and prove OBSERVE is its
+    only write domain. Source fixture changes between probes are explicit WORK
+    setup, not probe behavior.
+    """
+    source_listing = client.get(
+        "/api/v1/model/entities?entity_kind=SYSTEM&limit=1000", headers=AUTOMATION
+    ).json()
+    sources = [
+        item for item in source_listing["entities"]
+        if item["entity_key"] == work_catalogue.SOURCE_ENTITY_KEY
+    ]
+    if sources:
+        assert len(sources) == 1
+        source = sources[0]
+    else:
+        made = client.post(
+            "/api/v1/model/entities",
+            json={
+                "entity_kind": "SYSTEM",
+                "entity_key": work_catalogue.SOURCE_ENTITY_KEY,
+                "display_name": "DocPlane work domain",
+                "attributes": {"description": "Source of the generated work catalogue"},
+            },
+            headers={**AUTOMATION, "Idempotency-Key": _key()},
+        )
+        assert made.status_code == 201, made.text
+        source = made.json()
+
+    class ApiClient:
+        def call(self, method, path, body=None, key=None):
+            headers = dict(AUTOMATION)
+            if key is not None:
+                headers["Idempotency-Key"] = key
+            response = client.request(method, path, json=body, headers=headers)
+            if not response.is_success:
+                raise RuntimeError(f"DocPlane API returned {response.status_code}")
+            return response.json()
+
+    api = ApiClient()
+    initial_state = work_catalogue.fetch_state(api)
+    generation_fingerprint = work_catalogue.fingerprint(initial_state)
+    artifact = client.post(
+        "/api/v1/model/artifacts",
+        json={
+            "artifact_key": f"e2e-work-probe-{RUN}",
+            "generator_name": work_catalogue.GENERATOR_NAME,
+            "generator_version": work_catalogue.GENERATOR_VERSION,
+            "source_entity_id": source["entity_id"],
+        },
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert artifact.status_code == 201, artifact.text
+    artifact_id = artifact.json()["artifact_id"]
+    generation = client.post(
+        "/api/v1/observations",
+        json={"observations": [{
+            "subject_artifact_id": artifact_id,
+            "observation_kind": "GENERATION",
+            "outcome": "NOMINAL",
+            "source_fingerprint": generation_fingerprint,
+        }]},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert generation.status_code == 201, generation.text
+
+    def generation_ids():
+        values = client.get(
+            f"/api/v1/observations?subject_artifact_id={artifact_id}&observation_kind=GENERATION",
+            headers=AUTOMATION,
+        ).json()["observations"]
+        return [item["observation_id"] for item in values]
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT resource_id::text, revision::text FROM docs.pages ORDER BY resource_id")
+        page_revisions_before = cur.fetchall()
+        cur.execute("SELECT count(*) FROM model.entities")
+        entity_count_before = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM model.generated_artifacts")
+        artifact_count_before = cur.fetchone()[0]
+    generation_ids_before = generation_ids()
+
+    unobserved = client.get(
+        f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION
+    ).json()["freshness"]
+    assert (unobserved["state"], unobserved["reason"]) == ("UNKNOWN", "SOURCE_UNOBSERVED")
+
+    matching_probe_id = str(uuid.uuid4())
+    matched, succeeded = work_catalogue.observe_source(api, matching_probe_id)
+    assert succeeded is True
+    assert matched["source_fingerprint"] == generation_fingerprint
+    fresh = client.get(
+        f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION
+    ).json()["freshness"]
+    assert (fresh["state"], fresh["reason"]) == ("FRESH", "FINGERPRINTS_MATCH")
+
+    source_observations_before_replay = client.get(
+        f"/api/v1/observations?subject_entity_id={source['entity_id']}&observation_kind=FRESHNESS_CHECK",
+        headers=AUTOMATION,
+    ).json()["observations"]
+    replay, succeeded = work_catalogue.observe_source(api, matching_probe_id)
+    assert succeeded is True
+    assert replay == matched
+    source_observations_after_replay = client.get(
+        f"/api/v1/observations?subject_entity_id={source['entity_id']}&observation_kind=FRESHNESS_CHECK",
+        headers=AUTOMATION,
+    ).json()["observations"]
+    assert source_observations_after_replay == source_observations_before_replay
+
+    changed = client.post(
+        "/api/v1/work/captures",
+        json={"body": f"Disposable probe drift fixture {RUN}", "kind": "IDEA"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert changed.status_code == 201, changed.text
+    changed_fingerprint = work_catalogue.fingerprint(work_catalogue.fetch_state(api))
+    assert changed_fingerprint != generation_fingerprint
+    with pytest.raises(RuntimeError):
+        work_catalogue.observe_source(api, matching_probe_id)
+
+    drifted, succeeded = work_catalogue.observe_source(api, str(uuid.uuid4()))
+    assert succeeded is True
+    assert drifted["source_fingerprint"] == changed_fingerprint
+    drift = client.get(
+        f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION
+    ).json()["freshness"]
+    assert (drift["state"], drift["reason"]) == ("DRIFTED", "SOURCE_CHANGED")
+
+    class SourceReadFailure(Exception):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            work_catalogue, "fetch_state",
+            lambda probe_client: (_ for _ in ()).throw(SourceReadFailure()),
+        )
+        failed, succeeded = work_catalogue.observe_source(api, str(uuid.uuid4()))
+    assert succeeded is False
+    assert failed["outcome"] == "FAILED"
+    unknown = client.get(
+        f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION
+    ).json()["freshness"]
+    assert (unknown["state"], unknown["reason"]) == (
+        "UNKNOWN", "SOURCE_OBSERVATION_FAILED",
+    )
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT resource_id::text, revision::text FROM docs.pages ORDER BY resource_id")
+        assert cur.fetchall() == page_revisions_before
+        cur.execute("SELECT count(*) FROM model.entities")
+        assert cur.fetchone()[0] == entity_count_before
+        cur.execute("SELECT count(*) FROM model.generated_artifacts")
+        assert cur.fetchone()[0] == artifact_count_before
+        cur.execute(
+            "SELECT status FROM model.generated_artifacts WHERE artifact_id = %s",
+            (artifact_id,),
+        )
+        assert cur.fetchone()[0] == "DECLARED"
+    assert generation_ids() == generation_ids_before
 
 
 def test_closure_and_soak_gates_are_evidence_bound():
