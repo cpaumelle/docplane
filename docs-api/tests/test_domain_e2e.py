@@ -171,8 +171,43 @@ def test_observe_ingest_projection_freshness_and_safety():
     client.post("/api/v1/observations", json=drift, headers={**AGENT, "Idempotency-Key": _key()})
     assert client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AGENT).json()["freshness"]["state"] == "DRIFTED"
 
-    # A TEST observation carrying an unrelated fingerprint must not redefine freshness.
-    unrelated = {"observations": [{"subject_entity_id": entity_id, "observation_kind": "TEST", "source_fingerprint": "1234abcd", "observed_at": (now + timedelta(seconds=2)).isoformat()}]}
+    # Regression control: the old query skipped this newer null fingerprint
+    # and silently reused the preceding successful probe as current truth.
+    failed_probe = {"observations": [{"subject_entity_id": entity_id, "observation_kind": "FRESHNESS_CHECK", "outcome": "FAILED", "observed_at": (now + timedelta(seconds=2)).isoformat()}]}
+    client.post("/api/v1/observations", json=failed_probe, headers={**AGENT, "Idempotency-Key": _key()})
+    freshness = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AGENT).json()["freshness"]
+    assert freshness["state"] == "UNKNOWN"
+    assert freshness["source_fingerprint"] is None
+    assert freshness["source_observation"]["outcome"] == "FAILED"
+    history = client.get(
+        f"/api/v1/observations?subject_entity_id={entity_id}&observation_kind=FRESHNESS_CHECK",
+        headers=AGENT,
+    ).json()["observations"]
+    assert any(item["outcome"] == "NOMINAL" and item["source_fingerprint"] == "ffff0000" for item in history)
+
+    for seconds, outcome in ((3, "UNKNOWN"), (4, "DEGRADED")):
+        probe = {"observations": [{"subject_entity_id": entity_id, "observation_kind": "FRESHNESS_CHECK", "outcome": outcome, "observed_at": (now + timedelta(seconds=seconds)).isoformat()}]}
+        client.post("/api/v1/observations", json=probe, headers={**AGENT, "Idempotency-Key": _key()})
+        freshness = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AGENT).json()["freshness"]
+        assert freshness["state"] == "UNKNOWN"
+        assert freshness["source_observation"]["outcome"] == outcome
+
+    invalid_failed = {"observations": [{"subject_entity_id": entity_id, "observation_kind": "FRESHNESS_CHECK", "outcome": "FAILED", "source_fingerprint": "1234abcd"}]}
+    assert client.post("/api/v1/observations", json=invalid_failed, headers={**AGENT, "Idempotency-Key": _key()}).status_code == 422
+
+    restored_probe = {"observations": [{"subject_entity_id": entity_id, "observation_kind": "FRESHNESS_CHECK", "source_fingerprint": "ffff0000", "observed_at": (now + timedelta(seconds=5)).isoformat()}]}
+    replay_key = _key()
+    first = client.post("/api/v1/observations", json=restored_probe, headers={**AGENT, "Idempotency-Key": replay_key})
+    replay = client.post("/api/v1/observations", json=restored_probe, headers={**AGENT, "Idempotency-Key": replay_key})
+    assert first.status_code == 201 and replay.status_code == 201
+    assert replay.json() == first.json()
+
+    # TEST, SOAK_READING and other observation kinds cannot redefine freshness.
+    unrelated = {"observations": [
+        {"subject_entity_id": entity_id, "observation_kind": "TEST", "source_fingerprint": "1234abcd", "observed_at": (now + timedelta(seconds=6)).isoformat()},
+        {"subject_entity_id": entity_id, "observation_kind": "SOAK_READING", "source_fingerprint": "5678abcd", "observed_at": (now + timedelta(seconds=7)).isoformat()},
+        {"subject_entity_id": entity_id, "observation_kind": "DEPLOYED_VERSION", "source_fingerprint": "9abc1234", "observed_at": (now + timedelta(seconds=8)).isoformat()},
+    ]}
     client.post("/api/v1/observations", json=unrelated, headers={**AGENT, "Idempotency-Key": _key()})
     assert client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AGENT).json()["freshness"]["source_fingerprint"] == "ffff0000"
 
@@ -182,6 +217,18 @@ def test_observe_ingest_projection_freshness_and_safety():
     current = client.get(f"/api/v1/model/entities/{entity_id}/status", headers=AGENT).json()["current_status"]
     freshness_rows = [row for row in current if row["observation_kind"] == "FRESHNESS_CHECK"]
     assert freshness_rows[0]["source_fingerprint"] == "ffff0000"
+
+    failed_generation = {"observations": [{"subject_artifact_id": artifact_id, "observation_kind": "GENERATION", "outcome": "FAILED", "source_fingerprint": "ffff0000", "observed_at": (now + timedelta(seconds=9)).isoformat()}]}
+    client.post("/api/v1/observations", json=failed_generation, headers={**AGENT, "Idempotency-Key": _key()})
+    freshness = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AGENT).json()["freshness"]
+    assert freshness["state"] == "FAILED"
+    assert freshness["generation"]["outcome"] == "FAILED"
+    assert freshness["generated_fingerprint"] == "ab12cd34"
+
+    never_artifact = client.post("/api/v1/model/artifacts", json={"artifact_key": f"e2e-never-{RUN}", "generator_name": "tbls", "generator_version": "1", "source_entity_id": entity_id}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert never_artifact.status_code == 201, never_artifact.text
+    never = client.get(f"/api/v1/model/artifacts/{never_artifact.json()['artifact_id']}/status", headers=AGENT).json()["freshness"]
+    assert never["state"] == "NEVER_GENERATED"
 
     future = {"observations": [{"subject_entity_id": entity_id, "observation_kind": "TEST", "observed_at": (now + timedelta(hours=2)).isoformat()}]}
     rejected = client.post("/api/v1/observations", json=future, headers={**AGENT, "Idempotency-Key": _key()})

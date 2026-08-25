@@ -44,8 +44,9 @@ def _key(value: str | None) -> str:
 
 
 def derive_freshness(
-    latest_generation: dict[str, Any] | None,
-    latest_source_fingerprint: str | None,
+    latest_generation_attempt: dict[str, Any] | None,
+    latest_successful_generation: dict[str, Any] | None,
+    latest_source_observation: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Pure derivation: never stored, computed on read.
 
@@ -54,15 +55,47 @@ def derive_freshness(
     failed   — the latest generation attempt failed
     never_generated / unknown — nothing to compare yet
     """
-    if latest_generation is None:
-        return {"state": "NEVER_GENERATED", "generated_fingerprint": None, "source_fingerprint": latest_source_fingerprint}
-    if latest_generation.get("outcome") == "FAILED":
-        return {"state": "FAILED", "generated_fingerprint": latest_generation.get("source_fingerprint"), "source_fingerprint": latest_source_fingerprint, "observed_at": latest_generation.get("observed_at")}
-    generated = latest_generation.get("source_fingerprint")
-    if not generated or not latest_source_fingerprint:
-        return {"state": "UNKNOWN", "generated_fingerprint": generated, "source_fingerprint": latest_source_fingerprint, "observed_at": latest_generation.get("observed_at")}
-    state = "FRESH" if generated == latest_source_fingerprint else "DRIFTED"
-    return {"state": state, "generated_fingerprint": generated, "source_fingerprint": latest_source_fingerprint, "observed_at": latest_generation.get("observed_at")}
+    generation = dict(latest_generation_attempt) if latest_generation_attempt else None
+    source_observation = dict(latest_source_observation) if latest_source_observation else None
+    source_fingerprint = None
+    if source_observation and source_observation.get("outcome") == "NOMINAL":
+        source_fingerprint = source_observation.get("source_fingerprint")
+    generated_fingerprint = (
+        latest_successful_generation.get("source_fingerprint")
+        if latest_successful_generation
+        else None
+    )
+    value = {
+        # Existing fields remain stable. The nested evidence is additive and
+        # prevents consumers from reverse-engineering why freshness is unknown.
+        "state": "UNKNOWN",
+        "generated_fingerprint": generated_fingerprint,
+        "source_fingerprint": source_fingerprint,
+        "observed_at": generation.get("observed_at") if generation else None,
+        "generation": generation,
+        "source_observation": source_observation,
+    }
+
+    if latest_successful_generation is None:
+        return {**value, "state": "NEVER_GENERATED", "reason": "NO_SUCCESSFUL_GENERATION"}
+    if generation is None or generation.get("outcome") != "NOMINAL":
+        if generation and generation.get("outcome") == "FAILED":
+            return {**value, "state": "FAILED", "reason": "LATEST_GENERATION_FAILED"}
+        return {**value, "reason": "LATEST_GENERATION_NOT_NOMINAL"}
+    if not generated_fingerprint:
+        return {**value, "reason": "GENERATION_FINGERPRINT_MISSING"}
+    if source_observation is None:
+        return {**value, "reason": "SOURCE_UNOBSERVED"}
+    if source_observation.get("outcome") != "NOMINAL":
+        return {
+            **value,
+            "reason": f"SOURCE_OBSERVATION_{source_observation.get('outcome', 'UNKNOWN')}",
+        }
+    if not source_fingerprint:
+        return {**value, "reason": "SOURCE_FINGERPRINT_MISSING"}
+    if generated_fingerprint == source_fingerprint:
+        return {**value, "state": "FRESH", "reason": "FINGERPRINTS_MATCH"}
+    return {**value, "state": "DRIFTED", "reason": "SOURCE_CHANGED"}
 
 
 _OBSERVATION_COLUMNS = (
@@ -245,28 +278,29 @@ def _current_status(cur, *, entity_id: str | None = None, artifact_id: str | Non
     return [dict(zip(keys, row)) for row in cur.fetchall()]
 
 
-def _latest_source_fingerprint(cur, entity_id: str) -> str | None:
+def _latest_source_observation(cur, entity_id: str) -> dict[str, Any] | None:
     """FRESHNESS_CHECK is the ONE authoritative kind for source state: a
     TEST or SOAK_READING carrying an incidental fingerprint must never
     redefine whether generated artifacts appear fresh."""
     cur.execute(
         """
-        SELECT source_fingerprint FROM observe.observations
+        SELECT outcome, source_fingerprint, observed_at FROM observe.observations
          WHERE subject_entity_id = %s AND observation_kind = 'FRESHNESS_CHECK'
-           AND source_fingerprint IS NOT NULL
          ORDER BY observed_at DESC, seq DESC LIMIT 1
         """,
         (entity_id,),
     )
     row = cur.fetchone()
-    return row[0] if row else None
+    return dict(zip(("outcome", "source_fingerprint", "observed_at"), row)) if row else None
 
 
-def _latest_generation(cur, artifact_id: str) -> dict[str, Any] | None:
+def _latest_generation(cur, artifact_id: str, *, successful_only: bool = False) -> dict[str, Any] | None:
+    successful = "AND outcome = 'NOMINAL' AND source_fingerprint IS NOT NULL" if successful_only else ""
     cur.execute(
-        """
+        f"""
         SELECT outcome, source_fingerprint, observed_at FROM observe.observations
          WHERE subject_artifact_id = %s AND observation_kind = 'GENERATION'
+           {successful}
          ORDER BY observed_at DESC, seq DESC LIMIT 1
         """,
         (artifact_id,),
@@ -709,12 +743,16 @@ def entity_status(entity_id: UUID, principal: Principal = Depends(require_contri
             (str(entity_id),),
         )
         artifacts = []
-        source_fingerprint = _latest_source_fingerprint(cur, str(entity_id))
+        source_observation = _latest_source_observation(cur, str(entity_id))
         for artifact_id, artifact_key in cur.fetchall():
             artifacts.append({
                 "artifact_id": artifact_id,
                 "artifact_key": artifact_key,
-                "freshness": derive_freshness(_latest_generation(cur, artifact_id), source_fingerprint),
+                "freshness": derive_freshness(
+                    _latest_generation(cur, artifact_id),
+                    _latest_generation(cur, artifact_id, successful_only=True),
+                    source_observation,
+                ),
             })
     return {
         "entity_id": str(entity_id),
@@ -736,7 +774,8 @@ def artifact_status(artifact_id: UUID, principal: Principal = Depends(require_co
         status = _current_status(cur, artifact_id=str(artifact_id))
         freshness = derive_freshness(
             _latest_generation(cur, str(artifact_id)),
-            _latest_source_fingerprint(cur, artifact[1]),
+            _latest_generation(cur, str(artifact_id), successful_only=True),
+            _latest_source_observation(cur, artifact[1]),
         )
     return {
         "artifact_id": str(artifact_id),
