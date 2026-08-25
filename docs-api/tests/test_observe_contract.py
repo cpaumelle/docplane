@@ -122,13 +122,65 @@ def test_observation_requires_exactly_one_subject():
         pass
 
 
+def test_freshness_check_evidence_contract():
+    entity = "11111111-1111-1111-1111-111111111111"
+    artifact = "22222222-2222-2222-2222-222222222222"
+    nominal = ObservationCreate(
+        subject_entity_id=entity,
+        observation_kind="FRESHNESS_CHECK",
+        outcome="NOMINAL",
+        source_fingerprint="ab12cd34",
+    )
+    assert nominal.source_fingerprint == "ab12cd34"
+    for invalid in (
+        {"subject_entity_id": entity, "observation_kind": "FRESHNESS_CHECK", "outcome": "NOMINAL"},
+        {"subject_artifact_id": artifact, "observation_kind": "FRESHNESS_CHECK", "source_fingerprint": "ab12cd34"},
+        {"subject_entity_id": entity, "observation_kind": "FRESHNESS_CHECK", "outcome": "FAILED", "source_fingerprint": "ab12cd34"},
+        {"subject_entity_id": entity, "observation_kind": "FRESHNESS_CHECK", "outcome": "UNKNOWN", "source_fingerprint": "ab12cd34"},
+        {"subject_entity_id": entity, "observation_kind": "FRESHNESS_CHECK", "outcome": "DEGRADED", "source_fingerprint": "ab12cd34"},
+        {"subject_artifact_id": artifact, "observation_kind": "GENERATION", "outcome": "NOMINAL"},
+    ):
+        try:
+            ObservationCreate(**invalid)
+            raise AssertionError(f"invalid evidence accepted: {invalid}")
+        except ValidationError:
+            pass
+
+
 def test_freshness_is_derived_never_stored():
     now = datetime.now(timezone.utc)
-    assert derive_freshness(None, "ab12cd34")["state"] == "NEVER_GENERATED"
-    assert derive_freshness({"outcome": "FAILED", "source_fingerprint": "ab12cd34", "observed_at": now}, "ab12cd34")["state"] == "FAILED"
-    assert derive_freshness({"outcome": "NOMINAL", "source_fingerprint": "ab12cd34", "observed_at": now}, "ab12cd34")["state"] == "FRESH"
-    assert derive_freshness({"outcome": "NOMINAL", "source_fingerprint": "ab12cd34", "observed_at": now}, "ffffffff")["state"] == "DRIFTED"
-    assert derive_freshness({"outcome": "NOMINAL", "source_fingerprint": "ab12cd34", "observed_at": now}, None)["state"] == "UNKNOWN"
+    generated = {"outcome": "NOMINAL", "source_fingerprint": "ab12cd34", "observed_at": now}
+    failed_generation = {"outcome": "FAILED", "source_fingerprint": "ab12cd34", "observed_at": now}
+
+    never = derive_freshness(failed_generation, None, None)
+    assert never["state"] == "NEVER_GENERATED"
+    assert never["generation"]["outcome"] == "FAILED"
+
+    failed = derive_freshness(failed_generation, generated, None)
+    assert failed["state"] == "FAILED"
+    assert failed["generated_fingerprint"] == "ab12cd34"
+    assert failed["reason"] == "LATEST_GENERATION_FAILED"
+
+    unobserved = derive_freshness(generated, generated, None)
+    assert unobserved["state"] == "UNKNOWN"
+    assert unobserved["reason"] == "SOURCE_UNOBSERVED"
+
+    for outcome in ("FAILED", "UNKNOWN", "DEGRADED"):
+        source = {"outcome": outcome, "source_fingerprint": None, "observed_at": now}
+        unknown = derive_freshness(generated, generated, source)
+        assert unknown["state"] == "UNKNOWN"
+        assert unknown["source_fingerprint"] is None
+        assert unknown["source_observation"]["outcome"] == outcome
+
+    matching = {"outcome": "NOMINAL", "source_fingerprint": "ab12cd34", "observed_at": now}
+    fresh = derive_freshness(generated, generated, matching)
+    assert fresh["state"] == "FRESH"
+    assert fresh["reason"] == "FINGERPRINTS_MATCH"
+
+    changed = {"outcome": "NOMINAL", "source_fingerprint": "ffffffff", "observed_at": now}
+    drifted = derive_freshness(generated, generated, changed)
+    assert drifted["state"] == "DRIFTED"
+    assert drifted["reason"] == "SOURCE_CHANGED"
     # The invariant in storage terms: no freshness/drift column exists — the
     # only occurrence of the word is the FRESHNESS_CHECK observation kind.
     stripped = OBSERVE_SQL.lower().replace("freshness_check", "")
