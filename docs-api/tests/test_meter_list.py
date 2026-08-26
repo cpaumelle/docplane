@@ -236,7 +236,10 @@ def test_rule_attributes_default_to_production_monitoring_source_identity():
 def test_idempotency_keys_are_versioned_and_fingerprint_bound():
     fp = "ab" * 32
     key = meter_list._key(fp, "operation", "observe/meter-list/example.prometheus/backup-alerts.md")
-    assert key.startswith(f"meter-list-{meter_list.GENERATOR_VERSION}-{fp[:16]}-operation-")
+    assert key.startswith(
+        f"meter-list-{meter_list.GENERATOR_VERSION}-pc{meter_list.PROJECTION_CONTRACT_VERSION}-"
+        f"{fp[:16]}-operation-"
+    )
     assert len(key) <= 256
     assert key != meter_list._key("cd" * 32, "operation", "observe/meter-list/example.prometheus/backup-alerts.md")
 
@@ -456,55 +459,228 @@ def test_mass_retirement_is_bounded_and_operator_overridable(tmp_path):
     assert _reconcile(fake, tmp_path, shrunk, allow_mass_retirement=True)["retired"] == 6
 
 
-def test_artifact_succession_triggers_on_target_or_contract_change():
-    artifact = {"target_page_paths": ["a.md", "b.md"], "generator_version": meter_list.GENERATOR_VERSION}
-    assert not meter_list.artifact_needs_succession(artifact, ["b.md", "a.md"])
-    assert meter_list.artifact_needs_succession(artifact, ["a.md"])
-    assert meter_list.artifact_needs_succession(artifact, ["a.md", "b.md", "c.md"])
-    assert meter_list.artifact_needs_succession({**artifact, "generator_version": "1.0.0"}, ["a.md", "b.md"])
+def test_membership_and_software_version_reconcile_without_succession():
+    artifact = {
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION,
+        "target_page_paths": ["a.md", "b.md"],
+        "generator_version": "older-build",
+    }
+    assert not meter_list.artifact_needs_succession(artifact)
+    assert meter_list.artifact_needs_reconciliation(artifact, ["a.md", "b.md"])
+    assert meter_list.artifact_needs_reconciliation(artifact, ["a.md"])
+    assert meter_list.artifact_needs_reconciliation(artifact, ["a.md", "b.md", "c.md"])
+    assert meter_list.artifact_needs_succession(
+        {**artifact, "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION + 1}
+    )
 
 
-def test_artifact_succession_retires_before_generated_pages_are_replaced():
+def _run_changed_main(tmp_path, monkeypatch, *, artifact, page_status=None, previous="stale"):
+    rules_dir = _rules_dir(tmp_path)
+    structure = meter_list.parse_rules(rules_dir)
+    fp = meter_list.fingerprint(structure)
+    pages = meter_list.render_pages("example.prometheus", structure, fp)
+    page_status = page_status or {}
     calls = []
 
     class RecordingClient:
+        def __init__(self, *args):
+            pass
+
         def call(self, method, path, body=None, key=None):
             calls.append((method, path, body, key))
-            return {"status": "RETIRED"}
+            if method == "GET" and path.startswith("/api/v1/pages?path="):
+                requested = path.removeprefix("/api/v1/pages?path=").removesuffix("&status=all")
+                if requested == meter_list.PRESENCE_PATH:
+                    return {"pages": [{"resource_id": "presence", "revision": "presence-r1", "status": "active"}]}
+                status = page_status.get(requested, "active")
+                if status == "missing":
+                    return {"pages": []}
+                return {"pages": [{
+                    "resource_id": f"resource-{requested}", "revision": "revision-1", "status": status,
+                }]}
+            if method == "POST" and path == "/api/v1/changes":
+                return {"change_id": "change-1"}
+            if method == "POST" and path.endswith("/publish"):
+                return {"publication_receipt": {"deployment": {"status": "COMPLETED"}}}
+            if method == "PUT" and path.endswith("/targets"):
+                return {"artifact": {**artifact, "generator_version": meter_list.GENERATOR_VERSION}}
+            return {"recorded": [{"replayed": False}]}
 
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(meter_list, "Client", RecordingClient)
+    monkeypatch.setattr(
+        meter_list,
+        "reconcile_entities",
+        lambda *args, **kwargs: {
+            "source_id": "source", "created": 0, "updated": 0, "retired": 0,
+            "reactivated": 0, "links_added": 0, "links_updated": 0,
+            "links_removed": 0, "warnings": [],
+        },
+    )
+    monkeypatch.setattr(sc, "current_artifact", lambda *args: artifact)
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *args: previous)
+    monkeypatch.setenv("METER_RULES_DIR", str(rules_dir))
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_METER_LIST_TOKEN", "not-printed")
+    monkeypatch.setenv("METER_SOURCE_KEY", "example.prometheus")
+
+    assert meter_list.main([]) == 0
+    return fp, pages, calls
+
+
+def test_changed_generation_uses_in_place_plan_and_preallocates_new_target(tmp_path, monkeypatch):
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    fp = meter_list.fingerprint(structure)
+    pages = meter_list.render_pages("example.prometheus", structure, fp)
+    desired_paths = sorted(page["path"] for page in pages)
+    new_path = desired_paths[-1]
     artifact = {
-        "artifact_id": "artifact-1",
-        "version": 4,
+        "artifact_id": "artifact-1", "artifact_key": "meter-list-example.prometheus",
+        "source_entity_id": "source", "version": 7,
         "generator_version": meter_list.GENERATOR_VERSION,
-        "target_page_paths": ["old.md"],
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION,
+        "redaction_policy": "canonical", "target_page_paths": desired_paths[:-1],
     }
-    fp = "ab" * 32
 
-    assert meter_list.retire_artifact_for_succession(RecordingClient(), artifact, ["new.md"], fp) is None
-    assert calls == [
-        (
-            "POST",
-            "/api/v1/model/artifacts/artifact-1/retire",
-            {"expected_version": 4, "note": "superseded by rule set abababababababab"},
-            meter_list._key(fp, "artifact-retire"),
-        )
+    _, _, calls = _run_changed_main(
+        tmp_path, monkeypatch, artifact=artifact, page_status={new_path: "missing"},
+    )
+    change = next(body for method, path, body, _ in calls if method == "POST" and path == "/api/v1/changes")
+    plan = change["generated_ownership_plan"]
+    assert plan["mode"] == "IN_PLACE"
+    assert plan["artifact_id"] == "artifact-1"
+    assert plan["expected_version"] == 7
+    assert len(plan["target_page_resource_ids"]) == len(desired_paths)
+    new_operation = next(
+        body for method, path, body, _ in calls
+        if method == "POST" and path.endswith("/operations")
+        and body["operation_type"] == "CREATE_PAGE"
+        and body["payload"]["path"] == new_path
+    )
+    new_index = plan["target_page_paths"].index(new_path)
+    assert new_operation["payload"]["resource_id"] == plan["target_page_resource_ids"][new_index]
+    assert not any(path.endswith("/retire") for _, path, _, _ in calls)
+    publish_index = next(i for i, call in enumerate(calls) if call[1].endswith("/publish"))
+    observation_index = next(i for i, call in enumerate(calls) if call[1] == "/api/v1/observations")
+    assert observation_index > publish_index
+
+
+def test_content_only_change_uses_in_place_exact_set_without_succession(tmp_path, monkeypatch):
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    fp = meter_list.fingerprint(structure)
+    desired_paths = sorted(page["path"] for page in meter_list.render_pages("example.prometheus", structure, fp))
+    artifact = {
+        "artifact_id": "artifact-1", "artifact_key": "meter-list-example.prometheus",
+        "source_entity_id": "source", "version": 9,
+        "generator_version": meter_list.GENERATOR_VERSION,
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION,
+        "redaction_policy": "canonical", "target_page_paths": desired_paths,
+    }
+
+    _, _, calls = _run_changed_main(tmp_path, monkeypatch, artifact=artifact)
+    change = next(body for method, path, body, _ in calls if method == "POST" and path == "/api/v1/changes")
+    plan = change["generated_ownership_plan"]
+    assert plan["mode"] == "IN_PLACE"
+    assert plan["expected_version"] == 9
+    assert plan["target_page_paths"] == desired_paths
+    assert not any(path.endswith("/retire") or path.endswith("/handoff") for _, path, _, _ in calls)
+
+
+def test_software_attribution_updates_exact_set_without_publication_or_successor(tmp_path, monkeypatch):
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    fp = meter_list.fingerprint(structure)
+    desired_paths = sorted(page["path"] for page in meter_list.render_pages("example.prometheus", structure, fp))
+    artifact = {
+        "artifact_id": "artifact-1", "artifact_key": "meter-list-example.prometheus",
+        "source_entity_id": "source", "version": 11,
+        "generator_version": "older-build",
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION,
+        "redaction_policy": "canonical", "target_page_paths": desired_paths,
+    }
+
+    _, _, calls = _run_changed_main(tmp_path, monkeypatch, artifact=artifact, previous=fp)
+    update = next(call for call in calls if call[0] == "PUT" and call[1].endswith("/targets"))
+    assert update[1] == "/api/v1/model/artifacts/artifact-1/targets"
+    assert update[2]["expected_version"] == 11
+    assert update[2]["generator_version"] == meter_list.GENERATOR_VERSION
+    assert update[2]["target_page_paths"] == desired_paths
+    assert not any(path == "/api/v1/changes" or path.endswith("/retire") for _, path, _, _ in calls)
+    update_index = calls.index(update)
+    observation_index = next(i for i, call in enumerate(calls) if call[1] == "/api/v1/observations")
+    assert observation_index > update_index
+
+
+def test_removed_target_archives_inside_in_place_plan(tmp_path, monkeypatch):
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    fp = meter_list.fingerprint(structure)
+    desired_paths = sorted(page["path"] for page in meter_list.render_pages("example.prometheus", structure, fp))
+    stale_path = "observe/meter-list/example-prometheus/removed-file.md"
+    artifact = {
+        "artifact_id": "artifact-1", "artifact_key": "meter-list-example.prometheus",
+        "source_entity_id": "source", "version": 3,
+        "generator_version": meter_list.GENERATOR_VERSION,
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION,
+        "redaction_policy": "canonical", "target_page_paths": [*desired_paths, stale_path],
+    }
+
+    _, _, calls = _run_changed_main(tmp_path, monkeypatch, artifact=artifact)
+    change = next(body for method, path, body, _ in calls if method == "POST" and path == "/api/v1/changes")
+    assert change["generated_ownership_plan"]["mode"] == "IN_PLACE"
+    assert stale_path not in change["generated_ownership_plan"]["target_page_paths"]
+    archive = next(
+        body for method, path, body, _ in calls
+        if method == "POST" and path.endswith("/operations") and body["operation_type"] == "ARCHIVE_PAGE"
+    )
+    assert archive["page_resource_id"] == f"resource-{stale_path}"
+    assert not any(path.endswith("/retire") for _, path, _, _ in calls)
+
+
+def test_archived_target_is_restored_and_atomically_readopted(tmp_path, monkeypatch):
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    fp = meter_list.fingerprint(structure)
+    desired_paths = sorted(page["path"] for page in meter_list.render_pages("example.prometheus", structure, fp))
+    restored_path = desired_paths[-1]
+    artifact = {
+        "artifact_id": "artifact-1", "artifact_key": "meter-list-example.prometheus",
+        "source_entity_id": "source", "version": 4,
+        "generator_version": meter_list.GENERATOR_VERSION,
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION,
+        "redaction_policy": "canonical", "target_page_paths": desired_paths[:-1],
+    }
+
+    _, _, calls = _run_changed_main(
+        tmp_path, monkeypatch, artifact=artifact, page_status={restored_path: "archived"},
+    )
+    operations = [
+        (body, key) for method, path, body, key in calls
+        if method == "POST" and path.endswith("/operations")
+        and body.get("page_resource_id") == f"resource-{restored_path}"
     ]
+    assert [body["operation_type"] for body, _ in operations] == ["RESTORE_PAGE", "REPLACE_DOCUMENT"]
+    assert operations[0][1] != operations[1][1]
+    plan = next(body for method, path, body, _ in calls if path == "/api/v1/changes")["generated_ownership_plan"]
+    restored_index = plan["target_page_paths"].index(restored_path)
+    assert plan["target_page_resource_ids"][restored_index] == f"resource-{restored_path}"
 
 
-def test_artifact_succession_keeps_matching_declaration():
-    class RefusingClient:
-        def call(self, *args, **kwargs):
-            raise AssertionError("matching artifact must not be retired")
-
+def test_projection_contract_change_selects_successor_plan(tmp_path, monkeypatch):
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    fp = meter_list.fingerprint(structure)
+    desired_paths = sorted(page["path"] for page in meter_list.render_pages("example.prometheus", structure, fp))
     artifact = {
-        "artifact_id": "artifact-1",
-        "version": 4,
+        "artifact_id": "artifact-1", "artifact_key": "meter-list-example.prometheus",
+        "source_entity_id": "source", "version": 5,
         "generator_version": meter_list.GENERATOR_VERSION,
-        "target_page_paths": ["a.md", "b.md"],
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION + 1,
+        "redaction_policy": "canonical", "target_page_paths": desired_paths,
     }
-    assert meter_list.retire_artifact_for_succession(
-        RefusingClient(), artifact, ["b.md", "a.md"], "cd" * 32
-    ) is artifact
+    _, _, calls = _run_changed_main(tmp_path, monkeypatch, artifact=artifact)
+    plan = next(body for method, path, body, _ in calls if path == "/api/v1/changes")["generated_ownership_plan"]
+    assert plan["mode"] == "SUCCESSOR"
+    assert plan["predecessor_id"] == "artifact-1"
+    assert plan["successor"]["projection_contract_version"] == meter_list.PROJECTION_CONTRACT_VERSION
+    assert not any(path.endswith("/retire") for _, path, _, _ in calls)
 
 
 def test_scheduled_unchanged_run_does_not_write_work():
