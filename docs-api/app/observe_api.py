@@ -33,6 +33,10 @@ _MAX_FUTURE_SKEW = timedelta(minutes=5)
 router = APIRouter(tags=["observe-v1"])
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _json(value: Any) -> psycopg2.extras.Json:
     return psycopg2.extras.Json(value, dumps=lambda item: json.dumps(item, sort_keys=True, default=str))
 
@@ -47,6 +51,10 @@ def derive_freshness(
     latest_generation_attempt: dict[str, Any] | None,
     latest_successful_generation: dict[str, Any] | None,
     latest_source_observation: dict[str, Any] | None,
+    *,
+    latest_successful_source_observation: dict[str, Any] | None = None,
+    execution_contract: dict[str, Any] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Pure derivation: never stored, computed on read.
 
@@ -60,6 +68,11 @@ def derive_freshness(
     source_fingerprint = None
     if source_observation and source_observation.get("outcome") == "NOMINAL":
         source_fingerprint = source_observation.get("source_fingerprint")
+    successful_source = (
+        dict(latest_successful_source_observation)
+        if latest_successful_source_observation
+        else (dict(source_observation) if source_observation and source_observation.get("outcome") == "NOMINAL" else None)
+    )
     generated_fingerprint = (
         latest_successful_generation.get("source_fingerprint")
         if latest_successful_generation
@@ -74,7 +87,17 @@ def derive_freshness(
         "observed_at": generation.get("observed_at") if generation else None,
         "generation": generation,
         "source_observation": source_observation,
+        "last_successful_source_observation": successful_source,
+        "projection_correspondence": "UNKNOWN",
+        "source_observation_status": "ABSENT" if source_observation is None else "UNUSABLE",
+        "observation_expires_at": None,
     }
+
+    historical_source_fingerprint = successful_source.get("source_fingerprint") if successful_source else None
+    if generated_fingerprint and historical_source_fingerprint:
+        value["projection_correspondence"] = (
+            "MATCH" if generated_fingerprint == historical_source_fingerprint else "MISMATCH"
+        )
 
     if latest_successful_generation is None:
         return {**value, "state": "NEVER_GENERATED", "reason": "NO_SUCCESSFUL_GENERATION"}
@@ -93,9 +116,29 @@ def derive_freshness(
         }
     if not source_fingerprint:
         return {**value, "reason": "SOURCE_FINGERPRINT_MISSING"}
-    if generated_fingerprint == source_fingerprint:
-        return {**value, "state": "FRESH", "reason": "FINGERPRINTS_MATCH"}
-    return {**value, "state": "DRIFTED", "reason": "SOURCE_CHANGED"}
+    value["projection_correspondence"] = (
+        "MATCH" if generated_fingerprint == source_fingerprint else "MISMATCH"
+    )
+
+    expired = False
+    if execution_contract is None:
+        value["source_observation_status"] = "UNBOUNDED_TRANSITIONAL"
+    else:
+        observed_at = source_observation.get("observed_at")
+        if observed_at is None:
+            return {**value, "reason": "SOURCE_OBSERVATION_TIME_MISSING"}
+        expires_at = observed_at + timedelta(seconds=execution_contract["observation_max_age_seconds"])
+        value["observation_expires_at"] = expires_at
+        expired = (now or _utcnow()) > expires_at
+        value["source_observation_status"] = "EXPIRED" if expired else "CURRENT"
+
+    # Expiry withdraws a positive FRESH assertion, but time cannot erase a
+    # fingerprint mismatch that already proved unresolved projection drift.
+    if value["projection_correspondence"] == "MISMATCH":
+        return {**value, "state": "DRIFTED", "reason": "SOURCE_CHANGED"}
+    if expired:
+        return {**value, "reason": "SOURCE_OBSERVATION_EXPIRED"}
+    return {**value, "state": "FRESH", "reason": "FINGERPRINTS_MATCH"}
 
 
 _OBSERVATION_COLUMNS = (
@@ -278,7 +321,7 @@ def _current_status(cur, *, entity_id: str | None = None, artifact_id: str | Non
     return [dict(zip(keys, row)) for row in cur.fetchall()]
 
 
-def _latest_source_observation(cur, entity_id: str) -> dict[str, Any] | None:
+def _latest_source_observation(cur, entity_id: str, *, successful_only: bool = False) -> dict[str, Any] | None:
     """FRESHNESS_CHECK is the ONE authoritative kind for source state: a
     TEST or SOAK_READING carrying an incidental fingerprint must never
     redefine whether generated artifacts appear fresh."""
@@ -286,12 +329,45 @@ def _latest_source_observation(cur, entity_id: str) -> dict[str, Any] | None:
         """
         SELECT outcome, source_fingerprint, observed_at FROM observe.observations
          WHERE subject_entity_id = %s AND observation_kind = 'FRESHNESS_CHECK'
+           {success_filter}
          ORDER BY observed_at DESC, seq DESC LIMIT 1
-        """,
+        """.format(success_filter="AND outcome = 'NOMINAL'" if successful_only else ""),
         (entity_id,),
     )
     row = cur.fetchone()
     return dict(zip(("outcome", "source_fingerprint", "observed_at"), row)) if row else None
+
+
+def _artifact_execution_contract(cur, artifact_id: str) -> tuple[dict[str, Any] | None, str]:
+    cur.execute(
+        """
+        SELECT c.contract_schema_version, c.observation_owner_principal_id::text,
+               c.observation_trigger, c.observation_max_age_seconds,
+               c.generation_owner_principal_id::text, c.generation_trigger,
+               c.exclusion_domain, c.created_by::text, c.updated_by::text,
+               c.created_at, c.updated_at, observation_owner.status,
+               generation_owner.status
+          FROM model.generated_artifact_execution_contracts c
+          JOIN docplane.principals observation_owner
+            ON observation_owner.principal_id = c.observation_owner_principal_id
+          JOIN docplane.principals generation_owner
+            ON generation_owner.principal_id = c.generation_owner_principal_id
+         WHERE c.artifact_id = %s
+        """,
+        (artifact_id,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None, "UNDECLARED_TRANSITIONAL"
+    keys = (
+        "contract_schema_version", "observation_owner_principal_id",
+        "observation_trigger", "observation_max_age_seconds",
+        "generation_owner_principal_id", "generation_trigger",
+        "exclusion_domain", "created_by", "updated_by", "created_at", "updated_at",
+    )
+    return dict(zip(keys, row[:len(keys)])), (
+        "DECLARED" if row[-2:] == ("ACTIVE", "ACTIVE") else "OWNER_INACTIVE"
+    )
 
 
 def _latest_generation(cur, artifact_id: str, *, successful_only: bool = False) -> dict[str, Any] | None:
@@ -745,14 +821,24 @@ def entity_status(entity_id: UUID, principal: Principal = Depends(require_contri
         artifact_rows = cur.fetchall()
         artifacts = []
         source_observation = _latest_source_observation(cur, str(entity_id))
+        successful_source_observation = _latest_source_observation(
+            cur, str(entity_id), successful_only=True,
+        )
         for artifact_id, artifact_key in artifact_rows:
+            execution_contract, execution_contract_status = _artifact_execution_contract(
+                cur, artifact_id,
+            )
             artifacts.append({
                 "artifact_id": artifact_id,
                 "artifact_key": artifact_key,
+                "execution_contract": execution_contract,
+                "execution_contract_status": execution_contract_status,
                 "freshness": derive_freshness(
                     _latest_generation(cur, artifact_id),
                     _latest_generation(cur, artifact_id, successful_only=True),
                     source_observation,
+                    latest_successful_source_observation=successful_source_observation,
+                    execution_contract=execution_contract,
                 ),
             })
     return {
@@ -773,15 +859,24 @@ def artifact_status(artifact_id: UUID, principal: Principal = Depends(require_co
         if artifact is None:
             raise HTTPException(status_code=404, detail={"code": "MODEL_ARTIFACT_NOT_FOUND"})
         status = _current_status(cur, artifact_id=str(artifact_id))
+        execution_contract, execution_contract_status = _artifact_execution_contract(
+            cur, str(artifact_id),
+        )
         freshness = derive_freshness(
             _latest_generation(cur, str(artifact_id)),
             _latest_generation(cur, str(artifact_id), successful_only=True),
             _latest_source_observation(cur, artifact[1]),
+            latest_successful_source_observation=_latest_source_observation(
+                cur, artifact[1], successful_only=True,
+            ),
+            execution_contract=execution_contract,
         )
     return {
         "artifact_id": str(artifact_id),
         "artifact_key": artifact[0],
         "source_entity_id": artifact[1],
+        "execution_contract": execution_contract,
+        "execution_contract_status": execution_contract_status,
         "current_status": status,
         "freshness": freshness,
     }

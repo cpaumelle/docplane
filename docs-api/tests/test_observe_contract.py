@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 import sys
 import typing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -186,6 +186,72 @@ def test_freshness_is_derived_never_stored():
     stripped = OBSERVE_SQL.lower().replace("freshness_check", "")
     assert "freshness" not in stripped
     assert "drift" not in stripped
+
+
+def test_execution_contract_expiry_is_orthogonal_to_projection_correspondence():
+    observed = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    generated = {"outcome": "NOMINAL", "source_fingerprint": "aaaaaaaa", "observed_at": observed}
+    contract = {"observation_max_age_seconds": 300}
+
+    matching = {"outcome": "NOMINAL", "source_fingerprint": "aaaaaaaa", "observed_at": observed}
+    current = derive_freshness(
+        generated, generated, matching, execution_contract=contract,
+        now=observed + timedelta(seconds=299),
+    )
+    assert (current["state"], current["source_observation_status"]) == ("FRESH", "CURRENT")
+    assert current["projection_correspondence"] == "MATCH"
+
+    boundary = derive_freshness(
+        generated, generated, matching, execution_contract=contract,
+        now=observed + timedelta(seconds=300),
+    )
+    assert (boundary["state"], boundary["source_observation_status"]) == ("FRESH", "CURRENT")
+
+    expired_match = derive_freshness(
+        generated, generated, matching, execution_contract=contract,
+        now=observed + timedelta(seconds=301),
+    )
+    assert (expired_match["state"], expired_match["reason"]) == ("UNKNOWN", "SOURCE_OBSERVATION_EXPIRED")
+    assert expired_match["source_observation_status"] == "EXPIRED"
+    assert expired_match["projection_correspondence"] == "MATCH"
+
+    mismatching = {"outcome": "NOMINAL", "source_fingerprint": "bbbbbbbb", "observed_at": observed}
+    expired_drift = derive_freshness(
+        generated, generated, mismatching, execution_contract=contract,
+        now=observed + timedelta(seconds=301),
+    )
+    assert (expired_drift["state"], expired_drift["reason"]) == ("DRIFTED", "SOURCE_CHANGED")
+    assert expired_drift["source_observation_status"] == "EXPIRED"
+    assert expired_drift["projection_correspondence"] == "MISMATCH"
+    assert expired_drift["observation_expires_at"] == observed + timedelta(seconds=300)
+
+
+def test_latest_failed_probe_suppresses_current_claim_but_keeps_historical_mismatch():
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    generated = {"outcome": "NOMINAL", "source_fingerprint": "aaaaaaaa", "observed_at": now}
+    historical = {"outcome": "NOMINAL", "source_fingerprint": "bbbbbbbb", "observed_at": now - timedelta(minutes=1)}
+    for outcome in ("FAILED", "UNKNOWN", "DEGRADED"):
+        latest = {"outcome": outcome, "source_fingerprint": None, "observed_at": now}
+        value = derive_freshness(
+            generated, generated, latest,
+            latest_successful_source_observation=historical,
+            execution_contract={"observation_max_age_seconds": 300}, now=now,
+        )
+        assert value["state"] == "UNKNOWN"
+        assert value["reason"] == f"SOURCE_OBSERVATION_{outcome}"
+        assert value["source_observation_status"] == "UNUSABLE"
+        assert value["projection_correspondence"] == "MISMATCH"
+        assert value["last_successful_source_observation"] == historical
+
+
+def test_newer_successful_observation_resolves_prior_mismatch_and_legacy_is_unbounded():
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    generated = {"outcome": "NOMINAL", "source_fingerprint": "aaaaaaaa", "observed_at": now}
+    latest = {"outcome": "NOMINAL", "source_fingerprint": "aaaaaaaa", "observed_at": now}
+    value = derive_freshness(generated, generated, latest, now=now + timedelta(days=365))
+    assert (value["state"], value["reason"]) == ("FRESH", "FINGERPRINTS_MATCH")
+    assert value["source_observation_status"] == "UNBOUNDED_TRANSITIONAL"
+    assert value["observation_expires_at"] is None
 
 
 def test_append_only_is_a_database_invariant():

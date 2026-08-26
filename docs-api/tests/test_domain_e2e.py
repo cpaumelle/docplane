@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import psycopg2.errors
 
 if not os.environ.get("DB_HOST"):
     pytest.skip("requires a PostgreSQL database (set DB_HOST etc.)", allow_module_level=True)
@@ -27,6 +28,7 @@ os.environ.setdefault("DOCPLANE_BOOTSTRAP_TOKEN", "e2e-bootstrap")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.application import app  # noqa: E402
+from app import observe_api  # noqa: E402
 from app.db import get_conn  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -159,6 +161,8 @@ def test_observe_ingest_projection_freshness_and_safety():
 
     artifact = client.post("/api/v1/model/artifacts", json={"artifact_key": f"e2e-cat-{RUN}", "generator_name": "tbls", "generator_version": "1", "source_entity_id": entity_id}, headers={**AUTOMATION, "Idempotency-Key": _key()})
     assert artifact.status_code == 201, artifact.text
+    assert artifact.json()["execution_contract"] is None
+    assert artifact.json()["execution_contract_status"] == "UNDECLARED_TRANSITIONAL"
     artifact_id = artifact.json()["artifact_id"]
     denied = client.post("/api/v1/model/artifacts", json={"artifact_key": f"e2e-cat2-{RUN}", "generator_name": "tbls", "generator_version": "1", "source_entity_id": entity_id}, headers={**AGENT, "Idempotency-Key": _key()})
     assert denied.status_code == 422 and denied.json()["detail"]["code"] == "MODEL_ARTIFACT_REQUIRES_AUTOMATION"
@@ -242,6 +246,152 @@ def test_observe_ingest_projection_freshness_and_safety():
     secret = {"observations": [{"subject_entity_id": entity_id, "observation_kind": "TEST", "payload": {"api_key": "not-a-placeholder"}}]}
     rejected = client.post("/api/v1/observations", json=secret, headers={**AGENT, "Idempotency-Key": _key()})
     assert rejected.status_code == 422
+
+
+def test_execution_contract_api_expiry_drift_and_mutation_isolation(monkeypatch):
+    source = client.post(
+        "/api/v1/model/entities",
+        json={"entity_kind": "SYSTEM", "entity_key": f"e2e-contract-{RUN}", "display_name": "E2E contract source"},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert source.status_code == 201, source.text
+    source_id = source.json()["entity_id"]
+    contract = {
+        "observation_owner_principal_id": AUTOMATION_ID,
+        "observation_trigger": "MANUAL",
+        "observation_max_age_seconds": 300,
+        "generation_owner_principal_id": AUTOMATION_ID,
+        "generation_trigger": "MANUAL",
+        "exclusion_domain": f"e2e-contract-{RUN}",
+    }
+    declaration_key = _key()
+    declaration_body = {
+        "artifact_key": f"e2e-contract-{RUN}", "generator_name": "e2e-contract",
+        "generator_version": "1", "source_entity_id": source_id,
+        "execution_contract": contract,
+    }
+    artifact = client.post(
+        "/api/v1/model/artifacts", json=declaration_body,
+        headers={**AUTOMATION, "Idempotency-Key": declaration_key},
+    )
+    assert artifact.status_code == 201, artifact.text
+    artifact_id = artifact.json()["artifact_id"]
+    assert artifact.json()["execution_contract_status"] == "DECLARED"
+    with get_conn() as conn:
+        cur = conn.cursor()
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            cur.execute(
+                "UPDATE model.generated_artifact_execution_contracts SET observation_trigger = 'CRON' WHERE artifact_id = %s",
+                (artifact_id,),
+            )
+        conn.rollback()
+    replay = client.post(
+        "/api/v1/model/artifacts", json=declaration_body,
+        headers={**AUTOMATION, "Idempotency-Key": declaration_key},
+    )
+    assert replay.json() == artifact.json()
+
+    invalid_owner = client.post(
+        "/api/v1/model/artifacts",
+        json={**declaration_body, "artifact_key": f"e2e-invalid-owner-{RUN}",
+              "execution_contract": {**contract, "observation_owner_principal_id": AGENT_ID}},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert invalid_owner.status_code == 422
+    assert invalid_owner.json()["detail"]["code"] == "EXECUTION_OWNER_NOT_ACTIVE_AUTOMATION"
+
+    observed = datetime.now(timezone.utc) - timedelta(hours=1)
+    observations = client.post(
+        "/api/v1/observations",
+        json={"observations": [
+            {"subject_artifact_id": artifact_id, "observation_kind": "GENERATION",
+             "source_fingerprint": "aaaaaaaa", "observed_at": observed.isoformat()},
+            {"subject_entity_id": source_id, "observation_kind": "FRESHNESS_CHECK",
+             "source_fingerprint": "aaaaaaaa", "observed_at": observed.isoformat()},
+        ]},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert observations.status_code == 201, observations.text
+    monkeypatch.setattr(observe_api, "_utcnow", lambda: observed + timedelta(seconds=300))
+    status = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION).json()
+    assert (status["freshness"]["state"], status["freshness"]["source_observation_status"]) == ("FRESH", "CURRENT")
+    assert status["execution_contract_status"] == "DECLARED"
+
+    monkeypatch.setattr(observe_api, "_utcnow", lambda: observed + timedelta(seconds=301))
+    expired = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION).json()
+    assert (expired["freshness"]["state"], expired["freshness"]["reason"]) == ("UNKNOWN", "SOURCE_OBSERVATION_EXPIRED")
+
+    generation_b = client.post(
+        "/api/v1/observations",
+        json={"observations": [{"subject_artifact_id": artifact_id,
+            "observation_kind": "GENERATION", "source_fingerprint": "bbbbbbbb",
+            "observed_at": (observed + timedelta(seconds=1)).isoformat()}]},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert generation_b.status_code == 201, generation_b.text
+    drift = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION).json()["freshness"]
+    assert (drift["state"], drift["reason"]) == ("DRIFTED", "SOURCE_CHANGED")
+    assert (drift["projection_correspondence"], drift["source_observation_status"]) == ("MISMATCH", "EXPIRED")
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM model.artifact_targets WHERE artifact_id = %s", (artifact_id,))
+        targets_before = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM observe.observations")
+        observations_before = cur.fetchone()[0]
+        cur.execute("SELECT count(*) FROM docs.pages")
+        pages_before = cur.fetchone()[0]
+
+    update_key = _key()
+    update_body = {**contract, "expected_version": 1, "observation_max_age_seconds": 600}
+    update = client.put(
+        f"/api/v1/model/artifacts/{artifact_id}/execution-contract", json=update_body,
+        headers={**AUTOMATION, "Idempotency-Key": update_key},
+    )
+    assert update.status_code == 200, update.text
+    assert update.json()["version"] == 2
+    assert update.json()["execution_contract"]["observation_max_age_seconds"] == 600
+    exact_replay = client.put(
+        f"/api/v1/model/artifacts/{artifact_id}/execution-contract", json=update_body,
+        headers={**AUTOMATION, "Idempotency-Key": update_key},
+    )
+    assert exact_replay.json() == update.json()
+    conflict = client.put(
+        f"/api/v1/model/artifacts/{artifact_id}/execution-contract",
+        json={**update_body, "observation_max_age_seconds": 601},
+        headers={**AUTOMATION, "Idempotency-Key": update_key},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+    read = client.get(f"/api/v1/model/artifacts/{artifact_id}", headers=AUTOMATION)
+    assert read.status_code == 200
+    assert read.json()["execution_contract"]["observation_max_age_seconds"] == 600
+    entity_status = client.get(f"/api/v1/model/entities/{source_id}/status", headers=AUTOMATION).json()
+    projected = next(item for item in entity_status["generated_artifacts"] if item["artifact_id"] == artifact_id)
+    artifact_status = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AUTOMATION).json()
+    assert projected["freshness"] == artifact_status["freshness"]
+    assert projected["execution_contract"] == artifact_status["execution_contract"]
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM model.artifact_targets WHERE artifact_id = %s", (artifact_id,))
+        assert cur.fetchone()[0] == targets_before
+        cur.execute("SELECT count(*) FROM observe.observations")
+        assert cur.fetchone()[0] == observations_before
+        cur.execute("SELECT count(*) FROM docs.pages")
+        assert cur.fetchone()[0] == pages_before
+        cur.execute("UPDATE docplane.principals SET status = 'SUSPENDED' WHERE principal_id = %s", (AUTOMATION_ID,))
+        conn.commit()
+    try:
+        inactive = client.get(f"/api/v1/model/artifacts/{artifact_id}/status", headers=AGENT).json()
+        assert inactive["execution_contract_status"] == "OWNER_INACTIVE"
+        assert inactive["freshness"]["state"] == artifact_status["freshness"]["state"]
+    finally:
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE docplane.principals SET status = 'ACTIVE' WHERE principal_id = %s", (AUTOMATION_ID,))
+            conn.commit()
 
 
 def test_entity_status_preserves_all_artifacts_during_freshness_lookup():

@@ -19,6 +19,8 @@ from app.model_contracts import CARD_CONTRACTS, checklist_errors, contracts_docu
 from app.model_models import (
     ArtifactDeclare,
     ArtifactCustodyReassign,
+    ArtifactExecutionContract,
+    ArtifactExecutionContractUpdate,
     ArtifactRetire,
     EntityCreate,
     EntityLinkCreate,
@@ -470,6 +472,108 @@ def _artifact(row) -> dict[str, Any]:
     return value
 
 
+_EXECUTION_CONTRACT_COLUMNS = (
+    "contract_schema_version", "observation_owner_principal_id",
+    "observation_trigger", "observation_max_age_seconds",
+    "generation_owner_principal_id", "generation_trigger",
+    "exclusion_domain", "created_by", "updated_by", "created_at", "updated_at",
+)
+
+
+def _execution_contract(conn, artifact_id: str) -> tuple[dict[str, Any] | None, str]:
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT c.contract_schema_version, c.observation_owner_principal_id,
+               c.observation_trigger, c.observation_max_age_seconds,
+               c.generation_owner_principal_id, c.generation_trigger,
+               c.exclusion_domain, c.created_by, c.updated_by,
+               c.created_at, c.updated_at, observation_owner.status,
+               generation_owner.status
+          FROM model.generated_artifact_execution_contracts c
+          JOIN docplane.principals observation_owner
+            ON observation_owner.principal_id = c.observation_owner_principal_id
+          JOIN docplane.principals generation_owner
+            ON generation_owner.principal_id = c.generation_owner_principal_id
+         WHERE c.artifact_id = %s
+        """,
+        (artifact_id,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None, "UNDECLARED_TRANSITIONAL"
+    value = dict(zip(_EXECUTION_CONTRACT_COLUMNS, row[:len(_EXECUTION_CONTRACT_COLUMNS)]))
+    for key in (
+        "observation_owner_principal_id", "generation_owner_principal_id",
+        "created_by", "updated_by",
+    ):
+        value[key] = str(value[key])
+    health = "DECLARED" if row[-2:] == ("ACTIVE", "ACTIVE") else "OWNER_INACTIVE"
+    return value, health
+
+
+def _artifact_with_contract(conn, row) -> dict[str, Any]:
+    value = _artifact(row)
+    contract, status = _execution_contract(conn, value["artifact_id"])
+    value["execution_contract"] = contract
+    value["execution_contract_status"] = status
+    return value
+
+
+def _validate_execution_contract_owners(conn, contract: ArtifactExecutionContract) -> None:
+    owner_ids = {
+        str(contract.observation_owner_principal_id),
+        str(contract.generation_owner_principal_id),
+    }
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT principal_id::text, principal_kind, status FROM docplane.principals WHERE principal_id = ANY(%s::uuid[])",
+        (list(owner_ids),),
+    )
+    owners = {row[0]: row[1:] for row in cur.fetchall()}
+    for owner_id in sorted(owner_ids):
+        if owner_id not in owners:
+            raise HTTPException(status_code=404, detail={"code": "EXECUTION_OWNER_NOT_FOUND", "principal_id": owner_id})
+        if owners[owner_id] != ("AUTOMATION", "ACTIVE"):
+            raise HTTPException(status_code=422, detail={
+                "code": "EXECUTION_OWNER_NOT_ACTIVE_AUTOMATION",
+                "principal_id": owner_id,
+                "principal_kind": owners[owner_id][0],
+                "status": owners[owner_id][1],
+            })
+
+
+def _store_execution_contract(conn, artifact_id: str, contract: ArtifactExecutionContract, principal_id: str) -> None:
+    _validate_execution_contract_owners(conn, contract)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO model.generated_artifact_execution_contracts
+            (artifact_id, contract_schema_version,
+             observation_owner_principal_id, observation_trigger,
+             observation_max_age_seconds, generation_owner_principal_id,
+             generation_trigger, exclusion_domain, created_by, updated_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (artifact_id) DO UPDATE SET
+            contract_schema_version = EXCLUDED.contract_schema_version,
+            observation_owner_principal_id = EXCLUDED.observation_owner_principal_id,
+            observation_trigger = EXCLUDED.observation_trigger,
+            observation_max_age_seconds = EXCLUDED.observation_max_age_seconds,
+            generation_owner_principal_id = EXCLUDED.generation_owner_principal_id,
+            generation_trigger = EXCLUDED.generation_trigger,
+            exclusion_domain = EXCLUDED.exclusion_domain,
+            updated_by = EXCLUDED.updated_by
+        """,
+        (
+            artifact_id, contract.contract_schema_version,
+            str(contract.observation_owner_principal_id), contract.observation_trigger,
+            contract.observation_max_age_seconds,
+            str(contract.generation_owner_principal_id), contract.generation_trigger,
+            contract.exclusion_domain, principal_id, principal_id,
+        ),
+    )
+
+
 @router.get("/api/v1/model/artifacts")
 def list_artifacts(
     status: str = Query(default="DECLARED"),
@@ -486,8 +590,19 @@ def list_artifacts(
         total = int(cur.fetchone()[0])
         cur.execute(_artifact_select() + predicate + " ORDER BY artifact_key LIMIT %s", [*params, limit])
         rows = cur.fetchall()
-    values = [_artifact(row) for row in rows]
+        values = [_artifact_with_contract(conn, row) for row in rows]
     return {"artifacts": values, "count": len(values), "total": total, "truncated": len(values) < total}
+
+
+@router.get("/api/v1/model/artifacts/{artifact_id}")
+def get_artifact(artifact_id: UUID, principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail={"code": "MODEL_ARTIFACT_NOT_FOUND"})
+        return _artifact_with_contract(conn, row)
 
 
 @router.post("/api/v1/model/artifacts", status_code=201)
@@ -535,6 +650,10 @@ def declare_artifact(
             conn.rollback()
             raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_KEY_EXISTS"}) from exc
         artifact_id = cur.fetchone()[0]
+        if request.execution_contract is not None:
+            _store_execution_contract(
+                conn, str(artifact_id), request.execution_contract, principal.principal_id,
+            )
         for page_id in request.target_page_resource_ids:
             try:
                 cur.execute(
@@ -554,7 +673,7 @@ def declare_artifact(
                 ([str(item) for item in request.target_page_resource_ids],),
             )
         cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
-        response = _artifact(cur.fetchone())
+        response = jsonable_encoder(_artifact_with_contract(conn, cur.fetchone()))
         append_event(
             conn,
             event_type="MODEL_ARTIFACT_DECLARED",
@@ -567,6 +686,56 @@ def declare_artifact(
             metadata={"artifact_key": request.artifact_key, "generator_name": request.generator_name},
         )
         save_receipt(conn, principal, key, "MODEL_ARTIFACT_DECLARE", str(artifact_id), digest, response)
+        conn.commit()
+        return response
+
+
+@router.put("/api/v1/model/artifacts/{artifact_id}/execution-contract")
+def update_artifact_execution_contract(
+    artifact_id: UUID,
+    request: ArtifactExecutionContractUpdate,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    key = _key(idempotency_key)
+    digest = receipt_digest({
+        "route": "artifact-execution-contract-update", "artifact_id": str(artifact_id),
+        **request.model_dump(mode="json"),
+    })
+    with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_EXECUTION_CONTRACT_UPDATE", digest)
+        if replayed is not None:
+            return replayed
+        cur = conn.cursor()
+        cur.execute(_artifact_select() + " WHERE artifact_id = %s FOR UPDATE", (str(artifact_id),))
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail={"code": "MODEL_ARTIFACT_NOT_FOUND"})
+        artifact = _artifact(row)
+        if artifact["status"] != "DECLARED":
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_NOT_DECLARED", "status": artifact["status"]})
+        if artifact["declared_by"] != str(principal.principal_id):
+            raise HTTPException(status_code=403, detail={"code": "MODEL_ARTIFACT_EXECUTION_CONTRACT_FORBIDDEN"})
+        if artifact["version"] != request.expected_version:
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_VERSION_STALE", "current": artifact["version"]})
+        contract = ArtifactExecutionContract.model_validate(
+            request.model_dump(exclude={"expected_version"})
+        )
+        _store_execution_contract(conn, str(artifact_id), contract, principal.principal_id)
+        cur.execute(
+            "UPDATE model.generated_artifacts SET version = version + 1, updated_at = now() WHERE artifact_id = %s AND version = %s",
+            (str(artifact_id), request.expected_version),
+        )
+        cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
+        response = jsonable_encoder(_artifact_with_contract(conn, cur.fetchone()))
+        append_event(
+            conn, event_type="MODEL_ARTIFACT_EXECUTION_CONTRACT_UPDATED",
+            channel="API", producer_id="docplane-model",
+            idempotency_key=f"MODEL_ARTIFACT_EXECUTION_CONTRACT_UPDATED:{principal.principal_id}:{key}",
+            principal=principal, resource_type="MODEL_ARTIFACT",
+            resource_id=str(artifact_id), metadata={"artifact_key": artifact["artifact_key"]},
+        )
+        save_receipt(conn, principal, key, "MODEL_ARTIFACT_EXECUTION_CONTRACT_UPDATE", str(artifact_id), digest, response)
         conn.commit()
         return response
 
