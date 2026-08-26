@@ -1,0 +1,16 @@
+[Unit]
+Description=Observe the DocPlane Work catalogue source every 10 minutes
+
+[Timer]
+# The 10-minute observer is independent of the one-minute reconciler. A
+# predictable first opportunity follows explicit activation; historical missed
+# observations are not replayed because only a current source reading is useful.
+OnActiveSec=2min
+OnUnitInactiveSec=10min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Persistent=false
+Unit=docplane-work-catalogue-observer.service
+
+[Install]
+WantedBy=timers.target
