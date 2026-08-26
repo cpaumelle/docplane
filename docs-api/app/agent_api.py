@@ -539,8 +539,8 @@ def create_change(
                 """
                 INSERT INTO docs.changes
                     (workspace_key, title, purpose, author_principal_id,
-                     idempotency_key, base_state_identity)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                     idempotency_key, base_state_identity, generated_ownership_plan)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING change_id::text
                 """,
                 (
@@ -550,6 +550,7 @@ def create_change(
                     principal.principal_id,
                     key,
                     request.base_state_identity,
+                    _json(request.generated_ownership_plan.model_dump(mode="json")) if request.generated_ownership_plan else None,
                 ),
             )
             change_id = cur.fetchone()[0]
@@ -570,13 +571,13 @@ def create_change(
             conn.rollback()
             cur = conn.cursor()
             cur.execute(
-                "SELECT change_id::text, title, purpose, workspace_key, base_state_identity FROM docs.changes WHERE author_principal_id = %s AND idempotency_key = %s",
+                "SELECT change_id::text, title, purpose, workspace_key, base_state_identity, generated_ownership_plan FROM docs.changes WHERE author_principal_id = %s AND idempotency_key = %s",
                 (principal.principal_id, key),
             )
             row = cur.fetchone()
             if row is None:
                 raise
-            intended = (request.title.strip(), request.purpose.strip(), request.workspace_key, request.base_state_identity)
+            intended = (request.title.strip(), request.purpose.strip(), request.workspace_key, request.base_state_identity, request.generated_ownership_plan.model_dump(mode="json") if request.generated_ownership_plan else None)
             if tuple(row[1:]) != intended:
                 raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
             change_id = row[0]

@@ -5,6 +5,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+from app.model_models import GeneratedOwnershipPlan
 
 
 class PrincipalCreate(BaseModel):
@@ -39,6 +40,7 @@ class ChangeCreate(BaseModel):
     purpose: str = Field(min_length=1, max_length=4000)
     workspace_key: str = Field(default="reference", pattern=r"^[a-z0-9][a-z0-9_-]{0,62}$")
     base_state_identity: str | None = Field(default=None, max_length=256)
+    generated_ownership_plan: GeneratedOwnershipPlan | None = None
 
 
 _OPERATION_TYPES = {

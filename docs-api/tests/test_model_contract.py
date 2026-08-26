@@ -10,6 +10,7 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
 
@@ -24,6 +25,8 @@ from app.model_models import (
     ArtifactDeclare,
     ArtifactExecutionContract,
     ArtifactExecutionContractUpdate,
+    ArtifactTargetSet,
+    GeneratedOwnershipPlan,
     EntityCreate,
     EntityLinkCreate,
 )
@@ -57,6 +60,8 @@ def test_model_routes_exist_and_prior_surfaces_survive():
         "/api/v1/model/artifacts",
         "/api/v1/model/artifacts/{artifact_id}",
         "/api/v1/model/artifacts/{artifact_id}/execution-contract",
+        "/api/v1/model/artifacts/{artifact_id}/targets",
+        "/api/v1/model/artifacts/{predecessor_id}/handoff",
         "/api/v1/model/artifacts/{artifact_id}/retire",
         "/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody",
     ):
@@ -82,6 +87,46 @@ def test_model_mutations_declare_required_idempotency_header():
     custody = schema["paths"]["/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody"]["post"]
     names = {item["name"] for item in custody.get("parameters", [])}
     assert {"Idempotency-Key", "X-DocPlane-Bootstrap-Token"} <= names
+
+
+def test_projection_contract_and_exact_set_models_are_explicit():
+    artifact = ArtifactDeclare(
+        artifact_key="example", generator_name="example", generator_version="build-7",
+        source_entity_id="00000000-0000-0000-0000-000000000001",
+    )
+    assert artifact.projection_contract_version == 1
+    exact = ArtifactTargetSet(
+        expected_version=1, target_page_resource_ids=[], target_page_paths=[], generator_version="build-8",
+    )
+    assert exact.target_page_resource_ids == []
+    with pytest.raises(ValidationError):
+        ArtifactTargetSet(
+            expected_version=1,
+            target_page_resource_ids=["00000000-0000-0000-0000-000000000002"],
+            target_page_paths=[], generator_version="build-8",
+        )
+
+
+def test_generated_ownership_plan_is_narrow_and_exact_set_bound():
+    plan = GeneratedOwnershipPlan(
+        mode="IN_PLACE", artifact_id="00000000-0000-0000-0000-000000000003",
+        expected_version=2,
+        target_page_resource_ids=["00000000-0000-0000-0000-000000000004"],
+        target_page_paths=["work/index.md"], generator_version="1.0.1",
+    )
+    assert plan.mode == "IN_PLACE"
+    with pytest.raises(ValidationError):
+        GeneratedOwnershipPlan(
+            mode="IN_PLACE", expected_version=2,
+            target_page_resource_ids=[], target_page_paths=[], generator_version="1.0.1",
+        )
+
+
+def test_atomic_ownership_migration_is_additive_and_backfills_contract_v1():
+    sql = (ROOT / "db" / "migrations" / "016_atomic_generated_artifact_ownership.sql").read_text()
+    assert "projection_contract_version integer NOT NULL DEFAULT 1" in sql
+    assert "generated_ownership_plan jsonb" in sql
+    assert "UPDATE docs.pages SET provenance = 'AUTHORED'" not in sql
 
 
 def test_contracts_document_publishes_every_kind_with_schema():

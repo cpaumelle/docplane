@@ -99,6 +99,7 @@ class ArtifactDeclare(BaseModel):
     artifact_key: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,126}$")
     generator_name: str = Field(min_length=1, max_length=200)
     generator_version: str = Field(min_length=1, max_length=100)
+    projection_contract_version: int = Field(default=1, ge=1, le=2147483647)
     config_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{16,64}$")
     source_entity_id: UUID
     redaction_policy: str = Field(default="canonical", min_length=1, max_length=200)
@@ -112,6 +113,79 @@ class ArtifactDeclare(BaseModel):
 class ArtifactRetire(BaseModel):
     expected_version: int = Field(ge=1)
     note: str | None = Field(default=None, max_length=4000)
+
+
+class ArtifactTargetSet(BaseModel):
+    expected_version: int = Field(ge=1)
+    target_page_resource_ids: list[UUID] = Field(max_length=200)
+    target_page_paths: list[str] = Field(max_length=200)
+    generator_version: str = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def exact_set(self):
+        if len(self.target_page_resource_ids) != len(self.target_page_paths):
+            raise ValueError("target IDs and paths must have equal length")
+        if len(set(self.target_page_resource_ids)) != len(self.target_page_resource_ids):
+            raise ValueError("target IDs must be unique")
+        if len(set(self.target_page_paths)) != len(self.target_page_paths):
+            raise ValueError("target paths must be unique")
+        return self
+
+
+class ArtifactSuccessor(BaseModel):
+    artifact_key: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,126}$")
+    generator_name: str = Field(min_length=1, max_length=200)
+    generator_version: str = Field(min_length=1, max_length=100)
+    projection_contract_version: int = Field(ge=1, le=2147483647)
+    config_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{16,64}$")
+    source_entity_id: UUID
+    redaction_policy: str = Field(default="canonical", min_length=1, max_length=200)
+    target_page_resource_ids: list[UUID] = Field(max_length=200)
+    target_page_paths: list[str] = Field(max_length=200)
+
+    @model_validator(mode="after")
+    def exact_set(self):
+        if len(self.target_page_resource_ids) != len(self.target_page_paths):
+            raise ValueError("target IDs and paths must have equal length")
+        if len(set(self.target_page_resource_ids)) != len(self.target_page_resource_ids):
+            raise ValueError("target IDs must be unique")
+        if len(set(self.target_page_paths)) != len(self.target_page_paths):
+            raise ValueError("target paths must be unique")
+        return self
+
+
+class ArtifactHandoff(BaseModel):
+    expected_version: int = Field(ge=1)
+    successor: ArtifactSuccessor
+
+
+class GeneratedOwnershipPlan(BaseModel):
+    mode: Literal["IN_PLACE", "SUCCESSOR"]
+    artifact_id: UUID | None = None
+    predecessor_id: UUID | None = None
+    expected_version: int = Field(ge=1)
+    target_page_resource_ids: list[UUID] = Field(max_length=200)
+    target_page_paths: list[str] = Field(max_length=200)
+    generator_version: str = Field(min_length=1, max_length=100)
+    successor: ArtifactSuccessor | None = None
+
+    @model_validator(mode="after")
+    def coherent(self):
+        if len(self.target_page_resource_ids) != len(self.target_page_paths):
+            raise ValueError("target IDs and paths must have equal length")
+        if len(set(self.target_page_resource_ids)) != len(self.target_page_resource_ids):
+            raise ValueError("target IDs must be unique")
+        if self.mode == "IN_PLACE" and (self.artifact_id is None or self.predecessor_id is not None or self.successor is not None):
+            raise ValueError("IN_PLACE requires artifact_id only")
+        if self.mode == "SUCCESSOR" and (self.predecessor_id is None or self.artifact_id is not None or self.successor is None):
+            raise ValueError("SUCCESSOR requires predecessor_id and successor")
+        if self.successor is not None and (
+            self.successor.target_page_resource_ids != self.target_page_resource_ids
+            or self.successor.target_page_paths != self.target_page_paths
+            or self.successor.generator_version != self.generator_version
+        ):
+            raise ValueError("successor target set and generator attribution must match the ownership plan")
+        return self
 
 
 class ArtifactCustodyReassign(BaseModel):

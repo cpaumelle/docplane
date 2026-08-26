@@ -117,7 +117,10 @@ def test_initiative_link_vocabulary_extended_additively():
 
 def test_generated_page_guard_is_fail_closed_and_retirable():
     assert generated_guard_error("AUTHORED", "principal-a", "principal-b") is None
-    assert generated_guard_error("GENERATED", None, "principal-b") is None  # declaration retired
+    tombstone = generated_guard_error("GENERATED", None, "principal-b")
+    assert tombstone is not None
+    assert tombstone["code"] == "PROVENANCE_GENERATED_TOMBSTONE_PROTECTED"
+    assert generated_guard_error("GENERATED", None, "principal-b", planned_owner=True) is None
     assert generated_guard_error("GENERATED", "principal-a", "principal-a") is None
     blocked = generated_guard_error("GENERATED", "principal-a", "principal-b")
     assert blocked and blocked["code"] == "PROVENANCE_GENERATED_PAGE_PROTECTED"

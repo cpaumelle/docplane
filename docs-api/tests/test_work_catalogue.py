@@ -475,6 +475,18 @@ def test_unchanged_main_replays_observation_and_never_publishes(monkeypatch, cap
     assert [path for _, path in calls] == ["/api/v1/observations"]
 
 
+def test_membership_and_software_version_do_not_require_succession():
+    artifact = {
+        "projection_contract_version": work_catalogue.PROJECTION_CONTRACT_VERSION,
+        "generator_version": "older-build",
+        "target_page_paths": ["work/index.md"],
+    }
+    assert work_catalogue.needs_succession(artifact) is False
+    assert work_catalogue.needs_reconciliation(artifact, ["work/index.md", "work/now.md"]) is True
+    assert work_catalogue.needs_reconciliation(artifact, ["work/index.md"]) is True
+    assert work_catalogue.needs_succession({**artifact, "projection_contract_version": 2}) is True
+
+
 def test_reopened_initiative_restores_then_replaces_archived_page(monkeypatch, capsys):
     """A closed initiative's path remains unique while archived.  Reopening
     must restore that resource, not try to create a duplicate page, and the
