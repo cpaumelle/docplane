@@ -988,14 +988,15 @@ def test_only_the_declaring_automation_can_retire_a_declaration():
         assert cur.fetchone()[0] == "GENERATED"  # declaration armed it; refused retire left it armed
 
     retired = client.post(f"/api/v1/model/artifacts/{artifact_id}/retire", json={"expected_version": 1}, headers={**AUTOMATION, "Idempotency-Key": _key()})
-    assert retired.status_code == 200 and retired.json()["status"] == "RETIRED"
+    assert retired.status_code == 409
+    assert retired.json()["detail"]["code"] == "MODEL_ARTIFACT_RETIRE_HAS_ACTIVE_TARGETS"
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute("SELECT provenance FROM docs.pages WHERE resource_id = %s", (page["resource_id"],))
-        assert cur.fetchone()[0] == "AUTHORED"  # retirement releases the page honestly
+        assert cur.fetchone()[0] == "GENERATED"
 
 
-def test_a_retired_artifact_key_admits_a_successor_declaration():
+def test_atomic_handoff_replaces_a_live_artifact_without_releasing_targets():
     """The full regeneration lifecycle (Sprint 5 canary, fourth finding):
     retire must release the key so a successor generation can take it back,
     while a key with a standing ACTIVE declaration keeps refusing."""
@@ -1011,20 +1012,80 @@ def test_a_retired_artifact_key_admits_a_successor_declaration():
     duplicate = client.post("/api/v1/model/artifacts", json={**body, "generator_version": "2"}, headers={**AUTOMATION, "Idempotency-Key": _key()})
     assert duplicate.status_code == 409 and duplicate.json()["detail"]["code"] == "MODEL_ARTIFACT_KEY_EXISTS"
 
-    retired = client.post(f"/api/v1/model/artifacts/{first.json()['artifact_id']}/retire", json={"expected_version": 1}, headers={**AUTOMATION, "Idempotency-Key": _key()})
-    assert retired.status_code == 200, retired.text
-
-    # The successor takes the key back, gets a NEW artifact identity, and
-    # re-arms provenance on its targets.
-    successor = client.post("/api/v1/model/artifacts", json={**body, "generator_version": "2"}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    successor = client.post(
+        f"/api/v1/model/artifacts/{first.json()['artifact_id']}/handoff",
+        json={"expected_version": 1, "successor": {**body, "generator_version": "2", "projection_contract_version": 2, "target_page_paths": [page["path"]]}},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
     assert successor.status_code == 201, successor.text
-    assert successor.json()["artifact_id"] != first.json()["artifact_id"]
+    successor_artifact = successor.json()["successor"]
+    assert successor_artifact["artifact_id"] != first.json()["artifact_id"]
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute("SELECT provenance FROM docs.pages WHERE resource_id = %s", (page["resource_id"],))
         assert cur.fetchone()[0] == "GENERATED"
         cur.execute("SELECT count(*) FROM model.generated_artifacts WHERE artifact_key = %s", (artifact_key,))
         assert cur.fetchone()[0] == 2  # retired generation stays as audit history
+
+
+def test_generated_publication_owns_new_page_in_the_same_commit_and_archives_tombstone():
+    entity = client.post(
+        "/api/v1/model/entities",
+        json={"entity_kind": "SYSTEM", "entity_key": f"e2e-atomic-{RUN}", "display_name": "atomic source", "attributes": {}},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    ).json()
+    artifact = client.post(
+        "/api/v1/model/artifacts",
+        json={"artifact_key": f"e2e-atomic-{RUN}", "generator_name": "e2e", "generator_version": "1", "projection_contract_version": 1, "source_entity_id": entity["entity_id"], "target_page_resource_ids": [], "target_page_paths": []},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    ).json()
+    page_id = str(uuid.uuid4())
+    path = f"reference/e2e-{RUN}-atomic-generated.md"
+    plan = {
+        "mode": "IN_PLACE", "artifact_id": artifact["artifact_id"], "expected_version": 1,
+        "target_page_resource_ids": [page_id], "target_page_paths": [path], "generator_version": "1",
+    }
+    change = client.post(
+        "/api/v1/changes",
+        json={"title": "atomic generated create", "purpose": "prove page and ownership share a commit", "workspace_key": "reference", "generated_ownership_plan": plan},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    ).json()
+    operation = client.post(
+        f"/api/v1/changes/{change['change_id']}/operations",
+        json={"operation_type": "CREATE_PAGE", "payload": {"resource_id": page_id, "path": path, "title": "Atomic", "nav_path": "E2E/Atomic", "content": "# atomic\n", "knowledge_class": "REFERENCE"}},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert operation.status_code == 201, operation.text
+    assert client.post(f"/api/v1/changes/{change['change_id']}/validate", json={}, headers=AUTOMATION).status_code == 200
+    published = client.post(f"/api/v1/changes/{change['change_id']}/publish", json={}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert published.status_code == 200, published.text
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT provenance, status FROM docs.pages WHERE resource_id = %s", (page_id,))
+        assert cur.fetchone() == ("GENERATED", "active")
+        cur.execute("SELECT artifact_id::text FROM model.artifact_targets WHERE page_resource_id = %s", (page_id,))
+        assert cur.fetchone()[0] == artifact["artifact_id"]
+
+    current = client.get(f"/api/v1/pages/{page_id}", headers=AUTOMATION).json()
+    change2 = client.post(
+        "/api/v1/changes",
+        json={"title": "atomic generated archive", "purpose": "prove tombstone disposition", "workspace_key": "reference", "generated_ownership_plan": {**plan, "expected_version": 2, "target_page_resource_ids": [], "target_page_paths": []}},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    ).json()
+    client.post(
+        f"/api/v1/changes/{change2['change_id']}/operations",
+        json={"operation_type": "ARCHIVE_PAGE", "page_resource_id": page_id, "expected_revision": current["revision"], "payload": {}},
+        headers={**AUTOMATION, "Idempotency-Key": _key()},
+    )
+    assert client.post(f"/api/v1/changes/{change2['change_id']}/validate", json={}, headers=AUTOMATION).status_code == 200
+    removed = client.post(f"/api/v1/changes/{change2['change_id']}/publish", json={}, headers={**AUTOMATION, "Idempotency-Key": _key()})
+    assert removed.status_code == 200, removed.text
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT provenance, status FROM docs.pages WHERE resource_id = %s", (page_id,))
+        assert cur.fetchone() == ("GENERATED", "archived")
+        cur.execute("SELECT count(*) FROM model.artifact_targets WHERE page_resource_id = %s", (page_id,))
+        assert cur.fetchone()[0] == 0
 
 
 def test_rollback_image_tolerates_upgraded_database():

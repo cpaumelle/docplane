@@ -17,8 +17,8 @@ Contract, identical to the sibling generators:
     GENERATION observation;
   - a changed fingerprint publishes one governed change (CREATE_PAGE /
     RESTORE_PAGE / REPLACE_DOCUMENT, plus ARCHIVE_PAGE for pages the previous
-    declaration owned that are no longer produced), then retires/redeclares
-    the artifact when its target set or generator contract moved;
+    declaration owned that are no longer produced), with the exact generated
+    ownership set committed atomically with publication;
   - inbox captures are surfaced as a COUNT only. Pre-triage thoughts are not
     documentation and never appear on the site.
 
@@ -55,6 +55,7 @@ import schema_catalogue as sc  # noqa: E402
 
 GENERATOR_NAME = "work-catalogue"
 GENERATOR_VERSION = "1.0.1"
+PROJECTION_CONTRACT_VERSION = 1
 ARTIFACT_KEY = "work-catalogue"
 SOURCE_ENTITY_KIND = "SYSTEM"
 SOURCE_ENTITY_KEY = "docplane-work"
@@ -77,7 +78,7 @@ def _key(fingerprint: str, verb: str, discriminator: str = "") -> str:
     # The generator version is part of the mutation contract.  A contract fix
     # must not replay an abandoned or incompatible change created by an older
     # implementation for the same source-state fingerprint.
-    return f"work-catalogue:{GENERATOR_VERSION}:{fingerprint}:{verb}{suffix}"
+    return f"work-catalogue:{GENERATOR_VERSION}:pc{PROJECTION_CONTRACT_VERSION}:{fingerprint}:{verb}{suffix}"
 
 
 def fetch_state(client: Client) -> dict[str, Any]:
@@ -552,7 +553,7 @@ def main(argv: list[str] | None = None) -> int:
         drift = (
             artifact is None
             or published != fp
-            or needs_succession(artifact, desired_page_paths(state))
+            or needs_reconciliation(artifact, desired_page_paths(state))
         )
         status = {
             "artifact_key": ARTIFACT_KEY,
@@ -598,12 +599,15 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     desired_paths = sorted(page["path"] for page in pages)
-    if artifact is not None:
-        previous = sc.last_generation_fingerprint(client, artifact["artifact_id"])
-        if previous == fp and not needs_succession(artifact, desired_paths):
-            observe_generation(artifact)
-            print(f"UNCHANGED {fp[:16]} — nothing to regenerate")
-            return 0
+    previous = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
+    if (
+        artifact is not None
+        and previous == fp
+        and not needs_reconciliation(artifact, desired_paths)
+    ):
+        observe_generation(artifact)
+        print(f"UNCHANGED {fp[:16]} — nothing to regenerate")
+        return 0
 
     def lookup(path: str) -> dict[str, Any] | None:
         # Paths remain unique when archived.  Include archived rows so a
@@ -613,11 +617,15 @@ def main(argv: list[str] | None = None) -> int:
         return found[0] if found else None
 
     operations = []
+    page_ids: dict[str, str] = {}
     for page in pages:
         current = lookup(page["path"])
         if current is None:
-            operations.append(("CREATE_PAGE", None, None, page))
+            resource_id = str(uuid4())
+            page_ids[page["path"]] = resource_id
+            operations.append(("CREATE_PAGE", None, None, {**page, "resource_id": resource_id}))
         else:
+            page_ids[page["path"]] = current["resource_id"]
             if current.get("status") == "archived":
                 operations.append(("RESTORE_PAGE", current["resource_id"], current["revision"], page))
             operations.append(("REPLACE_DOCUMENT", current["resource_id"], current["revision"], page))
@@ -629,12 +637,77 @@ def main(argv: list[str] | None = None) -> int:
         if current is not None and current.get("status") != "archived":
             operations.append(("ARCHIVE_PAGE", current["resource_id"], current["revision"], {"path": path}))
 
+    if artifact is None:
+        source_id = ensure_source_entity(client, fp)
+        artifact = client.call(
+            "POST", "/api/v1/model/artifacts",
+            {
+                "artifact_key": ARTIFACT_KEY, "generator_name": GENERATOR_NAME,
+                "generator_version": GENERATOR_VERSION,
+                "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+                "source_entity_id": source_id, "redaction_policy": "canonical",
+                "target_page_resource_ids": [], "target_page_paths": [],
+            },
+            _key(fp, "artifact-empty"),
+        )
+
+    if previous == fp and sorted(artifact.get("target_page_paths") or []) == desired_paths:
+        if artifact.get("projection_contract_version", 1) != PROJECTION_CONTRACT_VERSION:
+            pass
+        elif artifact.get("generator_version") != GENERATOR_VERSION:
+            updated = client.call(
+                "PUT", f"/api/v1/model/artifacts/{artifact['artifact_id']}/targets",
+                {
+                    "expected_version": artifact["version"],
+                    "target_page_resource_ids": [page_ids[path] for path in desired_paths],
+                    "target_page_paths": desired_paths,
+                    "generator_version": GENERATOR_VERSION,
+                },
+                _key(fp, "artifact-attribution"),
+            )
+            artifact = updated["artifact"]
+            observe_generation(artifact)
+            print(f"UNCHANGED {fp[:16]} — updated generator attribution only")
+            return 0
+        else:
+            observe_generation(artifact)
+            print(f"UNCHANGED {fp[:16]} — nothing to regenerate")
+            return 0
+
+    # IDs and display paths are parallel exact-set fields; preserve their
+    # correspondence rather than sorting UUIDs independently of paths.
+    target_ids = [page_ids[path] for path in desired_paths]
+    if needs_succession(artifact):
+        ownership_plan = {
+            "mode": "SUCCESSOR", "predecessor_id": artifact["artifact_id"],
+            "expected_version": artifact["version"],
+            "target_page_resource_ids": target_ids, "target_page_paths": desired_paths,
+            "generator_version": GENERATOR_VERSION,
+            "successor": {
+                "artifact_key": ARTIFACT_KEY, "generator_name": GENERATOR_NAME,
+                "generator_version": GENERATOR_VERSION,
+                "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+                "config_hash": artifact.get("config_hash"),
+                "source_entity_id": artifact["source_entity_id"],
+                "redaction_policy": artifact.get("redaction_policy", "canonical"),
+                "target_page_resource_ids": target_ids, "target_page_paths": desired_paths,
+            },
+        }
+    else:
+        ownership_plan = {
+            "mode": "IN_PLACE", "artifact_id": artifact["artifact_id"],
+            "expected_version": artifact["version"],
+            "target_page_resource_ids": target_ids, "target_page_paths": desired_paths,
+            "generator_version": GENERATOR_VERSION,
+        }
+
     change = client.call(
         "POST", "/api/v1/changes",
         {
             "title": f"Work catalogue regeneration {fp[:16]}",
             "purpose": f"Fingerprint-bound regeneration by the work-catalogue generator; work-state fingerprint {fp}.",
             "workspace_key": "reference",
+            "generated_ownership_plan": ownership_plan,
         },
         _key(fp, "change"),
     )
@@ -646,6 +719,8 @@ def main(argv: list[str] | None = None) -> int:
                 "path": page["path"], "title": page["title"], "nav_path": page["nav_path"],
                 "content": page["content"], "knowledge_class": "REFERENCE",
             }
+            if operation_type == "CREATE_PAGE":
+                request["payload"]["resource_id"] = page["resource_id"]
         if resource_id:
             request["page_resource_id"] = resource_id
             request["expected_revision"] = revision
@@ -662,44 +737,23 @@ def main(argv: list[str] | None = None) -> int:
     if deployment.get("status") not in {"COMPLETED", None}:
         raise RuntimeError(f"publication deployment reported {deployment.get('status')}")
 
-    page_ids: dict[str, str] = {}
-    for page in pages:
-        found = lookup(page["path"])
-        if found is None:
-            raise RuntimeError(f"published page not found after publication: {page['path']}")
-        page_ids[page["path"]] = found["resource_id"]
-
-    if artifact is not None and needs_succession(artifact, sorted(page_ids)):
-        client.call(
-            "POST", f"/api/v1/model/artifacts/{artifact['artifact_id']}/retire",
-            {"expected_version": artifact["version"], "note": f"superseded by work state {fp[:16]}"},
-            _key(fp, "artifact-retire"),
-        )
-        print(f"RETIRED artifact {artifact['artifact_id']} — target set or generator contract moved")
-        artifact = None
+    artifact = sc.current_artifact(client, ARTIFACT_KEY)
     if artifact is None:
-        source_id = ensure_source_entity(client, fp)
-        artifact = client.call(
-            "POST", "/api/v1/model/artifacts",
-            {
-                "artifact_key": ARTIFACT_KEY,
-                "generator_name": GENERATOR_NAME,
-                "generator_version": GENERATOR_VERSION,
-                "source_entity_id": source_id,
-                "redaction_policy": "canonical",
-                "target_page_resource_ids": sorted(page_ids.values()),
-                "target_page_paths": sorted(page_ids),
-            },
-            _key(fp, "artifact"),
-        )
+        raise RuntimeError("publication committed without an active generated-artifact owner")
     observe_generation(artifact)
     print(f"PUBLISHED {len(pages)} page(s), archived {len(stale_paths)} stale path(s), fingerprint {fp[:16]}")
     return 0
 
 
-def needs_succession(artifact: dict[str, Any], desired_paths: list[str]) -> bool:
+def needs_succession(artifact: dict[str, Any]) -> bool:
+    """Only projection-contract identity, never membership/build attribution."""
+    return artifact.get("projection_contract_version", 1) != PROJECTION_CONTRACT_VERSION
+
+
+def needs_reconciliation(artifact: dict[str, Any], desired_paths: list[str]) -> bool:
     return (
-        sorted(artifact.get("target_page_paths") or []) != sorted(desired_paths)
+        needs_succession(artifact)
+        or sorted(artifact.get("target_page_paths") or []) != sorted(desired_paths)
         or artifact.get("generator_version") != GENERATOR_VERSION
     )
 

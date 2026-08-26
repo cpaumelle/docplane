@@ -19,6 +19,8 @@ from fastapi import HTTPException
 from app import generator
 from app.agent_auth import Principal
 from app.agent_models import TextPatchEdit
+from app.artifact_ownership import handoff_targets, load_artifact, reconcile_targets
+from app.model_models import GeneratedOwnershipPlan
 from app.db import get_conn
 from app.event_store import append_event
 from app.markdown_sections import find_section
@@ -130,7 +132,7 @@ def _change(conn, change_id: str, *, for_update: bool = False) -> dict[str, Any]
                author_principal_id::text, idempotency_key, status,
                base_state_identity, validation_summary, preview_receipt,
                publication_receipt, failure_receipt, created_at, updated_at,
-               published_at
+               published_at, generated_ownership_plan
           FROM docs.changes
          WHERE change_id = %s
         """
@@ -144,7 +146,7 @@ def _change(conn, change_id: str, *, for_update: bool = False) -> dict[str, Any]
         "change_id", "workspace_key", "title", "purpose", "author_principal_id",
         "idempotency_key", "status", "base_state_identity", "validation_summary",
         "preview_receipt", "publication_receipt", "failure_receipt", "created_at",
-        "updated_at", "published_at",
+        "updated_at", "published_at", "generated_ownership_plan",
     )
     return dict(zip(keys, row))
 
@@ -207,7 +209,7 @@ def _record_operation_result(
     warnings.extend(result["warnings"])
 
 
-def generated_guard_error(provenance: str | None, declared_by: str | None, acting_principal_id: str | None) -> dict[str, Any] | None:
+def generated_guard_error(provenance: str | None, declared_by: str | None, acting_principal_id: str | None, *, planned_owner: bool = False) -> dict[str, Any] | None:
     """A GENERATED page is a certified derived artifact: only the principal
     that declared its generating artifact may publish to it while the
     declaration stands. Remediation is regeneration; retire the declaration
@@ -215,8 +217,12 @@ def generated_guard_error(provenance: str | None, declared_by: str | None, actin
     if provenance != "GENERATED":
         return None
     if declared_by is None:
-        # Declaration retired or absent: the page is hand-editable again.
-        return None
+        if planned_owner:
+            return None
+        return {
+            "code": "PROVENANCE_GENERATED_TOMBSTONE_PROTECTED",
+            "message": "Archived generated content remains protected and may only be restored through atomic artifact adoption.",
+        }
     if acting_principal_id is not None and str(acting_principal_id) == str(declared_by):
         return None
     return {
@@ -224,6 +230,16 @@ def generated_guard_error(provenance: str | None, declared_by: str | None, actin
         "message": "This page is a generated artifact; remediation is regeneration from the authoritative source.",
         "remedy": "Run the declaring generator, or retire the artifact declaration (POST /api/v1/model/artifacts/{artifact_id}/retire) before hand-editing.",
     }
+
+
+def _plan_allows_page(conn, change: dict[str, Any], page_resource_id: str, acting_principal_id: str | None) -> bool:
+    raw = change.get("generated_ownership_plan")
+    if not raw or page_resource_id not in {str(item) for item in raw.get("target_page_resource_ids", [])} or acting_principal_id is None:
+        return False
+    plan = GeneratedOwnershipPlan.model_validate(raw)
+    owner_artifact_id = str(plan.artifact_id if plan.mode == "IN_PLACE" else plan.predecessor_id)
+    artifact = load_artifact(conn, owner_artifact_id)
+    return artifact["declared_by"] == str(acting_principal_id)
 
 
 def _declaring_artifact_principal(conn, page_resource_id: str) -> str | None:
@@ -301,7 +317,11 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     }
                 )
             elif page.get("provenance") == "GENERATED":
-                guard = generated_guard_error(page["provenance"], _declaring_artifact_principal(conn, page["resource_id"]), acting_principal_id)
+                guard = generated_guard_error(
+                    page["provenance"], _declaring_artifact_principal(conn, page["resource_id"]),
+                    acting_principal_id,
+                    planned_owner=_plan_allows_page(conn, change, page["resource_id"], acting_principal_id),
+                )
                 if guard is not None:
                     if acting_principal_id is None:
                         # Validation dry-run: surface the constraint; enforcement
@@ -764,6 +784,38 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
                     (name, order, principal.display_name),
                 )
 
+        ownership_result = None
+        if change.get("generated_ownership_plan") is not None:
+            plan = GeneratedOwnershipPlan.model_validate(change["generated_ownership_plan"])
+            if plan.mode == "IN_PLACE":
+                ownership_result = reconcile_targets(
+                    conn, artifact_id=str(plan.artifact_id), expected_version=plan.expected_version,
+                    desired_ids=[str(item) for item in plan.target_page_resource_ids],
+                    desired_paths=plan.target_page_paths, generator_version=plan.generator_version,
+                    principal_id=str(principal.principal_id),
+                )
+                ownership_event = "MODEL_ARTIFACT_TARGETS_RECONCILED"
+                ownership_resource = str(plan.artifact_id)
+            else:
+                successor = plan.successor
+                if successor is None:
+                    raise HTTPException(status_code=422, detail={"code": "GENERATED_OWNERSHIP_PLAN_INVALID"})
+                ownership_result = handoff_targets(
+                    conn, predecessor_id=str(plan.predecessor_id), expected_version=plan.expected_version,
+                    successor=successor, principal_id=str(principal.principal_id),
+                    idempotency_key=f"change:{change_id}",
+                )
+                ownership_event = "MODEL_ARTIFACT_OWNERSHIP_HANDED_OFF"
+                ownership_resource = ownership_result["successor"]["artifact_id"]
+            if ownership_result["changed"]:
+                append_event(
+                    conn, event_type=ownership_event, channel="API", producer_id="docplane-publication",
+                    idempotency_key=f"{ownership_event}:CHANGE:{change_id}", principal=principal,
+                    workspace_key=change["workspace_key"], resource_type="MODEL_ARTIFACT",
+                    resource_id=ownership_resource,
+                    metadata={key: ownership_result[key] for key in ("added", "removed", "continuing")},
+                )
+
         operations_applied = sum(1 for result in evaluation["operations"] if result["accepted"])
         receipt = {
             "contract_version": "direct-publication-v1",
@@ -774,6 +826,7 @@ def publish_change(change_id: UUID | str, principal: Principal) -> dict[str, Any
             "operations_applied": operations_applied,
             "review_required": False,
             "database_transaction": "COMMITTED",
+            "generated_ownership": ownership_result,
         }
         cur.execute(
             """

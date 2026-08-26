@@ -21,7 +21,9 @@ from app.model_models import (
     ArtifactCustodyReassign,
     ArtifactExecutionContract,
     ArtifactExecutionContractUpdate,
+    ArtifactHandoff,
     ArtifactRetire,
+    ArtifactTargetSet,
     EntityCreate,
     EntityLinkCreate,
     EntityLinkRemove,
@@ -29,6 +31,7 @@ from app.model_models import (
     EntityRetire,
     EntityUpdate,
 )
+from app.artifact_ownership import handoff_targets, reconcile_targets, target_ids
 
 router = APIRouter(tags=["model-v1"])
 
@@ -449,7 +452,7 @@ def create_entity_page_link(
 
 _ARTIFACT_COLUMNS = (
     "artifact_id", "artifact_key", "generator_name", "generator_version",
-    "config_hash", "source_entity_id", "redaction_policy", "target_page_paths",
+    "projection_contract_version", "config_hash", "source_entity_id", "redaction_policy", "target_page_paths",
     "declared_by", "status", "retired_at", "version", "created_at", "updated_at",
 )
 
@@ -457,7 +460,7 @@ _ARTIFACT_COLUMNS = (
 def _artifact_select() -> str:
     return (
         "SELECT artifact_id, artifact_key, generator_name, generator_version, "
-        "config_hash, source_entity_id, redaction_policy, target_page_paths, "
+        "projection_contract_version, config_hash, source_entity_id, redaction_policy, target_page_paths, "
         "declared_by, status, retired_at, version, created_at, updated_at "
         "FROM model.generated_artifacts"
     )
@@ -633,16 +636,16 @@ def declare_artifact(
             cur.execute(
                 """
                 INSERT INTO model.generated_artifacts
-                    (artifact_key, generator_name, generator_version, config_hash,
+                    (artifact_key, generator_name, generator_version, projection_contract_version, config_hash,
                      source_entity_id, redaction_policy, target_page_paths, declared_by, idempotency_key)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (declared_by, idempotency_key)
                 DO UPDATE SET updated_at = model.generated_artifacts.updated_at
                 RETURNING artifact_id
                 """,
                 (
                     request.artifact_key, request.generator_name.strip(), request.generator_version.strip(),
-                    request.config_hash, str(request.source_entity_id), request.redaction_policy.strip(),
+                    request.projection_contract_version, request.config_hash, str(request.source_entity_id), request.redaction_policy.strip(),
                     _json(request.target_page_paths), principal.principal_id, key,
                 ),
             )
@@ -686,6 +689,70 @@ def declare_artifact(
             metadata={"artifact_key": request.artifact_key, "generator_name": request.generator_name},
         )
         save_receipt(conn, principal, key, "MODEL_ARTIFACT_DECLARE", str(artifact_id), digest, response)
+        conn.commit()
+        return response
+
+
+@router.put("/api/v1/model/artifacts/{artifact_id}/targets")
+def reconcile_artifact_targets(
+    artifact_id: UUID,
+    request: ArtifactTargetSet,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    key = _key(idempotency_key)
+    digest = receipt_digest({"route": "artifact-targets-reconcile", "artifact_id": str(artifact_id), **request.model_dump(mode="json")})
+    with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_TARGETS_RECONCILE", digest)
+        if replayed is not None:
+            return replayed
+        result = reconcile_targets(
+            conn, artifact_id=str(artifact_id), expected_version=request.expected_version,
+            desired_ids=[str(item) for item in request.target_page_resource_ids],
+            desired_paths=request.target_page_paths, generator_version=request.generator_version,
+            principal_id=str(principal.principal_id),
+        )
+        response = jsonable_encoder(result)
+        if result["changed"]:
+            append_event(
+                conn, event_type="MODEL_ARTIFACT_TARGETS_RECONCILED", channel="API",
+                producer_id="docplane-model",
+                idempotency_key=f"MODEL_ARTIFACT_TARGETS_RECONCILED:{principal.principal_id}:{key}",
+                principal=principal, resource_type="MODEL_ARTIFACT", resource_id=str(artifact_id),
+                metadata={key: result[key] for key in ("added", "removed", "continuing")},
+            )
+        save_receipt(conn, principal, key, "MODEL_ARTIFACT_TARGETS_RECONCILE", str(artifact_id), digest, response)
+        conn.commit()
+        return response
+
+
+@router.post("/api/v1/model/artifacts/{predecessor_id}/handoff", status_code=201)
+def handoff_artifact(
+    predecessor_id: UUID,
+    request: ArtifactHandoff,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    key = _key(idempotency_key)
+    digest = receipt_digest({"route": "artifact-handoff", "predecessor_id": str(predecessor_id), **request.model_dump(mode="json")})
+    with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_HANDOFF", digest)
+        if replayed is not None:
+            return replayed
+        result = handoff_targets(
+            conn, predecessor_id=str(predecessor_id), expected_version=request.expected_version,
+            successor=request.successor, principal_id=str(principal.principal_id), idempotency_key=key,
+        )
+        response = jsonable_encoder(result)
+        append_event(
+            conn, event_type="MODEL_ARTIFACT_OWNERSHIP_HANDED_OFF", channel="API",
+            producer_id="docplane-model",
+            idempotency_key=f"MODEL_ARTIFACT_OWNERSHIP_HANDED_OFF:{principal.principal_id}:{key}",
+            principal=principal, resource_type="MODEL_ARTIFACT",
+            resource_id=result["successor"]["artifact_id"],
+            metadata={"predecessor_id": str(predecessor_id), **{key: result[key] for key in ("added", "removed", "continuing")}},
+        )
+        save_receipt(conn, principal, key, "MODEL_ARTIFACT_HANDOFF", result["successor"]["artifact_id"], digest, response)
         conn.commit()
         return response
 
@@ -748,7 +815,11 @@ def retire_artifact(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _key(idempotency_key)
+    digest = receipt_digest({"route": "artifact-retire", "artifact_id": str(artifact_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_RETIRE", digest)
+        if replayed is not None:
+            return replayed
         cur = conn.cursor()
         cur.execute(_artifact_select() + " WHERE artifact_id = %s FOR UPDATE", (str(artifact_id),))
         row = cur.fetchone()
@@ -769,24 +840,17 @@ def retire_artifact(
         if artifact["version"] != request.expected_version:
             raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_VERSION_STALE", "current": artifact["version"]})
         if artifact["status"] == "RETIRED":
-            return artifact
+            response = jsonable_encoder(artifact)
+            save_receipt(conn, principal, key, "MODEL_ARTIFACT_RETIRE", str(artifact_id), digest, response)
+            conn.commit()
+            return response
+        active_targets = target_ids(conn, str(artifact_id))
+        if active_targets:
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_RETIRE_HAS_ACTIVE_TARGETS", "count": len(active_targets)})
         cur.execute(
             "UPDATE model.generated_artifacts SET status = 'RETIRED', retired_at = %s, version = version + 1, updated_at = now() WHERE artifact_id = %s AND version = %s",
             (datetime.now(timezone.utc), str(artifact_id), request.expected_version),
         )
-        # Targets exist only while the declaration stands; removing them
-        # releases the pages for hand-editing or a successor declaration —
-        # and the provenance flag the declaration armed is released with them,
-        # so the metadata surface never claims protection the guard no longer
-        # enforces.
-        cur.execute(
-            """
-            UPDATE docs.pages SET provenance = 'AUTHORED', updated_at = now()
-             WHERE resource_id IN (SELECT page_resource_id FROM model.artifact_targets WHERE artifact_id = %s)
-            """,
-            (str(artifact_id),),
-        )
-        cur.execute("DELETE FROM model.artifact_targets WHERE artifact_id = %s", (str(artifact_id),))
         append_event(
             conn,
             event_type="MODEL_ARTIFACT_RETIRED",
@@ -798,9 +862,11 @@ def retire_artifact(
             resource_id=str(artifact_id),
             metadata={"artifact_key": artifact["artifact_key"], "note": request.note},
         )
-        conn.commit()
         cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
-        return _artifact(cur.fetchone())
+        response = jsonable_encoder(_artifact(cur.fetchone()))
+        save_receipt(conn, principal, key, "MODEL_ARTIFACT_RETIRE", str(artifact_id), digest, response)
+        conn.commit()
+        return response
 
 
 @router.post("/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody")
