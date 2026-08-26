@@ -25,11 +25,16 @@ from app.agent_models import (
     ChangeOperationCreate,
     PrincipalCreate,
     PrincipalToken,
+    PrincipalTokenIssue,
+    PrincipalTokenIssueResponse,
+    PrincipalTokenListResponse,
+    PrincipalTokenRevokeResponse,
     RollbackRequest,
 )
 from app.corpus_structure import build as build_structure
 from app.db import get_conn
 from app.event_store import append_event
+from app.mutation_receipts import receipt_digest
 from app.markdown_sections import find_section, outline, summary
 from app.publication import change_view, publish_change, validate_change
 from app.runtime import certification_status, deploy_current_state
@@ -202,6 +207,255 @@ def revoke_principal(
         )
         conn.commit()
     return {"principal_id": str(principal_id), "status": "REVOKED"}
+
+
+_BOOTSTRAP_CREDENTIAL_PRODUCER = "docplane-bootstrap-credentials"
+
+
+def _token_status(*, expires_at: datetime | None, revoked_at: datetime | None) -> str:
+    if revoked_at is not None:
+        return "REVOKED"
+    if expires_at is not None and expires_at <= datetime.now(timezone.utc):
+        return "EXPIRED"
+    return "ACTIVE"
+
+
+def _token_metadata(row) -> dict[str, Any]:
+    token_id, token_prefix, description, issued_at, expires_at, last_used_at, revoked_at = row
+    return {
+        "token_id": str(token_id),
+        "token_prefix": token_prefix,
+        "description": description,
+        "issued_at": issued_at.isoformat(),
+        "expires_at": expires_at.isoformat() if expires_at is not None else None,
+        "last_used_at": last_used_at.isoformat() if last_used_at is not None else None,
+        "revoked_at": revoked_at.isoformat() if revoked_at is not None else None,
+        "status": _token_status(expires_at=expires_at, revoked_at=revoked_at),
+    }
+
+
+def _bootstrap_credential_replay(conn, *, key: str, digest: str) -> tuple[str, dict[str, Any]] | None:
+    """Load a secret-free bootstrap mutation receipt.
+
+    Credential issuance deliberately does not use mutation_receipts: those
+    receipts replay full response bodies, which would turn DocPlane into a
+    durable bearer-recovery service. The audit event retains only bounded token
+    metadata. An exact issuance retry can therefore recover the committed token
+    identity for revocation, but never the clear bearer.
+    """
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s, 74))",
+        (f"bootstrap-credential:{key}",),
+    )
+    event_key = f"BOOTSTRAP_CREDENTIAL_MUTATION:{key}"
+    cur.execute(
+        "SELECT event_type, metadata FROM docplane.events WHERE producer_id = %s AND idempotency_key = %s",
+        (_BOOTSTRAP_CREDENTIAL_PRODUCER, event_key),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    if (row[1] or {}).get("request_hash") != digest:
+        raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED", "original_operation": row[0]})
+    return row[0], (row[1] or {}).get("response", {})
+
+
+@router.post(
+    "/api/v1/bootstrap/principals/{principal_id}/tokens",
+    response_model=PrincipalTokenIssueResponse,
+    status_code=201,
+)
+def issue_principal_token(
+    principal_id: UUID,
+    request: PrincipalTokenIssue,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    bootstrap_token: str | None = Header(default=None, alias="X-DocPlane-Bootstrap-Token"),
+) -> PrincipalTokenIssueResponse:
+    require_bootstrap_token(bootstrap_token)
+    key = _idempotency(idempotency_key)
+    payload = {
+        "route": "bootstrap-principal-token-issue",
+        "principal_id": str(principal_id),
+        "description": request.description,
+        "expires_at": request.expires_at.isoformat() if request.expires_at is not None else None,
+    }
+    digest = receipt_digest(payload)
+    with get_conn() as conn:
+        replay = _bootstrap_credential_replay(conn, key=key, digest=digest)
+        if replay is not None:
+            event_type, response = replay
+            if event_type != "AUTH_PRINCIPAL_TOKEN_ISSUED":
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED", "original_operation": event_type})
+            return PrincipalTokenIssueResponse(
+                **response,
+                token=None,
+                bearer_returned=False,
+                replayed=True,
+            )
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT principal_kind, display_name, status FROM docplane.principals WHERE principal_id = %s FOR UPDATE",
+            (str(principal_id),),
+        )
+        principal = cur.fetchone()
+        if principal is None:
+            raise HTTPException(status_code=404, detail={"code": "PRINCIPAL_NOT_FOUND"})
+        if principal[2] != "ACTIVE":
+            raise HTTPException(status_code=409, detail={"code": "PRINCIPAL_NOT_ACTIVE", "status": principal[2]})
+        clear, token_hash, prefix = issue_token()
+        cur.execute(
+            """
+            INSERT INTO docplane.api_tokens
+                (principal_id, token_hash, token_prefix, description, expires_at)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING token_id, token_prefix, description, issued_at, expires_at, last_used_at, revoked_at
+            """,
+            (str(principal_id), token_hash, prefix, request.description, request.expires_at),
+        )
+        metadata = {"principal_id": str(principal_id), **_token_metadata(cur.fetchone())}
+        append_event(
+            conn,
+            event_type="AUTH_PRINCIPAL_TOKEN_ISSUED",
+            channel="API",
+            producer_id=_BOOTSTRAP_CREDENTIAL_PRODUCER,
+            idempotency_key=f"BOOTSTRAP_CREDENTIAL_MUTATION:{key}",
+            client_identity="bootstrap-operator",
+            resource_type="principal_token",
+            resource_id=metadata["token_id"],
+            metadata={
+                "request_hash": digest,
+                "response": metadata,
+                "principal_id": str(principal_id),
+                "token_id": metadata["token_id"],
+                "token_prefix": prefix,
+                "description": request.description,
+                "expires_at": metadata["expires_at"],
+            },
+        )
+        conn.commit()
+    return PrincipalTokenIssueResponse(
+        **metadata,
+        token=clear,
+        bearer_returned=True,
+        replayed=False,
+    )
+
+
+@router.get(
+    "/api/v1/bootstrap/principals/{principal_id}/tokens",
+    response_model=PrincipalTokenListResponse,
+)
+def list_principal_tokens(
+    principal_id: UUID,
+    limit: int = Query(default=100, ge=1, le=200),
+    bootstrap_token: str | None = Header(default=None, alias="X-DocPlane-Bootstrap-Token"),
+) -> dict[str, Any]:
+    require_bootstrap_token(bootstrap_token)
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT display_name, principal_kind, status FROM docplane.principals WHERE principal_id = %s",
+            (str(principal_id),),
+        )
+        principal = cur.fetchone()
+        if principal is None:
+            raise HTTPException(status_code=404, detail={"code": "PRINCIPAL_NOT_FOUND"})
+        cur.execute(
+            """
+            SELECT token_id, token_prefix, description, issued_at, expires_at, last_used_at, revoked_at
+              FROM docplane.api_tokens
+             WHERE principal_id = %s
+             ORDER BY issued_at DESC, token_id DESC
+             LIMIT %s
+            """,
+            (str(principal_id), limit + 1),
+        )
+        rows = cur.fetchall()
+    return {
+        "principal_id": str(principal_id),
+        "display_name": principal[0],
+        "principal_kind": principal[1],
+        "principal_status": principal[2],
+        "tokens": [_token_metadata(row) for row in rows[:limit]],
+        "count": min(len(rows), limit),
+        "truncated": len(rows) > limit,
+    }
+
+
+@router.post(
+    "/api/v1/bootstrap/principals/{principal_id}/tokens/{token_id}/revoke",
+    response_model=PrincipalTokenRevokeResponse,
+)
+def revoke_principal_token(
+    principal_id: UUID,
+    token_id: UUID,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    bootstrap_token: str | None = Header(default=None, alias="X-DocPlane-Bootstrap-Token"),
+) -> PrincipalTokenRevokeResponse:
+    require_bootstrap_token(bootstrap_token)
+    key = _idempotency(idempotency_key)
+    payload = {
+        "route": "bootstrap-principal-token-revoke",
+        "principal_id": str(principal_id),
+        "token_id": str(token_id),
+    }
+    digest = receipt_digest(payload)
+    with get_conn() as conn:
+        replay = _bootstrap_credential_replay(conn, key=key, digest=digest)
+        if replay is not None:
+            event_type, response = replay
+            if event_type != "AUTH_PRINCIPAL_TOKEN_REVOKED":
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED", "original_operation": event_type})
+            return PrincipalTokenRevokeResponse(**response, replayed=True)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT status FROM docplane.principals WHERE principal_id = %s",
+            (str(principal_id),),
+        )
+        if cur.fetchone() is None:
+            raise HTTPException(status_code=404, detail={"code": "PRINCIPAL_NOT_FOUND"})
+        cur.execute(
+            """
+            SELECT token_id, token_prefix, description, issued_at, expires_at, last_used_at, revoked_at
+              FROM docplane.api_tokens
+             WHERE token_id = %s AND principal_id = %s
+             FOR UPDATE
+            """,
+            (str(token_id), str(principal_id)),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail={"code": "PRINCIPAL_TOKEN_NOT_FOUND"})
+        if row[6] is None:
+            cur.execute(
+                """
+                UPDATE docplane.api_tokens SET revoked_at = now()
+                 WHERE token_id = %s
+                 RETURNING token_id, token_prefix, description, issued_at, expires_at, last_used_at, revoked_at
+                """,
+                (str(token_id),),
+            )
+            row = cur.fetchone()
+        metadata = {"principal_id": str(principal_id), **_token_metadata(row)}
+        append_event(
+            conn,
+            event_type="AUTH_PRINCIPAL_TOKEN_REVOKED",
+            channel="API",
+            producer_id=_BOOTSTRAP_CREDENTIAL_PRODUCER,
+            idempotency_key=f"BOOTSTRAP_CREDENTIAL_MUTATION:{key}",
+            client_identity="bootstrap-operator",
+            resource_type="principal_token",
+            resource_id=str(token_id),
+            metadata={
+                "request_hash": digest,
+                "response": metadata,
+                "principal_id": str(principal_id),
+                "token_id": str(token_id),
+            },
+        )
+        conn.commit()
+    return PrincipalTokenRevokeResponse(**metadata, replayed=False)
 
 
 @router.get("/api/v1/pages")
