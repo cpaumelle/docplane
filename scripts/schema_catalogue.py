@@ -7,9 +7,8 @@ the DocPlane API as a named AUTOMATION principal:
 
   model    DATABASE + SCHEMA entities, STORES_IN wires
   know     catalogue pages behind a permanent presence page,
-           published through change -> validate -> publish
-  model    one artifact declaration binding the catalogue pages' stable
-           resource identities (ownership + publication guard)
+           published atomically with exact GENERATED ownership membership
+           through change -> validate -> publish
   observe  a GENERATION observation carrying the structural fingerprint
 
 Regeneration is fingerprint-bound: when the source structure hash equals the
@@ -41,6 +40,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import psycopg2
 import psycopg2.extras
@@ -52,6 +52,7 @@ from migration.redaction import redact  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
 GENERATOR_VERSION = "1.0.3"
+PROJECTION_CONTRACT_VERSION = 1
 SECTION = "model/schema-catalogue"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
@@ -349,34 +350,126 @@ def last_generation_fingerprint(client: Client, artifact_id: str) -> str | None:
     return None
 
 
-def publish_pages(client: Client, pages: list[dict[str, str]], structure_hash: str, include_presence: bool) -> dict[str, str]:
-    """One change carrying CREATE_PAGE / REPLACE_DOCUMENT per page.
-    Returns path -> resource_id for every catalogue page."""
+def needs_succession(artifact: dict[str, Any]) -> bool:
+    """Only projection-contract identity, never source membership/build version."""
+    return (
+        artifact.get("projection_contract_version", 1)
+        != PROJECTION_CONTRACT_VERSION
+    )
+
+
+def needs_reconciliation(
+    artifact: dict[str, Any], desired_paths: list[str]
+) -> bool:
+    return (
+        needs_succession(artifact)
+        or sorted(artifact.get("target_page_paths") or []) != desired_paths
+        or artifact.get("generator_version") != GENERATOR_VERSION
+    )
+
+
+def publish_pages(
+    client: Client,
+    pages: list[dict[str, str]],
+    structure_hash: str,
+    include_presence: bool,
+    artifact: dict[str, Any] | None,
+    artifact_key: str,
+    database_id: str,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Publish the exact page set and GENERATED ownership in one transaction."""
     # The pages listing filters by EXACT path, so resolve each wanted path
     # individually rather than assuming a prefix listing exists.
     def lookup(path: str) -> dict[str, Any] | None:
-        found = client.call("GET", f"/api/v1/pages?path={path}").get("pages", [])
+        found = client.call("GET", f"/api/v1/pages?path={path}&status=all").get("pages", [])
         return found[0] if found else None
 
+    desired_paths = sorted(page["path"] for page in pages)
     existing: dict[str, dict[str, Any]] = {}
+    page_ids: dict[str, str] = {}
+    operations = []
     for page in pages:
         current = lookup(page["path"])
         if current is not None:
             existing[page["path"]] = current
-    wanted = list(pages)
-    if include_presence and lookup(PRESENCE_PATH) is None:
-        wanted.append(presence_page())
-    operations = []
-    for page in wanted:
-        current = existing.get(page["path"])
-        if current is None:
-            operations.append(("CREATE_PAGE", None, None, page))
-        elif current["path"] == PRESENCE_PATH:
-            continue  # permanent presence page is never regenerated
+            page_ids[page["path"]] = current["resource_id"]
+            if current.get("status") == "archived":
+                operations.append(
+                    ("RESTORE_PAGE", current["resource_id"], current["revision"], page)
+                )
+            operations.append(
+                ("REPLACE_DOCUMENT", current["resource_id"], current["revision"], page)
+            )
         else:
-            operations.append(("REPLACE_DOCUMENT", current["resource_id"], current["revision"], page))
-    if not operations:
-        return {page["path"]: existing[page["path"]]["resource_id"] for page in pages}
+            resource_id = str(uuid4())
+            page_ids[page["path"]] = resource_id
+            operations.append(
+                ("CREATE_PAGE", None, None, {**page, "resource_id": resource_id})
+            )
+
+    if include_presence and lookup(PRESENCE_PATH) is None:
+        operations.append(("CREATE_PAGE", None, None, presence_page()))
+
+    stale_paths = sorted(
+        set((artifact or {}).get("target_page_paths") or []) - set(desired_paths)
+    )
+    for path in stale_paths:
+        current = lookup(path)
+        if current is not None and current.get("status") != "archived":
+            operations.append(
+                ("ARCHIVE_PAGE", current["resource_id"], current["revision"], {"path": path})
+            )
+
+    if artifact is None:
+        # Establish the artifact identity without targets. CREATE_PAGE UUIDs
+        # are adopted inside publication, so no page commits as AUTHORED.
+        artifact = client.call(
+            "POST",
+            "/api/v1/model/artifacts",
+            {
+                "artifact_key": artifact_key,
+                "generator_name": GENERATOR_NAME,
+                "generator_version": GENERATOR_VERSION,
+                "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+                "source_entity_id": database_id,
+                "redaction_policy": "canonical",
+                "target_page_resource_ids": [],
+                "target_page_paths": [],
+            },
+            _key(structure_hash, "artifact-empty"),
+        )
+
+    target_ids = [page_ids[path] for path in desired_paths]
+    if needs_succession(artifact):
+        ownership_plan = {
+            "mode": "SUCCESSOR",
+            "predecessor_id": artifact["artifact_id"],
+            "expected_version": artifact["version"],
+            "target_page_resource_ids": target_ids,
+            "target_page_paths": desired_paths,
+            "generator_version": GENERATOR_VERSION,
+            "successor": {
+                "artifact_key": artifact_key,
+                "generator_name": GENERATOR_NAME,
+                "generator_version": GENERATOR_VERSION,
+                "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+                "config_hash": artifact.get("config_hash"),
+                "source_entity_id": artifact["source_entity_id"],
+                "redaction_policy": artifact.get("redaction_policy", "canonical"),
+                "target_page_resource_ids": target_ids,
+                "target_page_paths": desired_paths,
+            },
+        }
+    else:
+        ownership_plan = {
+            "mode": "IN_PLACE",
+            "artifact_id": artifact["artifact_id"],
+            "expected_version": artifact["version"],
+            "target_page_resource_ids": target_ids,
+            "target_page_paths": desired_paths,
+            "generator_version": GENERATOR_VERSION,
+        }
+
     change = client.call(
         "POST", "/api/v1/changes",
         {
@@ -386,53 +479,38 @@ def publish_pages(client: Client, pages: list[dict[str, str]], structure_hash: s
                 f"generator; source structural fingerprint {structure_hash}."
             ),
             "workspace_key": "reference",
+            "generated_ownership_plan": ownership_plan,
         },
         _key(structure_hash, "change"),
     )
     change_id = change["change_id"]
     for operation_type, resource_id, revision, page in operations:
-        payload: dict[str, Any] = {
-            "path": page["path"], "title": page["title"],
-            "nav_path": page["nav_path"], "content": page["content"],
-        }
-        request: dict[str, Any] = {"operation_type": operation_type, "payload": payload}
+        request: dict[str, Any] = {"operation_type": operation_type, "payload": {}}
+        if operation_type in {"CREATE_PAGE", "REPLACE_DOCUMENT"}:
+            request["payload"] = {
+                "path": page["path"],
+                "title": page["title"],
+                "nav_path": page["nav_path"],
+                "content": page["content"],
+            }
+            if operation_type == "CREATE_PAGE":
+                request["payload"]["resource_id"] = page["resource_id"]
         if resource_id:
             request["page_resource_id"] = resource_id
             request["expected_revision"] = revision
         client.call(
             "POST", f"/api/v1/changes/{change_id}/operations", request,
-            _key(structure_hash, "operation", page["path"]),
+            _key(structure_hash, "operation", f"{operation_type}:{page['path']}"),
         )
     client.call("POST", f"/api/v1/changes/{change_id}/validate", {}, _key(structure_hash, "validate"))
     receipt = client.call("POST", f"/api/v1/changes/{change_id}/publish", {}, _key(structure_hash, "publish"))
     deployment = (receipt.get("publication_receipt") or receipt).get("deployment", {})
     if deployment.get("status") not in {"COMPLETED", None}:
         raise RuntimeError(f"publication deployment reported {deployment.get('status')}")
-    resolved = {page["path"]: lookup(page["path"]) for page in pages}
-    missing = [path for path, found in resolved.items() if found is None]
-    if missing:
-        raise RuntimeError(f"published pages not found after publication: {missing}")
-    return {path: found["resource_id"] for path, found in resolved.items()}
-
-
-def ensure_artifact(client: Client, db_key: str, database_id: str, page_ids: dict[str, str], structure_hash: str) -> str:
-    artifact_key = f"schema-catalogue-{db_key}"
-    artifact = current_artifact(client, artifact_key)
-    if artifact is None:
-        artifact = client.call(
-            "POST", "/api/v1/model/artifacts",
-            {
-                "artifact_key": artifact_key,
-                "generator_name": GENERATOR_NAME,
-                "generator_version": GENERATOR_VERSION,
-                "source_entity_id": database_id,
-                "redaction_policy": "canonical",
-                "target_page_resource_ids": sorted(page_ids.values()),
-                "target_page_paths": sorted(page_ids),
-            },
-            _key(structure_hash, "artifact", db_key),
-        )
-    return artifact["artifact_id"]
+    active = current_artifact(client, artifact_key)
+    if active is None:
+        raise RuntimeError("publication committed without an active generated-artifact owner")
+    return active, page_ids
 
 
 def emit_generation(client: Client, artifact_id: str, structure_hash: str, summary: str) -> None:
@@ -478,19 +556,65 @@ def main(argv: list[str] | None = None) -> int:
 
     client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_SCHEMA_CATALOGUE_TOKEN"])
     database_id = ensure_entities(client, db_key, db_display, schemas, structure_hash)
-    artifact = current_artifact(client, f"schema-catalogue-{db_key}")
+    artifact_key = f"schema-catalogue-{db_key}"
+    artifact = current_artifact(client, artifact_key)
+    desired_paths = sorted(page["path"] for page in pages)
     if artifact is not None:
         previous = last_generation_fingerprint(client, artifact["artifact_id"])
-        if previous == structure_hash:
+        if previous == structure_hash and not needs_reconciliation(artifact, desired_paths):
             print(f"UNCHANGED {structure_hash[:16]} — nothing to regenerate")
             return 0
-    page_ids = publish_pages(client, pages, structure_hash, include_presence=True)
-    artifact_id = ensure_artifact(client, db_key, database_id, page_ids, structure_hash)
+
+        if (
+            previous == structure_hash
+            and sorted(artifact.get("target_page_paths") or []) == desired_paths
+            and not needs_succession(artifact)
+            and artifact.get("generator_version") != GENERATOR_VERSION
+        ):
+            page_ids = {
+                page["path"]: client.call(
+                    "GET", f"/api/v1/pages?path={page['path']}&status=all"
+                )["pages"][0]["resource_id"]
+                for page in pages
+            }
+            updated = client.call(
+                "PUT",
+                f"/api/v1/model/artifacts/{artifact['artifact_id']}/targets",
+                {
+                    "expected_version": artifact["version"],
+                    "target_page_resource_ids": [page_ids[path] for path in desired_paths],
+                    "target_page_paths": desired_paths,
+                    "generator_version": GENERATOR_VERSION,
+                },
+                _key(structure_hash, "artifact-attribution"),
+            )
+            artifact = updated["artifact"]
+            emit_generation(
+                client,
+                artifact["artifact_id"],
+                structure_hash,
+                f"Confirmed {len(pages)} catalogue pages for {db_key} ({len(schemas)} schemas)",
+            )
+            print(f"UNCHANGED {structure_hash[:16]} — updated generator attribution only")
+            return 0
+
+    artifact, page_ids = publish_pages(
+        client,
+        pages,
+        structure_hash,
+        include_presence=True,
+        artifact=artifact,
+        artifact_key=artifact_key,
+        database_id=database_id,
+    )
     emit_generation(
-        client, artifact_id, structure_hash,
+        client, artifact["artifact_id"], structure_hash,
         f"Regenerated {len(pages)} catalogue pages for {db_key} ({len(schemas)} schemas)",
     )
-    print(f"PUBLISHED {len(page_ids)} pages, artifact {artifact_id}, fingerprint {structure_hash[:16]}")
+    print(
+        f"PUBLISHED {len(page_ids)} pages, artifact {artifact['artifact_id']}, "
+        f"fingerprint {structure_hash[:16]}"
+    )
     return 0
 
 

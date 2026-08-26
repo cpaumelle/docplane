@@ -161,6 +161,7 @@ def test_generator_payloads_validate_against_the_deployed_api_models():
             "artifact_key": "schema-catalogue-docplane",
             "generator_name": schema_catalogue.GENERATOR_NAME,
             "generator_version": schema_catalogue.GENERATOR_VERSION,
+            "projection_contract_version": schema_catalogue.PROJECTION_CONTRACT_VERSION,
             "source_entity_id": database_id,
             "redaction_policy": "canonical",
             "target_page_resource_ids": [uuid4()],
@@ -186,6 +187,16 @@ def test_generator_payloads_validate_against_the_deployed_api_models():
             "title": f"Schema catalogue regeneration {fp[:16]}",
             "purpose": "Fingerprint-bound regeneration.",
             "workspace_key": "reference",
+            "generated_ownership_plan": {
+                "mode": "IN_PLACE",
+                "artifact_id": uuid4(),
+                "expected_version": 1,
+                "target_page_resource_ids": [uuid4()],
+                "target_page_paths": [
+                    "model/schema-catalogue/docplane/index.md"
+                ],
+                "generator_version": schema_catalogue.GENERATOR_VERSION,
+            },
         }
     )
     ChangeOperationCreate.model_validate(
@@ -244,6 +255,262 @@ def test_last_generation_fingerprint_reads_the_status_list_shape():
             return {"current_status": []}
 
     assert schema_catalogue.last_generation_fingerprint(EmptyClient(), "artifact") is None
+
+
+def _publish_fixture(*, artifact, page_status=None, fail_publish=False):
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages(
+        "docplane", "DocPlane PostgreSQL", STRUCTURE, fp
+    )
+    page_status = page_status or {}
+    calls = []
+
+    class Client:
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            if method == "GET" and path.startswith("/api/v1/pages?path="):
+                requested = path.removeprefix("/api/v1/pages?path=").removesuffix(
+                    "&status=all"
+                )
+                if requested == schema_catalogue.PRESENCE_PATH:
+                    return {"pages": [{"resource_id": "presence", "revision": "p1", "status": "active"}]}
+                status = page_status.get(requested, "active")
+                if status == "missing":
+                    return {"pages": []}
+                return {
+                    "pages": [
+                        {
+                            "resource_id": f"resource-{requested}",
+                            "revision": "revision-1",
+                            "status": status,
+                        }
+                    ]
+                }
+            if method == "POST" and path == "/api/v1/changes":
+                return {"change_id": "change-1"}
+            if method == "POST" and path.endswith("/publish"):
+                if fail_publish:
+                    raise RuntimeError("publication rejected")
+                return {"publication_receipt": {"deployment": {"status": "COMPLETED"}}}
+            if method == "GET" and path == "/api/v1/model/artifacts":
+                return {"artifacts": [artifact]}
+            return {}
+
+    result = schema_catalogue.publish_pages(
+        Client(),
+        pages,
+        fp,
+        include_presence=True,
+        artifact=artifact,
+        artifact_key="schema-catalogue-docplane",
+        database_id="database-1",
+    )
+    return fp, pages, calls, result
+
+
+def _artifact(paths, **overrides):
+    return {
+        "artifact_id": "artifact-1",
+        "artifact_key": "schema-catalogue-docplane",
+        "source_entity_id": "database-1",
+        "version": 4,
+        "generator_version": schema_catalogue.GENERATOR_VERSION,
+        "projection_contract_version": schema_catalogue.PROJECTION_CONTRACT_VERSION,
+        "redaction_policy": "canonical",
+        "status": "DECLARED",
+        "target_page_paths": list(paths),
+        **overrides,
+    }
+
+
+def test_source_membership_and_software_version_reconcile_in_place():
+    paths = ["model/schema-catalogue/docplane/index.md"]
+    current = _artifact(paths)
+    assert not schema_catalogue.needs_succession(current)
+    assert schema_catalogue.needs_reconciliation(
+        current, [*paths, "model/schema-catalogue/docplane/new.md"]
+    )
+    assert schema_catalogue.needs_reconciliation(
+        _artifact(paths, generator_version="older-build"), paths
+    )
+    assert schema_catalogue.needs_succession(
+        _artifact(paths, projection_contract_version=2)
+    )
+
+
+def test_schema_addition_preallocates_page_and_uses_in_place_exact_set():
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    paths = sorted(page["path"] for page in pages)
+    added_path = paths[-1]
+    artifact = _artifact(paths[:-1])
+    _, _, calls, _ = _publish_fixture(
+        artifact=artifact, page_status={added_path: "missing"}
+    )
+    change = next(body for method, path, body, _ in calls if path == "/api/v1/changes")
+    plan = change["generated_ownership_plan"]
+    assert plan["mode"] == "IN_PLACE"
+    assert plan["expected_version"] == 4
+    assert plan["target_page_paths"] == paths
+    create = next(
+        body
+        for method, path, body, _ in calls
+        if path.endswith("/operations")
+        and body["operation_type"] == "CREATE_PAGE"
+    )
+    target_index = plan["target_page_paths"].index(added_path)
+    assert create["payload"]["resource_id"] == plan["target_page_resource_ids"][target_index]
+    assert not any(path.endswith("/retire") or path.endswith("/handoff") for _, path, _, _ in calls)
+
+
+def test_schema_removal_archives_inside_same_in_place_publication():
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    paths = sorted(page["path"] for page in pages)
+    stale = "model/schema-catalogue/docplane/removed.md"
+    _, _, calls, _ = _publish_fixture(artifact=_artifact([*paths, stale]))
+    change = next(body for method, path, body, _ in calls if path == "/api/v1/changes")
+    assert change["generated_ownership_plan"]["mode"] == "IN_PLACE"
+    assert stale not in change["generated_ownership_plan"]["target_page_paths"]
+    archive = next(
+        body
+        for method, path, body, _ in calls
+        if path.endswith("/operations") and body["operation_type"] == "ARCHIVE_PAGE"
+    )
+    assert archive["page_resource_id"] == f"resource-{stale}"
+    assert archive["expected_revision"] == "revision-1"
+
+
+def test_archived_schema_page_restores_with_stable_id_and_atomic_readoption():
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    paths = sorted(page["path"] for page in pages)
+    restored = paths[-1]
+    _, _, calls, _ = _publish_fixture(
+        artifact=_artifact(paths[:-1]), page_status={restored: "archived"}
+    )
+    operations = [
+        (body, key)
+        for method, path, body, key in calls
+        if path.endswith("/operations")
+        and body.get("page_resource_id") == f"resource-{restored}"
+    ]
+    assert [body["operation_type"] for body, _ in operations] == [
+        "RESTORE_PAGE",
+        "REPLACE_DOCUMENT",
+    ]
+    assert operations[0][1] != operations[1][1]
+    plan = next(body for _, path, body, _ in calls if path == "/api/v1/changes")[
+        "generated_ownership_plan"
+    ]
+    index = plan["target_page_paths"].index(restored)
+    assert plan["target_page_resource_ids"][index] == f"resource-{restored}"
+
+
+def test_projection_contract_change_uses_atomic_successor_plan():
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    paths = sorted(page["path"] for page in pages)
+    artifact = _artifact(paths, projection_contract_version=2)
+    _, _, calls, _ = _publish_fixture(artifact=artifact)
+    plan = next(body for _, path, body, _ in calls if path == "/api/v1/changes")[
+        "generated_ownership_plan"
+    ]
+    assert plan["mode"] == "SUCCESSOR"
+    assert plan["predecessor_id"] == "artifact-1"
+    assert plan["successor"]["projection_contract_version"] == 1
+    assert not any(path.endswith("/retire") for _, path, _, _ in calls)
+
+
+def test_failed_publication_does_not_return_safe_ownership_result():
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    paths = sorted(page["path"] for page in pages)
+    with pytest.raises(RuntimeError, match="publication rejected"):
+        _publish_fixture(artifact=_artifact(paths), fail_publish=True)
+
+
+def test_generation_evidence_is_emitted_only_after_atomic_publication(monkeypatch):
+    events = []
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages(
+        "docplane", "DocPlane PostgreSQL", STRUCTURE, fp
+    )
+    artifact = _artifact(sorted(page["path"] for page in pages))
+
+    class Source:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
+    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    monkeypatch.setattr(schema_catalogue, "render_pages", lambda *_: pages)
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: "database-1")
+    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
+    monkeypatch.setattr(
+        schema_catalogue, "last_generation_fingerprint", lambda *_: "old-fingerprint"
+    )
+
+    def publish(*args, **kwargs):
+        events.append("publication+ownership")
+        return artifact, {page["path"]: f"id-{index}" for index, page in enumerate(pages)}
+
+    monkeypatch.setattr(schema_catalogue, "publish_pages", publish)
+    monkeypatch.setattr(
+        schema_catalogue,
+        "emit_generation",
+        lambda *_args, **_kwargs: events.append("generation"),
+    )
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "not-used")
+    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
+    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
+
+    assert schema_catalogue.main([]) == 0
+    assert events == ["publication+ownership", "generation"]
+
+
+def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages(
+        "docplane", "DocPlane PostgreSQL", STRUCTURE, fp
+    )
+    artifact = _artifact(sorted(page["path"] for page in pages))
+
+    class Source:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
+    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    monkeypatch.setattr(schema_catalogue, "render_pages", lambda *_: pages)
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: "database-1")
+    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
+    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: fp)
+    monkeypatch.setattr(
+        schema_catalogue,
+        "publish_pages",
+        lambda *_args, **_kwargs: pytest.fail("unchanged run published"),
+    )
+    monkeypatch.setattr(
+        schema_catalogue,
+        "emit_generation",
+        lambda *_args, **_kwargs: pytest.fail("unchanged run emitted evidence"),
+    )
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "not-used")
+    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
+    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
+
+    assert schema_catalogue.main([]) == 0
 
 
 @pytest.mark.skipif(not os.environ.get("DB_HOST"), reason="requires a PostgreSQL database")
