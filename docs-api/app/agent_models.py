@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
@@ -23,6 +23,63 @@ class PrincipalToken(BaseModel):
     token: str
     token_prefix: str
     expires_at: datetime | None
+
+
+class PrincipalTokenIssue(BaseModel):
+    description: str = Field(min_length=1, max_length=500)
+    expires_at: datetime | None = None
+
+    @field_validator("description")
+    @classmethod
+    def description_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("description must not be blank")
+        return value.strip()
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_is_future(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("expires_at must include a timezone")
+        normalized = value.astimezone(timezone.utc)
+        if normalized <= datetime.now(timezone.utc):
+            raise ValueError("expires_at must be in the future")
+        return normalized
+
+
+class PrincipalTokenMetadata(BaseModel):
+    token_id: UUID
+    token_prefix: str
+    description: str | None
+    issued_at: datetime
+    expires_at: datetime | None
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+    status: Literal["ACTIVE", "EXPIRED", "REVOKED"]
+
+
+class PrincipalTokenIssueResponse(PrincipalTokenMetadata):
+    principal_id: UUID
+    token: str | None = None
+    bearer_returned: bool
+    replayed: bool
+
+
+class PrincipalTokenListResponse(BaseModel):
+    principal_id: UUID
+    display_name: str
+    principal_kind: str
+    principal_status: str
+    tokens: list[PrincipalTokenMetadata]
+    count: int
+    truncated: bool
+
+
+class PrincipalTokenRevokeResponse(PrincipalTokenMetadata):
+    principal_id: UUID
+    replayed: bool
 
 
 class SelfIssueRequest(BaseModel):

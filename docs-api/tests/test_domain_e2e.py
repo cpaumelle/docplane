@@ -10,6 +10,7 @@ page guard fails closed at publish evaluation.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sys
 import uuid
@@ -1105,3 +1106,109 @@ def test_rollback_image_tolerates_upgraded_database():
         assert len(ahead) == len(history) - 1
         # And the current image sees clean history with nothing ahead.
         assert migrate.verify_history(migrations, history) == []
+
+
+def test_existing_principal_token_rotation_is_one_time_and_identity_preserving():
+    bootstrap = {"X-DocPlane-Bootstrap-Token": os.environ["DOCPLANE_BOOTSTRAP_TOKEN"]}
+    created = client.post(
+        "/api/v1/bootstrap/principals",
+        json={"display_name": f"e2e-token-rotation-{RUN}", "principal_kind": "AUTOMATION"},
+        headers=bootstrap,
+    )
+    assert created.status_code == 201, created.text
+    original = created.json()
+    principal_id = original["principal_id"]
+    original_auth = {"Authorization": f"Bearer {original['token']}"}
+
+    source = client.post(
+        "/api/v1/model/entities",
+        json={
+            "entity_kind": "DATABASE",
+            "entity_key": f"e2e-token-source-{RUN}",
+            "display_name": "E2E token source",
+            "attributes": {"engine": "postgres"},
+        },
+        headers={**original_auth, "Idempotency-Key": _key()},
+    )
+    assert source.status_code == 201, source.text
+    artifact = client.post(
+        "/api/v1/model/artifacts",
+        json={
+            "artifact_key": f"e2e-token-artifact-{RUN}",
+            "generator_name": "token-e2e",
+            "generator_version": "1",
+            "source_entity_id": source.json()["entity_id"],
+        },
+        headers={**original_auth, "Idempotency-Key": _key()},
+    )
+    assert artifact.status_code == 201, artifact.text
+
+    issue_key = _key()
+    issue_payload = {"description": "e2e rotation candidate", "expires_at": None}
+    issued = client.post(
+        f"/api/v1/bootstrap/principals/{principal_id}/tokens",
+        json=issue_payload,
+        headers={**bootstrap, "Idempotency-Key": issue_key},
+    )
+    assert issued.status_code == 201, issued.text
+    replacement = issued.json()
+    replacement_auth = {"Authorization": f"Bearer {replacement['token']}"}
+    assert replacement["principal_id"] == principal_id
+    assert replacement["bearer_returned"] is True and replacement["replayed"] is False
+    assert client.get("/api/v1/me", headers=replacement_auth).json()["principal_id"] == principal_id
+
+    replay = client.post(
+        f"/api/v1/bootstrap/principals/{principal_id}/tokens",
+        json=issue_payload,
+        headers={**bootstrap, "Idempotency-Key": issue_key},
+    )
+    assert replay.status_code == 201
+    assert replay.json()["token_id"] == replacement["token_id"]
+    assert replay.json()["token"] is None
+    assert replay.json()["bearer_returned"] is False and replay.json()["replayed"] is True
+    conflict = client.post(
+        f"/api/v1/bootstrap/principals/{principal_id}/tokens",
+        json={"description": "conflicting intent"},
+        headers={**bootstrap, "Idempotency-Key": issue_key},
+    )
+    assert conflict.status_code == 409
+
+    listing = client.get(f"/api/v1/bootstrap/principals/{principal_id}/tokens", headers=bootstrap)
+    assert listing.status_code == 200, listing.text
+    listed = listing.json()
+    assert len([item for item in listed["tokens"] if item["status"] == "ACTIVE"]) == 2
+    listing_text = json.dumps(listed)
+    assert original["token"] not in listing_text and replacement["token"] not in listing_text
+    assert "token_hash" not in listing_text
+
+    original_id = next(item["token_id"] for item in listed["tokens"] if item["token_id"] != replacement["token_id"])
+    revoke_key = _key()
+    revoked = client.post(
+        f"/api/v1/bootstrap/principals/{principal_id}/tokens/{original_id}/revoke",
+        headers={**bootstrap, "Idempotency-Key": revoke_key},
+    )
+    assert revoked.status_code == 200 and revoked.json()["status"] == "REVOKED"
+    replayed = client.post(
+        f"/api/v1/bootstrap/principals/{principal_id}/tokens/{original_id}/revoke",
+        headers={**bootstrap, "Idempotency-Key": revoke_key},
+    )
+    assert replayed.status_code == 200 and replayed.json()["replayed"] is True
+    assert client.get("/api/v1/me", headers=original_auth).status_code == 403
+    assert client.get("/api/v1/me", headers=replacement_auth).status_code == 200
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT status FROM docplane.principals WHERE principal_id = %s", (principal_id,))
+        assert cur.fetchone()[0] == "ACTIVE"
+        cur.execute(
+            "SELECT declared_by::text, version FROM model.generated_artifacts WHERE artifact_id = %s",
+            (artifact.json()["artifact_id"],),
+        )
+        assert cur.fetchone() == (principal_id, 1)
+        cur.execute(
+            "SELECT event_type, metadata::text FROM docplane.events WHERE resource_id IN (%s, %s) AND event_type LIKE 'AUTH_PRINCIPAL_TOKEN_%%' ORDER BY event_seq",
+            (replacement["token_id"], original_id),
+        )
+        events = cur.fetchall()
+        assert [row[0] for row in events] == ["AUTH_PRINCIPAL_TOKEN_ISSUED", "AUTH_PRINCIPAL_TOKEN_REVOKED"]
+        assert all(replacement["token"] not in row[1] for row in events)

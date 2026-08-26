@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from uuid import UUID
 
@@ -34,6 +35,8 @@ def test_public_api_has_direct_publish_shortcuts_and_no_review_gate():
     assert not any(path.endswith("/approve") for path in paths)
     assert not any(path.endswith("/review") for path in paths)
     assert "/api/v1/bootstrap/principals" in paths
+    assert "/api/v1/bootstrap/principals/{principal_id}/tokens" in paths
+    assert "/api/v1/bootstrap/principals/{principal_id}/tokens/{token_id}/revoke" in paths
     assert not any("/admin/" in path for path in paths)
 
 
@@ -44,6 +47,23 @@ def test_openapi_declares_individual_bearer_authentication():
     assert bearer["scheme"] == "bearer"
     protected = schema["paths"]["/api/v1/pages"]["get"]
     assert {"DocPlaneBearer": []} in protected["security"]
+
+
+def test_bootstrap_token_rotation_contract_is_operator_only_and_one_time():
+    schema = _contract_app().openapi()
+    issue = schema["paths"]["/api/v1/bootstrap/principals/{principal_id}/tokens"]["post"]
+    listing = schema["paths"]["/api/v1/bootstrap/principals/{principal_id}/tokens"]["get"]
+    revoke = schema["paths"]["/api/v1/bootstrap/principals/{principal_id}/tokens/{token_id}/revoke"]["post"]
+    assert not issue.get("security") and not listing.get("security") and not revoke.get("security")
+    for operation in (issue, listing, revoke):
+        assert any(item["name"] == "X-DocPlane-Bootstrap-Token" for item in operation["parameters"])
+    for operation in (issue, revoke):
+        header = next(item for item in operation["parameters"] if item["name"] == "Idempotency-Key")
+        assert header["required"] is True
+    response_schema = schema["components"]["schemas"]["PrincipalTokenIssueResponse"]
+    assert response_schema["properties"]["token"]["anyOf"][-1]["type"] == "null"
+    metadata_schema = json.dumps(schema["components"]["schemas"]["PrincipalTokenMetadata"])
+    assert "token_hash" not in metadata_schema
 
 
 def test_shortcut_mutations_declare_required_idempotency_header():
