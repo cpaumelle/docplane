@@ -105,3 +105,48 @@ The endpoint is CAS-bound, accepts only an active `AUTOMATION` destination,
 and appends an audit event containing the old/new custody, purpose, and request
 hash. It does not retire the artifact, alter its targets, or change page
 protection.
+
+## Independent source observation
+
+The generated-artifact execution contract declares an independent, local
+source observer with a nominal ten-minute cadence and a thirty-minute maximum
+evidence age. Observation is not reconciliation: it reads the same canonical
+WORK projection and records one `FRESHNESS_CHECK`, but it never renders,
+publishes, reconciles MODEL, or treats detected drift as authority to generate.
+
+The observer uses the existing named automation environment and the same
+logical `work-catalogue` exclusion domain as generation. The deployed lock is
+`/run/lock/docplane-work-catalogue.lock`. Expected nonblocking contention is a
+benign skipped opportunity with no observation; identity, source-read,
+canonicalisation, and OBSERVE-write failures remain visible as service
+failures. The probe CLI creates a fresh UUID itself, so the unit does not carry
+a second invocation-identity mechanism.
+
+Install the observer unit files without enabling or starting them:
+
+```bash
+install -o root -g root -m 0644 config/systemd/docplane-work-catalogue-observer.service /etc/systemd/system/
+install -o root -g root -m 0644 config/systemd/docplane-work-catalogue-observer.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl is-enabled docplane-work-catalogue-observer.timer  # expected: disabled
+systemctl is-active docplane-work-catalogue-observer.timer   # expected: inactive
+```
+
+Installing and reloading are deliberately separate from activation. Merely
+placing these files must not execute a source probe.
+
+### Later activation gate
+
+Enabling or starting the observer timer is a separate production gate. When
+authorized, its timer waits two minutes after explicit activation and then runs
+ten minutes after each completed opportunity, with at most thirty seconds each
+of accuracy coalescing and randomized delay. It does not replay historical
+missed ticks after downtime: one new current observation is the useful
+evidence. This remains comfortably inside the declared 1,800-second evidence
+bound and avoids deliberately aligning with the one-minute generation timer.
+
+Successful journal output is the bounded `--status-json` receipt: probe ID,
+source entity identity, fingerprint, observation ID, and outcome. The unit and
+wrapper never print the bearer, headers, or environment, and write no second
+persistent log. Recurring success writes OBSERVE only; it creates no WORK
+activity and does not invoke generation.

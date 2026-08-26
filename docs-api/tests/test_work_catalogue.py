@@ -4,6 +4,9 @@ fingerprint sensitivity, the inbox-count-only rule, queue and initiative
 rendering — plus the UNCHANGED main path never publishing."""
 from __future__ import annotations
 
+import fcntl
+import os
+import subprocess
 import sys
 import json
 from pathlib import Path
@@ -568,6 +571,103 @@ def test_scheduler_units_bound_work_drift_and_use_the_single_writer():
     assert "EnvironmentFile=/etc/docplane/work-catalogue.env" in service
     assert "OnUnitInactiveSec=1min" in timer
     assert "Persistent=true" in timer
+
+
+def _observer_test_environment(tmp_path, exit_code=0):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_python.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$OBSERVER_ARGS_FILE\"\n"
+        "exit \"$OBSERVER_EXIT_CODE\"\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{fake_bin}:{env['PATH']}",
+        "DOCPLANE_WORK_CATALOGUE_LOCK_FILE": str(tmp_path / "work-catalogue.lock"),
+        "OBSERVER_ARGS_FILE": str(tmp_path / "observer-args"),
+        "OBSERVER_EXIT_CODE": str(exit_code),
+    })
+    return env
+
+
+def test_source_observer_invokes_only_the_canonical_probe_mode(tmp_path):
+    wrapper = ROOT / "scripts" / "run_work_catalogue_source_observer.sh"
+    env = _observer_test_environment(tmp_path)
+
+    result = subprocess.run(["bash", str(wrapper)], env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0
+    args = (tmp_path / "observer-args").read_text(encoding="utf-8").splitlines()
+    assert args == [str(ROOT / "scripts" / "work_catalogue.py"), "--observe-source", "--status-json"]
+    assert "--dry-run" not in args
+
+
+def test_source_observer_lock_contention_is_a_benign_skip_without_probe(tmp_path):
+    wrapper = ROOT / "scripts" / "run_work_catalogue_source_observer.sh"
+    env = _observer_test_environment(tmp_path)
+    lock_path = Path(env["DOCPLANE_WORK_CATALOGUE_LOCK_FILE"])
+
+    with lock_path.open("w", encoding="utf-8") as held_lock:
+        fcntl.flock(held_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = subprocess.run(["bash", str(wrapper)], env=env, text=True, capture_output=True)
+
+    assert result.returncode == 0
+    assert "SKIPPED work-catalogue exclusion domain is already held" in result.stderr
+    assert not (tmp_path / "observer-args").exists()
+
+
+def test_source_observer_preserves_genuine_probe_failure(tmp_path):
+    wrapper = ROOT / "scripts" / "run_work_catalogue_source_observer.sh"
+    env = _observer_test_environment(tmp_path, exit_code=23)
+
+    result = subprocess.run(["bash", str(wrapper)], env=env, text=True, capture_output=True)
+
+    assert result.returncode == 23
+
+
+def test_source_observer_units_match_the_declared_local_contract():
+    service = (ROOT / "config" / "systemd" / "docplane-work-catalogue-observer.service").read_text(
+        encoding="utf-8"
+    )
+    timer = (ROOT / "config" / "systemd" / "docplane-work-catalogue-observer.timer").read_text(
+        encoding="utf-8"
+    )
+    wrapper = (ROOT / "scripts" / "run_work_catalogue_source_observer.sh").read_text(encoding="utf-8")
+
+    assert "EnvironmentFile=/etc/docplane/work-catalogue.env" in service
+    assert "scripts/run_work_catalogue_source_observer.sh" in service
+    assert "ReadWritePaths=/run/lock" in service
+    assert "--observe-source --status-json" in wrapper
+    assert "/run/lock/docplane-work-catalogue.lock" in wrapper
+    assert "FLOCK_CONFLICT_EXIT=75" in wrapper
+    assert "OnActiveSec=2min" in timer
+    assert "OnUnitInactiveSec=10min" in timer
+    assert "AccuracySec=30s" in timer
+    assert "RandomizedDelaySec=30s" in timer
+    assert "Persistent=false" in timer
+    assert 10 * 60 + 30 + 30 < 1800
+
+    combined = service + timer + wrapper
+    assert "github" not in combined.lower()
+    assert "/api/v1/initiatives" not in combined
+    assert "Authorization" not in combined
+    assert "DOCPLANE_WORK_CATALOGUE_TOKEN=" not in combined
+
+
+def test_observer_installation_is_explicitly_non_starting():
+    guide = (ROOT / "docs" / "operations" / "WORK_CATALOGUE.md").read_text(encoding="utf-8")
+    observer_section = guide.split("## Independent source observation", 1)[1]
+    installation = observer_section.split("### Later activation gate", 1)[0]
+
+    assert "docplane-work-catalogue-observer.service" in installation
+    assert "docplane-work-catalogue-observer.timer" in installation
+    assert "systemctl daemon-reload" in installation
+    assert "systemctl enable" not in installation
+    assert "systemctl start" not in installation
 
 
 def test_reader_download_filename_is_prefixed_with_page_version():
