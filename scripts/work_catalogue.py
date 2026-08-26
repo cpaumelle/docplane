@@ -46,8 +46,10 @@ from typing import Any
 from uuid import UUID, uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from migration.redaction import redact  # noqa: E402
 from schema_catalogue import Client  # noqa: E402  (shared API client)
 import schema_catalogue as sc  # noqa: E402
 
@@ -441,7 +443,7 @@ def _initiative_page(row: dict[str, Any], fp: str) -> dict[str, str]:
     }
 
 
-def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
+def _render_pages_unredacted(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
     projection = _projection(state)
     pages = [_index_page(projection, fp)]
     pages += [_queue_page(projection, work_state, fp) for work_state in _QUEUE_STATES]
@@ -451,6 +453,14 @@ def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
         for row in projection["initiatives"]
         if row["state"] in _QUEUE_STATES
     ]
+    return pages
+
+
+def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
+    """Render every page, then cross the canonical redaction boundary as a set."""
+    pages = _render_pages_unredacted(state, fp)
+    for page in pages:
+        page["content"] = redact(page["content"], label="work-catalogue").sanitised
     return pages
 
 

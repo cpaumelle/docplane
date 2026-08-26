@@ -14,9 +14,11 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import work_catalogue  # noqa: E402
+from migration.redaction import DocumentRefusedError, MalformedMarkerError, redact  # noqa: E402
 
 
 def _initiative(**overrides):
@@ -137,6 +139,104 @@ def test_rendering_is_deterministic():
     state = _state([_initiative()])
     fp = work_catalogue.fingerprint(state)
     assert work_catalogue.render_pages(state, fp) == work_catalogue.render_pages(state, fp)
+
+
+_ACCESS_KEY_SHAPED = "AKIA" + "A" * 16
+_TOKEN_SHAPED = "ghp_" + "b" * 36
+_BEARER_SHAPED = "Bearer " + "c" * 24
+_HEX_SECRET_SHAPED = "d" * 40
+
+
+def test_render_pages_apply_canonical_redaction_to_all_free_text_fields():
+    blocked = _initiative(
+        initiative_key="blocked-secret",
+        work_state="BLOCKED",
+        objective=f"objective {_ACCESS_KEY_SHAPED}",
+        blocker_summary=f"blocked by {_BEARER_SHAPED}",
+    )
+    soaking = _initiative(
+        initiative_id="00000000-0000-0000-0000-000000000002",
+        initiative_key="soak-secret",
+        title="Soak secret",
+        work_state="SOAKING",
+        objective="ordinary objective",
+        soak_success_criteria=f"success {_HEX_SECRET_SHAPED}",
+        soak_failure_conditions=f"failure {_ACCESS_KEY_SHAPED}",
+        soak_monitoring_ref=f"monitor {_TOKEN_SHAPED}",
+    )
+    details = {
+        blocked["initiative_id"]: {
+            "activities": [{
+                "activity_type": "NOTE",
+                "body": f"activity {_TOKEN_SHAPED}",
+                "created_at": "2026-08-26T00:00:00Z",
+            }],
+            "links": [{
+                "relation": "EVIDENCE",
+                "resource_type": "EXTERNAL",
+                "resource_id": f"reference-{_ACCESS_KEY_SHAPED}",
+            }],
+        },
+    }
+    state = _state([blocked, soaking], details=details)
+    fp = work_catalogue.fingerprint(state)
+    content = "\n".join(page["content"] for page in work_catalogue.render_pages(state, fp))
+
+    for secret_shape in (_ACCESS_KEY_SHAPED, _TOKEN_SHAPED, _BEARER_SHAPED, _HEX_SECRET_SHAPED):
+        assert secret_shape not in content
+    assert "<REDACTED:ACCESS_KEY:work-catalogue>" in content
+    assert "<REDACTED:TOKEN:work-catalogue>" in content
+    assert "<REDACTED:BEARER:work-catalogue>" in content
+    assert "<REDACTED:HEX_SECRET:work-catalogue>" in content
+
+
+def test_clean_rendering_is_byte_equivalent_to_the_unredacted_renderer():
+    state = _state([_initiative()])
+    fp = work_catalogue.fingerprint(state)
+    assert work_catalogue.render_pages(state, fp) == work_catalogue._render_pages_unredacted(state, fp)
+
+
+def test_render_redaction_is_idempotent_and_does_not_change_source_fingerprint():
+    initiative = _initiative(objective=f"remove {_TOKEN_SHAPED}")
+    state = _state([initiative])
+    before = work_catalogue.fingerprint(state)
+    pages = work_catalogue.render_pages(state, before)
+    after = work_catalogue.fingerprint(state)
+
+    assert before == after
+    for page in pages:
+        assert redact(page["content"], label="work-catalogue").sanitised == page["content"]
+
+
+def test_malformed_marker_is_rejected_at_render_boundary():
+    state = _state([_initiative(objective="broken {<REDACTED:TOKEN:legacy>}} marker")])
+    with pytest.raises(MalformedMarkerError):
+        work_catalogue.render_pages(state, work_catalogue.fingerprint(state))
+
+
+def test_redaction_refusal_prevents_every_publication_and_preserves_last_known_good(monkeypatch):
+    unsafe = f"```text\nprefix-{_TOKEN_SHAPED}-suffix\n```"
+    state = _state([_initiative(objective=unsafe)])
+    calls = []
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            raise AssertionError("redaction refusal must occur before any API mutation")
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    with pytest.raises(DocumentRefusedError) as refused:
+        work_catalogue.main([])
+    assert calls == []
+    assert refused.value.findings
+    assert all(_TOKEN_SHAPED not in str(finding) for finding in refused.value.findings)
 
 
 def test_source_probe_records_only_entity_scoped_canonical_freshness(monkeypatch, capsys):
