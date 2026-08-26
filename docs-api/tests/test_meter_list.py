@@ -9,7 +9,10 @@ Sprint 5 canary taught, applied before first fabric contact).
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -51,6 +54,64 @@ groups:
 def _rules_dir(tmp_path: Path) -> Path:
     (tmp_path / "backup-alerts.yml").write_text(RULES_YML, encoding="utf-8")
     return tmp_path
+
+
+def test_reconciliation_wrapper_uses_the_shared_runtime_lock():
+    wrapper = (ROOT / "scripts" / "run_meter_list_reconciliation.sh").read_text(encoding="utf-8")
+
+    assert "/run/lock/docplane-meter-list.lock" in wrapper
+    assert "/tmp/docplane-meter-list.lock" not in wrapper
+    assert "DOCPLANE_METER_LIST_LOCK_FILE" in wrapper
+    assert "/etc/docplane/meter-list.env" not in wrapper
+
+
+def test_reconciliation_wrapper_excludes_concurrent_runs_and_releases_lock(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_python.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'started\\n' >> \"$METER_WRAPPER_STARTED\"\n"
+        "sleep \"$METER_WRAPPER_HOLD_SECONDS\"\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    started = tmp_path / "started"
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{fake_bin}:{env['PATH']}",
+            "DOCPLANE_METER_LIST_LOCK_FILE": str(tmp_path / "meter-list.lock"),
+            "METER_WRAPPER_STARTED": str(started),
+            "METER_WRAPPER_HOLD_SECONDS": "1",
+        }
+    )
+    wrapper = ROOT / "scripts" / "run_meter_list_reconciliation.sh"
+
+    holder = subprocess.Popen(["bash", str(wrapper)], env=env)
+    try:
+        for _ in range(100):
+            if started.exists():
+                break
+            holder.poll()
+            if holder.returncode is not None:
+                break
+            time.sleep(0.01)
+        assert started.exists()
+
+        contender = subprocess.run(["bash", str(wrapper)], env=env, capture_output=True, text=True)
+        assert contender.returncode == 1
+        assert started.read_text(encoding="utf-8").splitlines() == ["started"]
+        assert holder.wait(timeout=5) == 0
+    finally:
+        if holder.poll() is None:
+            holder.terminate()
+            holder.wait(timeout=5)
+
+    env["METER_WRAPPER_HOLD_SECONDS"] = "0"
+    subsequent = subprocess.run(["bash", str(wrapper)], env=env, capture_output=True, text=True)
+    assert subsequent.returncode == 0
+    assert started.read_text(encoding="utf-8").splitlines() == ["started", "started"]
 
 
 def test_parsing_is_deterministic_and_captures_the_meterable_fields(tmp_path):
