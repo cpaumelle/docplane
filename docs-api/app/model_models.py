@@ -18,6 +18,7 @@ EntityRelation = Literal[
 ]
 
 PageRelation = Literal["DESCRIBES", "OPERATES", "DECIDES", "CATALOGUES"]
+ExecutionTrigger = Literal["MANUAL", "SCHEDULED", "EVENT_DRIVEN", "HYBRID"]
 
 
 def _attributes_bounded(attributes: dict[str, Any]) -> None:
@@ -80,6 +81,20 @@ class EntityPageLinkCreate(BaseModel):
     page_resource_id: UUID
 
 
+class ArtifactExecutionContract(BaseModel):
+    contract_schema_version: Literal[1] = 1
+    observation_owner_principal_id: UUID
+    observation_trigger: ExecutionTrigger
+    observation_max_age_seconds: int = Field(gt=0, le=31536000)
+    generation_owner_principal_id: UUID
+    generation_trigger: ExecutionTrigger
+    exclusion_domain: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,126}$")
+
+
+class ArtifactExecutionContractUpdate(ArtifactExecutionContract):
+    expected_version: int = Field(ge=1)
+
+
 class ArtifactDeclare(BaseModel):
     artifact_key: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,126}$")
     generator_name: str = Field(min_length=1, max_length=200)
@@ -91,6 +106,7 @@ class ArtifactDeclare(BaseModel):
     # paths are display metadata only and carry no protection semantics.
     target_page_resource_ids: list[UUID] = Field(default_factory=list, max_length=200)
     target_page_paths: list[str] = Field(default_factory=list, max_length=200)
+    execution_contract: ArtifactExecutionContract | None = None
 
 
 class ArtifactRetire(BaseModel):

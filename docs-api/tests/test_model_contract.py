@@ -20,7 +20,13 @@ from app.model_contracts import (
     contracts_document,
     secret_findings,
 )
-from app.model_models import ArtifactDeclare, EntityCreate, EntityLinkCreate
+from app.model_models import (
+    ArtifactDeclare,
+    ArtifactExecutionContract,
+    ArtifactExecutionContractUpdate,
+    EntityCreate,
+    EntityLinkCreate,
+)
 from app.work_api import router as work_router
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +55,8 @@ def test_model_routes_exist_and_prior_surfaces_survive():
         "/api/v1/model/entities/{entity_id}/links",
         "/api/v1/model/entities/{entity_id}/page-links",
         "/api/v1/model/artifacts",
+        "/api/v1/model/artifacts/{artifact_id}",
+        "/api/v1/model/artifacts/{artifact_id}/execution-contract",
         "/api/v1/model/artifacts/{artifact_id}/retire",
         "/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody",
     ):
@@ -67,6 +75,9 @@ def test_model_mutations_declare_required_idempotency_header():
     ):
         parameters = schema["paths"][path]["post"].get("parameters", [])
         assert any(item["name"] == "Idempotency-Key" for item in parameters), path
+
+    update = schema["paths"]["/api/v1/model/artifacts/{artifact_id}/execution-contract"]["put"]
+    assert any(item["name"] == "Idempotency-Key" for item in update.get("parameters", []))
 
     custody = schema["paths"]["/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody"]["post"]
     names = {item["name"] for item in custody.get("parameters", [])}
@@ -173,6 +184,52 @@ def test_entity_models_bind_identity_contract():
         raise AssertionError("unknown kind must be rejected")
     except ValidationError:
         pass
+
+
+def test_execution_contract_is_typed_bounded_and_optional_for_compatibility():
+    owner = "11111111-1111-1111-1111-111111111111"
+    contract = ArtifactExecutionContract(
+        observation_owner_principal_id=owner,
+        observation_trigger="SCHEDULED",
+        observation_max_age_seconds=300,
+        generation_owner_principal_id=owner,
+        generation_trigger="MANUAL",
+        exclusion_domain="work-catalogue",
+    )
+    assert contract.contract_schema_version == 1
+    legacy = ArtifactDeclare(
+        artifact_key="legacy", generator_name="g", generator_version="1",
+        source_entity_id=owner,
+    )
+    assert legacy.execution_contract is None
+    updated = ArtifactExecutionContractUpdate(expected_version=2, **contract.model_dump())
+    assert updated.expected_version == 2
+    for field, value in (
+        ("observation_max_age_seconds", 0),
+        ("observation_max_age_seconds", -1),
+        ("observation_max_age_seconds", 31536001),
+        ("observation_trigger", "CRON"),
+        ("generation_trigger", "TIMER"),
+        ("exclusion_domain", "/run/lock/work.lock"),
+    ):
+        payload = contract.model_dump()
+        payload[field] = value
+        try:
+            ArtifactExecutionContract(**payload)
+            raise AssertionError(f"invalid contract accepted: {field}={value}")
+        except ValidationError:
+            pass
+
+
+def test_execution_contract_migration_is_additive_unpopulated_and_relational():
+    sql = (ROOT / "db/migrations/015_generated_artifact_execution_contracts.sql").read_text(encoding="utf-8")
+    lowered = sql.lower()
+    assert "create table model.generated_artifact_execution_contracts" in lowered
+    assert "references model.generated_artifacts" in lowered
+    assert lowered.count("references docplane.principals") >= 4
+    assert "insert into" not in lowered
+    for forbidden in ("drop ", "delete from", "update model.", "update docs.", "update observe."):
+        assert forbidden not in lowered
     try:
         EntityLinkCreate(relation="POKES", to_entity_id="11111111-1111-1111-1111-111111111111")
         raise AssertionError("unknown relation must be rejected")
