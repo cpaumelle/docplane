@@ -9,8 +9,10 @@ DocPlane API as a named AUTOMATION principal:
   model    one MONITOR_RULE entity per rule, WATCHES-wired to the SERVICE
            entity named by the rule's service label
   know     fingerprint-bound plain-English explanation pages behind a
-           permanent presence page, published through the governed flow
-  model    one artifact declaration binding the generated pages
+           permanent presence page, published through the governed flow;
+           generated content and exact-set ownership commit together
+  model    one artifact declaration binding the generated pages; ordinary
+           rule-file membership evolution reconciles that declaration in place
   observe  a GENERATION observation carrying the rule-set fingerprint
 
 Coverage is populated as gaps, never stubs: rules without descriptions carry
@@ -42,6 +44,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
@@ -54,6 +57,7 @@ from schema_catalogue import ApiError, Client  # noqa: E402  (shared API client)
 
 GENERATOR_NAME = "docplane-meter-list"
 GENERATOR_VERSION = "1.3.1"
+PROJECTION_CONTRACT_VERSION = 1
 SECTION = "observe/meter-list"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
@@ -335,7 +339,7 @@ def presence_page() -> dict[str, str]:
 
 def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
     return (
-        f"meter-list-{GENERATOR_VERSION}-{structure_hash[:16]}-{verb}"
+        f"meter-list-{GENERATOR_VERSION}-pc{PROJECTION_CONTRACT_VERSION}-{structure_hash[:16]}-{verb}"
         f"{'-' + discriminator if discriminator else ''}"
     )[:256]
 
@@ -529,41 +533,21 @@ def reconcile_entities(
     return {"source_id": source_id, **summary}
 
 
-def artifact_needs_succession(artifact: dict[str, Any], desired_paths: list[str]) -> bool:
-    """The declaration must mirror reality: a target-set change (rule file
-    added/removed) or a generator-contract change (version bump) makes the
-    standing declaration stale — new pages would sit unprotected and removed
-    pages would stay owned. Migration 007 exists exactly so the successor
-    can be declared under the same key."""
+def artifact_needs_succession(artifact: dict[str, Any]) -> bool:
+    """Only explicit projection-contract identity requires a successor.
+
+    Rule-file membership, source fingerprints and software build attribution
+    evolve under the standing projection contract and reconcile in place.
+    """
+    return artifact.get("projection_contract_version", 1) != PROJECTION_CONTRACT_VERSION
+
+
+def artifact_needs_reconciliation(artifact: dict[str, Any], desired_paths: list[str]) -> bool:
     return (
-        sorted(artifact.get("target_page_paths") or []) != sorted(desired_paths)
+        artifact_needs_succession(artifact)
+        or sorted(artifact.get("target_page_paths") or []) != sorted(desired_paths)
         or artifact.get("generator_version") != GENERATOR_VERSION
     )
-
-
-def retire_artifact_for_succession(
-    client: Client,
-    artifact: dict[str, Any] | None,
-    desired_paths: list[str],
-    structure_hash: str,
-) -> dict[str, Any] | None:
-    """Release stale generated-page ownership before replacing its pages.
-
-    Generated pages are protected by the standing artifact declaration.  A
-    target-set or generator-contract change therefore has to retire that
-    declaration before the publication change can replace/archive the old
-    targets.  Retiring after publication is too late: the generated-page guard
-    rejects the publication while the stale declaration still stands.
-    """
-    if artifact is None or not artifact_needs_succession(artifact, desired_paths):
-        return artifact
-    client.call(
-        "POST", f"/api/v1/model/artifacts/{artifact['artifact_id']}/retire",
-        {"expected_version": artifact["version"], "note": f"superseded by rule set {structure_hash[:16]}"},
-        _key(structure_hash, "artifact-retire"),
-    )
-    print(f"RETIRED artifact {artifact['artifact_id']} — target set or generator contract moved")
-    return None
 
 
 def should_reconcile_gap_work(*, source_changed: bool, explicit: bool) -> bool:
@@ -651,6 +635,7 @@ def main(argv: list[str] | None = None) -> int:
 
     artifact_key = f"meter-list-{_slug(source_key)}"
     artifact = sc.current_artifact(client, artifact_key)
+    previous = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
 
     def observe_generation(current_artifact: dict[str, Any]) -> None:
         client.call(
@@ -679,8 +664,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if artifact is not None:
-        previous = sc.last_generation_fingerprint(client, artifact["artifact_id"])
-        if previous == structure_hash and not artifact_needs_succession(artifact, sorted(page["path"] for page in pages)):
+        if previous == structure_hash and not artifact_needs_reconciliation(artifact, sorted(page["path"] for page in pages)):
             # Replay the existing fingerprint-bound NOMINAL observation. The
             # API receipt makes this zero-mutation while proving the scheduled
             # loop still has one current success record.
@@ -692,18 +676,23 @@ def main(argv: list[str] | None = None) -> int:
 
     desired_paths = sorted(page["path"] for page in pages)
     previously_declared_paths = set((artifact or {}).get("target_page_paths") or [])
-    artifact = retire_artifact_for_succession(client, artifact, desired_paths, structure_hash)
 
     def lookup(path: str) -> dict[str, Any] | None:
-        found = client.call("GET", f"/api/v1/pages?path={path}").get("pages", [])
+        found = client.call("GET", f"/api/v1/pages?path={path}&status=all").get("pages", [])
         return found[0] if found else None
 
     operations = []
+    page_ids: dict[str, str] = {}
     for page in pages:
         current = lookup(page["path"])
         if current is None:
-            operations.append(("CREATE_PAGE", None, None, page))
+            resource_id = str(uuid4())
+            page_ids[page["path"]] = resource_id
+            operations.append(("CREATE_PAGE", None, None, {**page, "resource_id": resource_id}))
         else:
+            page_ids[page["path"]] = current["resource_id"]
+            if current.get("status") == "archived":
+                operations.append(("RESTORE_PAGE", current["resource_id"], current["revision"], page))
             operations.append(("REPLACE_DOCUMENT", current["resource_id"], current["revision"], page))
     if lookup(PRESENCE_PATH) is None:
         operations.append(("CREATE_PAGE", None, None, presence_page()))
@@ -713,8 +702,81 @@ def main(argv: list[str] | None = None) -> int:
     stale_paths = sorted(previously_declared_paths - set(desired_paths) - {PRESENCE_PATH})
     for path in stale_paths:
         current = lookup(path)
-        if current is not None:
+        if current is not None and current.get("status") != "archived":
             operations.append(("ARCHIVE_PAGE", current["resource_id"], current["revision"], {"path": path}))
+
+    if artifact is None:
+        # Establish an empty owner before the first publication. New page IDs
+        # are then adopted inside the publication transaction, so no generated
+        # page is ever committed as AUTHORED.
+        artifact = client.call(
+            "POST", "/api/v1/model/artifacts",
+            {
+                "artifact_key": artifact_key,
+                "generator_name": GENERATOR_NAME,
+                "generator_version": GENERATOR_VERSION,
+                "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+                "source_entity_id": source_id,
+                "redaction_policy": "canonical",
+                "target_page_resource_ids": [],
+                "target_page_paths": [],
+            },
+            _key(structure_hash, "artifact-empty"),
+        )
+
+    target_ids = [page_ids[path] for path in desired_paths]
+    if (
+        previous == structure_hash
+        and sorted(artifact.get("target_page_paths") or []) == desired_paths
+        and not artifact_needs_succession(artifact)
+        and artifact.get("generator_version") != GENERATOR_VERSION
+    ):
+        updated = client.call(
+            "PUT", f"/api/v1/model/artifacts/{artifact['artifact_id']}/targets",
+            {
+                "expected_version": artifact["version"],
+                "target_page_resource_ids": target_ids,
+                "target_page_paths": desired_paths,
+                "generator_version": GENERATOR_VERSION,
+            },
+            _key(structure_hash, "artifact-attribution"),
+        )
+        artifact = updated["artifact"]
+        observe_generation(artifact)
+        if should_reconcile_gap_work(source_changed=False, explicit=args.reconcile_gaps):
+            reconcile_gap_work()
+        print(f"UNCHANGED {structure_hash[:16]} — updated generator attribution only")
+        return 0
+
+    if artifact_needs_succession(artifact):
+        ownership_plan = {
+            "mode": "SUCCESSOR",
+            "predecessor_id": artifact["artifact_id"],
+            "expected_version": artifact["version"],
+            "target_page_resource_ids": target_ids,
+            "target_page_paths": desired_paths,
+            "generator_version": GENERATOR_VERSION,
+            "successor": {
+                "artifact_key": artifact_key,
+                "generator_name": GENERATOR_NAME,
+                "generator_version": GENERATOR_VERSION,
+                "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+                "config_hash": artifact.get("config_hash"),
+                "source_entity_id": artifact["source_entity_id"],
+                "redaction_policy": artifact.get("redaction_policy", "canonical"),
+                "target_page_resource_ids": target_ids,
+                "target_page_paths": desired_paths,
+            },
+        }
+    else:
+        ownership_plan = {
+            "mode": "IN_PLACE",
+            "artifact_id": artifact["artifact_id"],
+            "expected_version": artifact["version"],
+            "target_page_resource_ids": target_ids,
+            "target_page_paths": desired_paths,
+            "generator_version": GENERATOR_VERSION,
+        }
 
     change = client.call(
         "POST", "/api/v1/changes",
@@ -722,45 +784,33 @@ def main(argv: list[str] | None = None) -> int:
             "title": f"Meter list regeneration {structure_hash[:16]}",
             "purpose": f"Fingerprint-bound regeneration by the meter-list importer; rule-set fingerprint {structure_hash}.",
             "workspace_key": "reference",
+            "generated_ownership_plan": ownership_plan,
         },
         _key(structure_hash, "change"),
     )
     change_id = change["change_id"]
     for operation_type, resource_id, revision, page in operations:
         request: dict[str, Any] = {"operation_type": operation_type, "payload": {}}
-        if operation_type != "ARCHIVE_PAGE":
+        if operation_type in {"CREATE_PAGE", "REPLACE_DOCUMENT"}:
             request["payload"] = {"path": page["path"], "title": page["title"], "nav_path": page["nav_path"], "content": page["content"]}
+            if operation_type == "CREATE_PAGE":
+                request["payload"]["resource_id"] = page["resource_id"]
         if resource_id:
             request["page_resource_id"] = resource_id
             request["expected_revision"] = revision
-        client.call("POST", f"/api/v1/changes/{change_id}/operations", request, _key(structure_hash, "operation", page["path"]))
+        client.call(
+            "POST", f"/api/v1/changes/{change_id}/operations", request,
+            _key(structure_hash, "operation", f"{operation_type}:{page['path']}"),
+        )
     client.call("POST", f"/api/v1/changes/{change_id}/validate", {}, _key(structure_hash, "validate"))
     receipt = client.call("POST", f"/api/v1/changes/{change_id}/publish", {}, _key(structure_hash, "publish"))
     deployment = (receipt.get("publication_receipt") or receipt).get("deployment", {})
     if deployment.get("status") not in {"COMPLETED", None}:
         raise RuntimeError(f"publication deployment reported {deployment.get('status')}")
 
-    page_ids = {}
-    for page in pages:
-        found = lookup(page["path"])
-        if found is None:
-            raise RuntimeError(f"published page not found after publication: {page['path']}")
-        page_ids[page["path"]] = found["resource_id"]
-
+    artifact = sc.current_artifact(client, artifact_key)
     if artifact is None:
-        artifact = client.call(
-            "POST", "/api/v1/model/artifacts",
-            {
-                "artifact_key": artifact_key,
-                "generator_name": GENERATOR_NAME,
-                "generator_version": GENERATOR_VERSION,
-                "source_entity_id": source_id,
-                "redaction_policy": "canonical",
-                "target_page_resource_ids": sorted(page_ids.values()),
-                "target_page_paths": sorted(page_ids),
-            },
-            _key(structure_hash, "artifact"),
-        )
+        raise RuntimeError("publication committed without an active generated-artifact owner")
     observe_generation(artifact)
     # Coverage changed with this import, so advance the bounded Work
     # projection once. Scheduled UNCHANGED ticks deliberately skip it.
