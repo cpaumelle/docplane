@@ -74,6 +74,16 @@ importer, not a second code path:
 scripts/run_meter_list_reconciliation.sh
 ```
 
+A production invocation runs under the root execution identity so it can read
+the protected meter-list environment. The wrapper's lock defaults to
+`/run/lock/docplane-meter-list.lock`, the deployed implementation of the
+logical meter-list exclusion domain. It is deliberately outside sticky
+`/tmp`, so its ownership cannot depend on which account first created an old
+lock inode. Override `DOCPLANE_METER_LIST_LOCK_FILE` only when every legitimate
+caller uses the same replacement path. The wrapper opens the lock
+nonblockingly; contention prevents the importer from starting and preserves
+flock's existing conflict exit status.
+
 A systemd timer may invoke that command with environment supplied by the
 fabric secret/config source. An unchanged run prints `UNCHANGED`, replays the
 existing fingerprint-bound nominal observation, and makes zero Model, Know or
