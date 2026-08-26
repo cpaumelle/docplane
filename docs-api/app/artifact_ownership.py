@@ -89,20 +89,6 @@ def _validate_target_paths(conn, desired_ids: list[str], desired_paths: list[str
         raise HTTPException(status_code=422, detail={"code": "MODEL_ARTIFACT_TARGET_PATH_MISMATCH", "mismatches": mismatches})
 
 
-def _validate_target_paths(conn, desired_ids: list[str], desired_paths: list[str]) -> None:
-    if not desired_ids:
-        return
-    expected = dict(zip(desired_ids, desired_paths))
-    cur = conn.cursor()
-    cur.execute("SELECT resource_id::text, path FROM docs.pages WHERE resource_id = ANY(%s::uuid[])", (desired_ids,))
-    mismatches = [
-        {"page_resource_id": resource_id, "expected_path": expected[resource_id], "current_path": path}
-        for resource_id, path in cur.fetchall() if expected[resource_id] != path
-    ]
-    if mismatches:
-        raise HTTPException(status_code=422, detail={"code": "MODEL_ARTIFACT_TARGET_PATH_MISMATCH", "mismatches": mismatches})
-
-
 def _validate_removals_archived(conn, removed: set[str]) -> None:
     if not removed:
         return
@@ -145,7 +131,6 @@ def reconcile_targets(
     desired = set(desired_ids)
     current = set(target_ids(conn, artifact_id))
     _validate_pages(conn, desired)
-    _validate_target_paths(conn, desired_ids, desired_paths)
     _validate_target_paths(conn, desired_ids, desired_paths)
     _validate_conflicts(conn, desired, {artifact_id})
     removed, added = current - desired, desired - current
@@ -194,11 +179,6 @@ def handoff_targets(
     desired = {str(item) for item in successor.target_page_resource_ids}
     current = set(target_ids(conn, predecessor_id))
     _validate_pages(conn, desired)
-    _validate_target_paths(
-        conn,
-        [str(item) for item in successor.target_page_resource_ids],
-        successor.target_page_paths,
-    )
     _validate_target_paths(
         conn,
         [str(item) for item in successor.target_page_resource_ids],
