@@ -661,18 +661,15 @@ def main(argv: list[str] | None = None) -> int:
         previous = last_generation_fingerprint(client, artifact["artifact_id"])
         if previous == structure_hash and not needs_reconciliation(artifact, desired_paths):
             page_ids = page_ids_for_paths(client, desired_paths)
-            repaired = reconcile_catalogues(
+            reconcile_catalogues(
                 client,
                 schema_catalogues_mappings(entities, page_ids, db_key),
                 key_prefix=_key(structure_hash, "semantic"),
             )
-            if repaired:
-                emit_generation(
-                    client,
-                    artifact["artifact_id"],
-                    structure_hash,
-                    f"Confirmed {len(pages)} catalogue pages for {db_key} ({len(schemas)} schemas)",
-                )
+            # `previous == structure_hash` proves that this projection already
+            # has successful GENERATION evidence. Semantic maintenance is
+            # durably evidenced by its MODEL receipt/event and must not reuse
+            # the fingerprint-bound observation identity with a different body.
             print(f"UNCHANGED {structure_hash[:16]} — nothing to regenerate")
             return 0
 
@@ -705,12 +702,8 @@ def main(argv: list[str] | None = None) -> int:
                 schema_catalogues_mappings(entities, page_ids, db_key),
                 key_prefix=_key(structure_hash, "semantic"),
             )
-            emit_generation(
-                client,
-                artifact["artifact_id"],
-                structure_hash,
-                f"Confirmed {len(pages)} catalogue pages for {db_key} ({len(schemas)} schemas)",
-            )
+            # Attribution and semantic receipts are the maintenance evidence;
+            # the source fingerprint already has a successful generation.
             print(f"UNCHANGED {structure_hash[:16]} — updated generator attribution only")
             return 0
 

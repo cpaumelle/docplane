@@ -856,8 +856,11 @@ def test_schema_catalogues_mapping_add_remove_restore_uses_stable_page_ids_only(
     assert not any("table" in entity_id or "column" in entity_id for entity_id in mappings)
 
 
-def test_unchanged_schema_link_repair_does_not_publish_and_generation_follows_repair(monkeypatch):
+def test_unchanged_schema_link_repair_does_not_publish_or_reemit_generation(monkeypatch):
     events = []
+    existing_summary = "Regenerated 6 catalogue pages for docplane (5 schemas)"
+    semantic_repair_summary = "Confirmed 6 catalogue pages for docplane (5 schemas)"
+    assert existing_summary != semantic_repair_summary
     fp = schema_catalogue.fingerprint(STRUCTURE)
     pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
     artifact = _artifact(sorted(page["path"] for page in pages))
@@ -879,7 +882,13 @@ def test_unchanged_schema_link_repair_does_not_publish_and_generation_follows_re
     })
     monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: pytest.fail("republished"))
     monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", lambda *_a, **_k: events.append("catalogues") or [{"changed": True}])
-    monkeypatch.setattr(schema_catalogue, "emit_generation", lambda *_a, **_k: events.append("generation"))
+    monkeypatch.setattr(
+        schema_catalogue,
+        "emit_generation",
+        lambda *_a, **_k: pytest.fail(
+            "semantic repair attempted the production-conflicting observation POST"
+        ),
+    )
     monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "unused")
     monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
     monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
@@ -887,7 +896,62 @@ def test_unchanged_schema_link_repair_does_not_publish_and_generation_follows_re
     monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     assert schema_catalogue.main([]) == 0
-    assert events == ["catalogues", "generation"]
+    assert events == ["catalogues"]
+
+
+def test_attribution_only_repair_does_not_publish_or_reemit_generation(monkeypatch):
+    events = []
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    paths = sorted(page["path"] for page in pages)
+    artifact = _artifact(paths, generator_version="older-build")
+
+    class Source:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    class Client:
+        def __init__(self, *_args): pass
+
+        def call(self, method, path, body=None, key=None):
+            if method == "GET" and path.startswith("/api/v1/pages?path="):
+                requested = path.removeprefix("/api/v1/pages?path=").removesuffix("&status=all")
+                return {"pages": [{"resource_id": f"resource-{requested}"}]}
+            if method == "PUT" and path.endswith("/targets"):
+                events.append("attribution")
+                return {"artifact": {**artifact, "generator_version": schema_catalogue.GENERATOR_VERSION}}
+            raise AssertionError((method, path, body, key))
+
+    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
+    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
+        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
+        "stale_schema_ids": [],
+    })
+    monkeypatch.setattr(schema_catalogue, "Client", Client)
+    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
+    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: fp)
+    monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: pytest.fail("republished"))
+    monkeypatch.setattr(
+        schema_catalogue,
+        "reconcile_catalogues",
+        lambda *_a, **_k: events.append("catalogues") or [{"changed": True}],
+    )
+    monkeypatch.setattr(
+        schema_catalogue,
+        "emit_generation",
+        lambda *_a, **_k: pytest.fail(
+            "attribution repair reused existing generation evidence"
+        ),
+    )
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "unused")
+    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
+    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
+
+    assert schema_catalogue.main([]) == 0
+    assert events == ["attribution", "catalogues"]
 
 
 def test_catalogues_failure_after_publication_suppresses_generation(monkeypatch):
