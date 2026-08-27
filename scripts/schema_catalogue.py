@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 from migration.redaction import redact  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
-GENERATOR_VERSION = "1.0.3"
+GENERATOR_VERSION = "1.0.4"
 PROJECTION_CONTRACT_VERSION = 1
 SECTION = "model/schema-catalogue"
 PRESENCE_PATH = f"{SECTION}/index.md"
@@ -184,8 +184,12 @@ def render_pages(
     schema_lines = []
     for schema in sorted(structure):
         tables = structure[schema]
+        # Sibling link, not `{db_key}/…`: this index is emitted at
+        # SECTION/<db_key>/index.md and the schema pages are its siblings in the
+        # same directory. Prefixing the db key again resolves into a nonexistent
+        # SECTION/<db_key>/<db_key>/<schema> path.
         schema_lines.append(
-            f"- [`{schema}`]({db_key}/{schema}.md) — {len(tables)} tables"
+            f"- [`{schema}`]({schema}.md) — {len(tables)} tables"
         )
         body = [f"# {db_display} — `{schema}`", "", stamp, ""]
         for table_name in sorted(tables):
