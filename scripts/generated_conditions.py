@@ -8,7 +8,6 @@ is never inspected to infer semantic relationships.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
 import json
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -25,6 +24,8 @@ CONDITION_KINDS = (
     "CATALOGUES_DRIFTED",
 )
 _SAMPLE_LIMIT = 10
+_STRING_MAX_UTF8_BYTES = 256
+_BRIEFING_MAX_BYTES = 8192
 
 
 @dataclass(frozen=True)
@@ -43,16 +44,86 @@ class EntityCatalogueState:
     actual_page_resource_ids: tuple[str, ...]
 
 
-def _stable_digest(value: Any) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
-    return sha256(encoded).hexdigest()
+def _encoded_size(value: Any) -> int:
+    # Match the #162 receiver exactly: changing separators here could approve a
+    # payload that the WORK boundary subsequently rejects.
+    return len(json.dumps(value, sort_keys=True, default=str).encode("utf-8"))
+
+
+def _normalise_bounded(value: Any, path: str, truncated: list[str]) -> Any:
+    """Bound untrusted identity strings without splitting them ambiguously."""
+    if isinstance(value, str) and len(value.encode("utf-8")) > _STRING_MAX_UTF8_BYTES:
+        truncated.append(path)
+        return {"omitted": True, "original_utf8_bytes": len(value.encode("utf-8"))}
+    if isinstance(value, dict):
+        return {
+            key: _normalise_bounded(item, f"{path}.{key}" if path else key, truncated)
+            for key, item in sorted(value.items())
+        }
+    if isinstance(value, list):
+        return [
+            _normalise_bounded(item, f"{path}[{index}]", truncated)
+            for index, item in enumerate(value)
+        ]
+    return value
+
+
+def _bounded_briefing(briefing: dict[str, Any]) -> dict[str, Any]:
+    """Return deterministic receiver-safe evidence no larger than 8,192 bytes.
+
+    Samples are diagnostic only.  Counts and allowlisted state remain durable
+    even when identity samples must be omitted to satisfy WORK's hard boundary.
+    """
+    original_size = _encoded_size(briefing)
+    truncated_fields: list[str] = []
+    bounded = _normalise_bounded(briefing, "", truncated_fields)
+    samples = list(bounded.get("samples", []))
+    if "samples" in bounded:
+        bounded["sample_count_total"] = len(samples)
+        bounded["sample_count_included"] = len(samples)
+        bounded["samples_truncated"] = False
+    if truncated_fields:
+        bounded["briefing_truncation"] = {
+            "long_field_count": len(truncated_fields),
+            "long_field_paths": truncated_fields[:_SAMPLE_LIMIT],
+            "long_field_paths_omitted": max(0, len(truncated_fields) - _SAMPLE_LIMIT),
+            "original_utf8_bytes": original_size,
+        }
+
+    while _encoded_size(bounded) > _BRIEFING_MAX_BYTES and bounded.get("samples"):
+        bounded["samples"].pop()
+        bounded["sample_count_included"] = len(bounded["samples"])
+        bounded["samples_truncated"] = True
+
+    if _encoded_size(bounded) > _BRIEFING_MAX_BYTES:
+        # Defensive final bound for future adapters: retain deterministic scalar
+        # state/counts and explicitly report that detail was omitted.
+        retained = {
+            key: value
+            for key, value in bounded.items()
+            if not isinstance(value, (dict, list)) or key == "briefing_truncation"
+        }
+        retained.pop("samples", None)
+        retained["sample_count_included"] = 0
+        retained["samples_truncated"] = bool(samples)
+        retained["briefing_truncation"] = {
+            "content_omitted": True,
+            "original_utf8_bytes": original_size,
+            "long_field_count": len(truncated_fields),
+        }
+        bounded = retained
+    if _encoded_size(bounded) > _BRIEFING_MAX_BYTES:  # pragma: no cover - invariant guard
+        raise ValueError("generated condition briefing cannot be bounded")
+    return bounded
 
 
 def _observation_ref(observation: Mapping[str, Any] | None) -> dict[str, Any]:
     """Return only allowlisted, non-prose observation evidence."""
     if not observation:
         return {}
-    allowed = ("observation_id", "observed_at", "outcome", "source_fingerprint")
+    # Fingerprints are already identified by the observation reference and are
+    # intentionally omitted: raw digests violate WORK's secret-shaped policy.
+    allowed = ("observation_id", "observed_at", "outcome")
     return {key: observation[key] for key in allowed if observation.get(key) is not None}
 
 
@@ -67,7 +138,7 @@ def _condition(
         "artifact_id": artifact_id,
         "artifact_key": artifact_key,
         "condition_kind": kind,
-        "briefing": {"reason": reason, **briefing},
+        "briefing": _bounded_briefing({"reason": reason, **briefing}),
     }
 
 
@@ -78,8 +149,8 @@ def _catalogues_conditions(
 ) -> list[dict[str, Any]]:
     missing: list[dict[str, Any]] = []
     drifted: list[dict[str, Any]] = []
-    desired_projection: list[dict[str, Any]] = []
-    actual_projection: list[dict[str, Any]] = []
+    desired_link_count = 0
+    actual_link_count = 0
 
     for entity in sorted(entities, key=lambda item: item.entity_id):
         desired_ids = sorted(
@@ -93,8 +164,8 @@ def _catalogues_conditions(
             if target.page_resource_id is None or target.status != "active"
         )
         actual_ids = sorted(set(entity.actual_page_resource_ids))
-        desired_projection.append({"entity_id": entity.entity_id, "page_resource_ids": desired_ids})
-        actual_projection.append({"entity_id": entity.entity_id, "page_resource_ids": actual_ids})
+        desired_link_count += len(desired_ids)
+        actual_link_count += len(actual_ids)
 
         if entity.desired_targets and (not actual_ids or unresolved):
             missing.append(
@@ -102,7 +173,10 @@ def _catalogues_conditions(
                     "entity_id": entity.entity_id,
                     "entity_kind": entity.entity_kind,
                     "missing_page_resource_ids": sorted(set(desired_ids) - set(actual_ids)),
-                    "unresolved_paths": unresolved,
+                    # Paths may contain long hash-shaped source components and
+                    # are unnecessary in WORK once entity/page identities and
+                    # aggregate counts are present.
+                    "unresolved_target_count": len(unresolved),
                 }
             )
         # Non-empty unequal sets are drift.  RETIRED entities supplied by the
@@ -121,10 +195,8 @@ def _catalogues_conditions(
 
     common = {
         "entity_count": len(entities),
-        "desired_link_count": sum(len(item["page_resource_ids"]) for item in desired_projection),
-        "actual_link_count": sum(len(item["page_resource_ids"]) for item in actual_projection),
-        "desired_set_digest": _stable_digest(desired_projection),
-        "actual_set_digest": _stable_digest(actual_projection),
+        "desired_link_count": desired_link_count,
+        "actual_link_count": actual_link_count,
     }
     result: list[dict[str, Any]] = []
     if missing:
@@ -136,7 +208,7 @@ def _catalogues_conditions(
                 "CATALOGUES_DESIRED_TARGET_ABSENT",
                 **common,
                 affected_entity_count=len(missing),
-                unresolved_target_count=sum(len(item["unresolved_paths"]) for item in missing),
+                unresolved_target_count=sum(item["unresolved_target_count"] for item in missing),
                 samples=missing[:_SAMPLE_LIMIT],
             )
         )
@@ -186,8 +258,6 @@ def derive_generated_artifact_conditions(
                 artifact_id, artifact_key, "DRIFTED", "SOURCE_CHANGED",
                 state="DRIFTED",
                 projection_correspondence="MISMATCH",
-                generated_fingerprint=freshness.get("generated_fingerprint"),
-                source_fingerprint=freshness.get("source_fingerprint"),
                 generation=_observation_ref(generation),
                 source_observation=_observation_ref(source),
             )
