@@ -7,8 +7,11 @@ DocPlane's own schemas, which is exactly the canary the exemplar names.
 """
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -35,6 +38,231 @@ STRUCTURE = {
         },
     },
 }
+
+
+def _wrapper_fixture(tmp_path: Path, *, docker_mode: str = "valid", hold: str = "0"):
+    repository = tmp_path / "repository"
+    scripts = repository / "scripts"
+    scripts.mkdir(parents=True)
+    wrapper = scripts / "run_schema_catalogue_reconciliation.sh"
+    wrapper.write_text(
+        (ROOT / "scripts" / "run_schema_catalogue_reconciliation.sh").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    receipt = tmp_path / "generator-receipt.json"
+    generator = scripts / "schema_catalogue.py"
+    generator.write_text(
+        "import json, os, sys, time\n"
+        "from urllib.parse import urlsplit\n"
+        "dsn = urlsplit(os.environ['CATALOGUE_SOURCE_DSN'])\n"
+        "with open(os.environ['SCHEMA_WRAPPER_RECEIPT'], 'a', encoding='utf-8') as out:\n"
+        "    out.write(json.dumps({'scheme': dsn.scheme, 'host': dsn.hostname, "
+        "'port': dsn.port, 'database': dsn.path, 'password_present': bool(dsn.password), "
+        "'args': sys.argv[1:]}) + '\\n')\n"
+        "time.sleep(float(os.environ.get('SCHEMA_WRAPPER_HOLD_SECONDS', '0')))\n",
+        encoding="utf-8",
+    )
+    environment_file = tmp_path / "schema.env"
+    environment_file.write_text(
+        "DOCPLANE_API=https://docplane.invalid\n"
+        "DOCPLANE_SCHEMA_CATALOGUE_TOKEN=synthetic-test-token\n"
+        "CATALOGUE_DB_KEY=docplane\n"
+        "CATALOGUE_DB_DISPLAY='DocPlane PostgreSQL'\n"
+        "CATALOGUE_SCHEMAS=docplane,docs,model,observe,work\n"
+        "CATALOGUE_SOURCE_DB=docs\n"
+        "CATALOGUE_SOURCE_USER=docs\n"
+        "CATALOGUE_SOURCE_PASSWORD='synthetic password/with punctuation'\n"
+        "CATALOGUE_SOURCE_PORT=5432\n"
+        "CATALOGUE_SOURCE_COMPOSE_PROJECT=docplane\n"
+        "CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres\n",
+        encoding="utf-8",
+    )
+    environment_file.chmod(0o600)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    docker = fake_bin / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -eu\n"
+        "if [[ $1 == ps ]]; then\n"
+        "  case \"$SCHEMA_DOCKER_MODE\" in\n"
+        "    missing) exit 0 ;;\n"
+        "    ambiguous-container) printf 'container-a\\ncontainer-b\\n' ;;\n"
+        "    *) printf 'container-a\\n' ;;\n"
+        "  esac\n"
+        "elif [[ $1 == inspect ]]; then\n"
+        "  case \"$SCHEMA_DOCKER_MODE\" in\n"
+        "    unresolved-address) exit 0 ;;\n"
+        "    ambiguous-address) printf '172.23.0.5\\n172.24.0.5\\n' ;;\n"
+        "    invalid-address) printf 'not-an-address\\n' ;;\n"
+        "    *) printf '172.23.0.5\\n' ;;\n"
+        "  esac\n"
+        "else\n"
+        "  exit 2\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{fake_bin}:{env['PATH']}",
+            "DOCPLANE_SCHEMA_CATALOGUE_ENV_FILE": str(environment_file),
+            "DOCPLANE_SCHEMA_CATALOGUE_LOCK_FILE": str(tmp_path / "schema.lock"),
+            "SCHEMA_DOCKER_MODE": docker_mode,
+            "SCHEMA_WRAPPER_RECEIPT": str(receipt),
+            "SCHEMA_WRAPPER_HOLD_SECONDS": hold,
+        }
+    )
+    return wrapper, environment_file, receipt, env
+
+
+def test_runtime_wrapper_contract_is_bounded_and_contains_no_secrets_or_schedule():
+    wrapper = (ROOT / "scripts" / "run_schema_catalogue_reconciliation.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "/run/lock/docplane-schema-catalogue.lock" in wrapper
+    assert "/tmp" not in wrapper
+    assert "/etc/docplane/schema-catalogue.env" in wrapper
+    assert "CATALOGUE_SOURCE_DSN=" in wrapper
+    assert "com.docker.compose.project=" in wrapper
+    assert "com.docker.compose.service=" in wrapper
+    assert "DOCPLANE_SCHEMA_CATALOGUE_TOKEN=" not in wrapper
+    assert "CATALOGUE_SOURCE_PASSWORD=" not in wrapper
+    assert "172." not in wrapper
+    assert not any(
+        path.name.endswith((".service", ".timer"))
+        and "schema-catalogue" in path.name
+        for path in ROOT.rglob("*")
+    )
+
+
+def test_runtime_wrapper_discovers_endpoint_and_passes_only_transient_dsn(tmp_path):
+    wrapper, _, receipt, env = _wrapper_fixture(tmp_path)
+
+    result = subprocess.run(
+        ["bash", str(wrapper), "--dry-run"], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "synthetic password" not in result.stdout + result.stderr
+    record = json.loads(receipt.read_text(encoding="utf-8"))
+    assert record == {
+        "scheme": "postgresql",
+        "host": "172.23.0.5",
+        "port": 5432,
+        "database": "/docs",
+        "password_present": True,
+        "args": ["--dry-run"],
+    }
+
+
+def test_runtime_wrapper_excludes_concurrent_runs_and_releases_lock(tmp_path):
+    wrapper, _, receipt, env = _wrapper_fixture(tmp_path, hold="1")
+    holder = subprocess.Popen(
+        ["bash", str(wrapper)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+    )
+    try:
+        for _ in range(100):
+            if receipt.exists():
+                break
+            holder.poll()
+            if holder.returncode is not None:
+                break
+            time.sleep(0.01)
+        assert receipt.exists()
+
+        contender = subprocess.run(
+            ["bash", str(wrapper)], env=env, capture_output=True, text=True
+        )
+        assert contender.returncode == 75
+        assert "SKIPPED" in contender.stderr
+        assert receipt.read_text(encoding="utf-8").count("\n") == 1
+        assert holder.wait(timeout=5) == 0
+    finally:
+        if holder.poll() is None:
+            holder.terminate()
+            holder.wait(timeout=5)
+
+    env["SCHEMA_WRAPPER_HOLD_SECONDS"] = "0"
+    subsequent = subprocess.run(
+        ["bash", str(wrapper)], env=env, capture_output=True, text=True
+    )
+    assert subsequent.returncode == 0
+    assert receipt.read_text(encoding="utf-8").count("\n") == 2
+
+
+@pytest.mark.parametrize(
+    ("docker_mode", "message"),
+    [
+        ("missing", "runtime identity did not resolve uniquely"),
+        ("ambiguous-container", "runtime identity did not resolve uniquely"),
+        ("unresolved-address", "endpoint did not resolve uniquely"),
+        ("ambiguous-address", "endpoint did not resolve uniquely"),
+        ("invalid-address", "endpoint validation failed"),
+    ],
+)
+def test_runtime_wrapper_fails_closed_on_runtime_discovery(
+    tmp_path, docker_mode, message
+):
+    wrapper, _, receipt, env = _wrapper_fixture(tmp_path, docker_mode=docker_mode)
+
+    result = subprocess.run(
+        ["bash", str(wrapper)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode == 78
+    assert message in result.stderr
+    assert not receipt.exists()
+
+
+def test_runtime_wrapper_fails_before_generator_for_environment_errors(tmp_path):
+    wrapper, environment_file, receipt, env = _wrapper_fixture(tmp_path)
+    environment_file.unlink()
+    missing = subprocess.run(
+        ["bash", str(wrapper)], env=env, capture_output=True, text=True
+    )
+    assert missing.returncode == 78
+    assert "absent or unreadable" in missing.stderr
+    assert not receipt.exists()
+
+    _, environment_file, receipt, env = _wrapper_fixture(tmp_path / "second")
+    content = environment_file.read_text(encoding="utf-8").replace(
+        "CATALOGUE_DB_KEY=docplane\n", ""
+    )
+    environment_file.write_text(content, encoding="utf-8")
+    environment_file.chmod(0o600)
+    incomplete = subprocess.run(
+        ["bash", str(wrapper)], env=env, capture_output=True, text=True
+    )
+    assert incomplete.returncode == 78
+    assert "CATALOGUE_DB_KEY is missing" in incomplete.stderr
+    assert not receipt.exists()
+
+
+def test_runtime_wrapper_rejects_insecure_or_persisted_endpoint_configuration(tmp_path):
+    wrapper, environment_file, receipt, env = _wrapper_fixture(tmp_path)
+    environment_file.chmod(0o640)
+    insecure = subprocess.run(
+        ["bash", str(wrapper)], env=env, capture_output=True, text=True
+    )
+    assert insecure.returncode == 78
+    assert "mode 0600" in insecure.stderr
+    assert not receipt.exists()
+
+    environment_file.chmod(0o600)
+    with environment_file.open("a", encoding="utf-8") as stream:
+        stream.write("CATALOGUE_SOURCE_DSN=postgresql://stale.invalid/docs\n")
+    persisted = subprocess.run(
+        ["bash", str(wrapper)], env=env, capture_output=True, text=True
+    )
+    assert persisted.returncode == 78
+    assert "must not persist CATALOGUE_SOURCE_DSN" in persisted.stderr
+    assert not receipt.exists()
 
 
 def test_fingerprint_is_deterministic_and_structure_sensitive():
