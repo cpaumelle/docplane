@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 from pydantic import ValidationError
 
 from app.application import app
-from app.model_page_links_api import CataloguesPageLinkSet, _diff
+from app.model_page_links_api import CataloguesPageLinkSet, _diff, reconcile_catalogues_page_links
 
 
 ROUTE = "/api/v1/model/entities/{entity_id}/page-links/catalogues"
@@ -43,11 +45,11 @@ def test_catalogues_empty_set_removes_all_current_links():
     assert continuing == []
 
 
-def test_catalogues_semantics_do_not_alias_generated_ownership():
-    source = __import__("inspect").getsource(
-        __import__("app.model_page_links_api", fromlist=["reconcile_catalogues_page_links"])
-    )
+def test_catalogues_semantics_do_not_alias_generated_ownership_or_other_relations():
+    source = inspect.getsource(reconcile_catalogues_page_links)
     assert "generated_artifact" not in source
     assert "artifact_targets" not in source
     assert "relation = 'CATALOGUES'" in source
     assert "relation = %s" not in source
+    for unrelated in ("DESCRIBES", "OPERATES", "DECIDES"):
+        assert unrelated not in source
