@@ -129,6 +129,7 @@ jobs:
             docs-api/tests/test_work_capture_contract.py \
             docs-api/tests/test_model_contract.py \
             docs-api/tests/test_observe_contract.py \
+            docs-api/tests/test_generated_conditions.py \
             docs-api/tests/test_closure_gates_contract.py \
             docs-api/tests/test_verification_requests_contract.py \
             docs-api/tests/test_corpus_observatory.py \
