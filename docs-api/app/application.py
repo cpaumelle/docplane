@@ -9,6 +9,7 @@ from app.enhanced_discovery_api import DISCOVERY_PATH, router as enhanced_discov
 from app.event_api import router as event_router
 from app.http_semantics import HeadAsGetMiddleware
 from app.model_api import router as model_router
+from app.model_page_links_api import router as model_page_links_router
 from app.observe_api import router as observe_router
 from app.verification_api import router as verification_router
 from app.operation_contract_api import install_operation_contract, router as operation_contract_router
@@ -42,6 +43,7 @@ app.include_router(agent_shortcuts_router)
 app.include_router(event_router)
 app.include_router(work_router)
 app.include_router(model_router)
+app.include_router(model_page_links_router)
 app.include_router(observe_router)
 app.include_router(verification_router)
 app.include_router(trust_router)
