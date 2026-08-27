@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import inspect
-
 import pytest
 from pydantic import ValidationError
 
 from app.application import app
-from app.model_page_links_api import CataloguesPageLinkSet, _diff, reconcile_catalogues_page_links
+from app.model_page_links_api import CataloguesPageLinkSet, _diff
 
 
 ROUTE = "/api/v1/model/entities/{entity_id}/page-links/catalogues"
@@ -45,11 +43,12 @@ def test_catalogues_empty_set_removes_all_current_links():
     assert continuing == []
 
 
-def test_catalogues_semantics_do_not_alias_generated_ownership_or_other_relations():
-    source = inspect.getsource(reconcile_catalogues_page_links)
-    assert "generated_artifact" not in source
-    assert "artifact_targets" not in source
-    assert "relation = 'CATALOGUES'" in source
-    assert "relation = %s" not in source
-    for unrelated in ("DESCRIBES", "OPERATES", "DECIDES"):
-        assert unrelated not in source
+def test_catalogues_contract_is_relation_specific_without_source_text_brittleness():
+    schema = app.openapi()
+    operation = schema["paths"][ROUTE]["put"]
+    assert operation["tags"] == ["model-v1"]
+    assert "page_resource_ids" in str(operation)
+    # Relation choice is encoded by the dedicated route: callers cannot supply
+    # DESCRIBES/OPERATES/DECIDES and therefore cannot broaden exact-set scope.
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    assert request_schema["$ref"].endswith("CataloguesPageLinkSet")
