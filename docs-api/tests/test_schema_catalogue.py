@@ -459,7 +459,14 @@ def test_resumed_run_wires_links_for_pre_existing_entities():
                     return {"entities": [{"entity_key": "docplane.docs", "entity_id": "schema-id"}]}
             return {"entity_id": "created-id"}
 
-    schema_catalogue.ensure_entities(FakeClient(), "docplane", "DocPlane PostgreSQL", ["docs"], "ab" * 32)
+    result = schema_catalogue.ensure_entities(
+        FakeClient(), "docplane", "DocPlane PostgreSQL", ["docs"], "ab" * 32
+    )
+    assert result == {
+        "database_id": "db-id",
+        "schema_ids": {"docs": "schema-id"},
+        "stale_schema_ids": [],
+    }
     link_calls = [call for call in calls if call[0] == "POST" and call[1].endswith("/links")]
     assert link_calls == [
         ("POST", "/api/v1/model/entities/schema-id/links", {"relation": "STORES_IN", "to_entity_id": "db-id"}),
@@ -676,7 +683,10 @@ def test_generation_evidence_is_emitted_only_after_atomic_publication(monkeypatc
     monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
     monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
     monkeypatch.setattr(schema_catalogue, "render_pages", lambda *_: pages)
-    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: "database-1")
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
+        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
+        "stale_schema_ids": [],
+    })
     monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
     monkeypatch.setattr(
         schema_catalogue, "last_generation_fingerprint", lambda *_: "old-fingerprint"
@@ -689,6 +699,11 @@ def test_generation_evidence_is_emitted_only_after_atomic_publication(monkeypatc
     monkeypatch.setattr(schema_catalogue, "publish_pages", publish)
     monkeypatch.setattr(
         schema_catalogue,
+        "reconcile_catalogues",
+        lambda *_args, **_kwargs: events.append("catalogues"),
+    )
+    monkeypatch.setattr(
+        schema_catalogue,
         "emit_generation",
         lambda *_args, **_kwargs: events.append("generation"),
     )
@@ -699,7 +714,7 @@ def test_generation_evidence_is_emitted_only_after_atomic_publication(monkeypatc
     monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     assert schema_catalogue.main([]) == 0
-    assert events == ["publication+ownership", "generation"]
+    assert events == ["publication+ownership", "catalogues", "generation"]
 
 
 def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
@@ -719,7 +734,10 @@ def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
     monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
     monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
     monkeypatch.setattr(schema_catalogue, "render_pages", lambda *_: pages)
-    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: "database-1")
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
+        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
+        "stale_schema_ids": [],
+    })
     monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
     monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: fp)
     monkeypatch.setattr(
@@ -727,6 +745,12 @@ def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
         "publish_pages",
         lambda *_args, **_kwargs: pytest.fail("unchanged run published"),
     )
+    monkeypatch.setattr(
+        schema_catalogue,
+        "page_ids_for_paths",
+        lambda _client, paths: {path: f"id-{index}" for index, path in enumerate(paths)},
+    )
+    monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(
         schema_catalogue,
         "emit_generation",
@@ -739,6 +763,171 @@ def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
     monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     assert schema_catalogue.main([]) == 0
+
+
+def test_catalogues_exact_state_is_zero_write_and_unrelated_relations_are_ignored():
+    calls = []
+
+    class Client:
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            assert method == "GET"
+            return {"pages": [
+                {"relation": "DESCRIBES", "page_resource_id": "unrelated"},
+                {"relation": "CATALOGUES", "page_resource_id": "wanted"},
+            ]}
+
+    assert schema_catalogue.reconcile_catalogues(
+        Client(), {"entity-1": ["wanted"]}, key_prefix="test"
+    ) == []
+    assert [method for method, *_ in calls] == ["GET"]
+
+
+def test_catalogues_missing_or_stale_state_reconciles_exactly():
+    calls = []
+
+    class Client:
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            if method == "GET":
+                return {"pages": [
+                    {"relation": "DESCRIBES", "page_resource_id": "unrelated"},
+                    {"relation": "CATALOGUES", "page_resource_id": "stale"},
+                ]}
+            return {"changed": True, "added": ["wanted"], "removed": ["stale"]}
+
+    result = schema_catalogue.reconcile_catalogues(
+        Client(), {"entity-1": ["wanted"]}, key_prefix="test"
+    )
+    assert result == [{"changed": True, "added": ["wanted"], "removed": ["stale"]}]
+    put = next(call for call in calls if call[0] == "PUT")
+    assert put[1] == "/api/v1/model/entities/entity-1/page-links/catalogues"
+    assert put[2] == {"page_resource_ids": ["wanted"]}
+    assert "unrelated" not in put[2]["page_resource_ids"]
+
+
+def test_catalogues_unknown_response_resumes_from_committed_exact_state():
+    class Client:
+        current = ["stale"]
+        put_calls = 0
+
+        def call(self, method, path, body=None, key=None):
+            if method == "GET":
+                return {"pages": [
+                    {"relation": "CATALOGUES", "page_resource_id": page_id}
+                    for page_id in self.current
+                ]}
+            self.put_calls += 1
+            self.current = list(body["page_resource_ids"])
+            raise ConnectionError("response lost after commit")
+
+    client = Client()
+    with pytest.raises(ConnectionError, match="response lost"):
+        schema_catalogue.reconcile_catalogues(
+            client, {"entity-1": ["wanted"]}, key_prefix="attempt-1"
+        )
+    # The next invocation reads durable state and does not issue a second
+    # mutation, so publication can remain safely committed and the generator
+    # can advance to GENERATION evidence.
+    assert schema_catalogue.reconcile_catalogues(
+        client, {"entity-1": ["wanted"]}, key_prefix="attempt-2"
+    ) == []
+    assert client.put_calls == 1
+
+
+def test_schema_catalogues_mapping_add_remove_restore_uses_stable_page_ids_only():
+    entities = {
+        "database_id": "database-1",
+        "schema_ids": {"docs": "schema-docs", "model": "schema-model"},
+        "stale_schema_ids": ["schema-removed"],
+    }
+    page_ids = {
+        "model/schema-catalogue/docplane/index.md": "page-index",
+        "model/schema-catalogue/docplane/docs.md": "page-docs",
+        "model/schema-catalogue/docplane/model.md": "page-model",
+    }
+    mappings = schema_catalogue.schema_catalogues_mappings(entities, page_ids, "docplane")
+    assert mappings == {
+        "database-1": ["page-index"],
+        "schema-docs": ["page-docs"],
+        "schema-model": ["page-model"],
+        "schema-removed": [],
+    }
+    assert not any("table" in entity_id or "column" in entity_id for entity_id in mappings)
+
+
+def test_unchanged_schema_link_repair_does_not_publish_and_generation_follows_repair(monkeypatch):
+    events = []
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    artifact = _artifact(sorted(page["path"] for page in pages))
+
+    class Source:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
+    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
+        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
+        "stale_schema_ids": [],
+    })
+    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
+    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: fp)
+    monkeypatch.setattr(schema_catalogue, "page_ids_for_paths", lambda _client, paths: {
+        path: f"id-{index}" for index, path in enumerate(paths)
+    })
+    monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: pytest.fail("republished"))
+    monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", lambda *_a, **_k: events.append("catalogues") or [{"changed": True}])
+    monkeypatch.setattr(schema_catalogue, "emit_generation", lambda *_a, **_k: events.append("generation"))
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "unused")
+    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
+    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
+
+    assert schema_catalogue.main([]) == 0
+    assert events == ["catalogues", "generation"]
+
+
+def test_catalogues_failure_after_publication_suppresses_generation(monkeypatch):
+    events = []
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    artifact = _artifact(sorted(page["path"] for page in pages))
+
+    class Source:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
+    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
+        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
+        "stale_schema_ids": [],
+    })
+    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
+    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: "older")
+    monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: (
+        events.append("publication+ownership") or
+        (artifact, {page["path"]: f"id-{index}" for index, page in enumerate(pages)})
+    ))
+
+    def refuse(*_args, **_kwargs):
+        events.append("catalogues-failed")
+        raise RuntimeError("semantic reconciliation failed")
+
+    monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", refuse)
+    monkeypatch.setattr(schema_catalogue, "emit_generation", lambda *_a, **_k: events.append("generation"))
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "unused")
+    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
+    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
+
+    with pytest.raises(RuntimeError, match="semantic reconciliation failed"):
+        schema_catalogue.main([])
+    assert events == ["publication+ownership", "catalogues-failed"]
 
 
 @pytest.mark.skipif(not os.environ.get("DB_HOST"), reason="requires a PostgreSQL database")

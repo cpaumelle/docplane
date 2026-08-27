@@ -19,6 +19,8 @@ Contract, identical to the sibling generators:
     RESTORE_PAGE / REPLACE_DOCUMENT, plus ARCHIVE_PAGE for pages the previous
     declaration owned that are no longer produced), with the exact generated
     ownership set committed atomically with publication;
+  - the source SYSTEM then reconciles its exact CATALOGUES index link before
+    GENERATION/NOMINAL, so semantic failure is resumable without unsafe pages;
   - inbox captures are surfaced as a COUNT only. Pre-triage thoughts are not
     documentation and never appear on the site.
 
@@ -502,6 +504,11 @@ def ensure_source_entity(client: Client, fp: str) -> str:
     return created["entity_id"]
 
 
+def work_catalogues_mappings(source_entity_id: str, page_ids: dict[str, str]) -> dict[str, list[str]]:
+    """The work domain has one semantic catalogue root, independent of queue pages."""
+    return {source_entity_id: [page_ids[f"{SECTION}/index.md"]]}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true", help="render and report; perform no writes")
@@ -572,12 +579,12 @@ def main(argv: list[str] | None = None) -> int:
     pages = render_pages(state, fp)
     open_count = sum(1 for row in state["initiatives"] if row.get("work_state") in _QUEUE_STATES)
     print(f"work fingerprint {fp[:16]} — {open_count} open initiative(s), {len(pages)} page(s)")
-
     if args.dry_run:
         for page in pages:
             print(f"DRY-RUN would publish {page['path']} ({len(page['content'])} bytes)")
         return 0
 
+    source_id = ensure_source_entity(client, fp)
     artifact = sc.current_artifact(client, ARTIFACT_KEY)
 
     def observe_generation(current: dict[str, Any]) -> None:
@@ -605,6 +612,12 @@ def main(argv: list[str] | None = None) -> int:
         and previous == fp
         and not needs_reconciliation(artifact, desired_paths)
     ):
+        page_ids = sc.page_ids_for_paths(client, desired_paths)
+        sc.reconcile_catalogues(
+            client,
+            work_catalogues_mappings(source_id, page_ids),
+            key_prefix=_key(fp, "semantic"),
+        )
         observe_generation(artifact)
         print(f"UNCHANGED {fp[:16]} — nothing to regenerate")
         return 0
@@ -638,7 +651,6 @@ def main(argv: list[str] | None = None) -> int:
             operations.append(("ARCHIVE_PAGE", current["resource_id"], current["revision"], {"path": path}))
 
     if artifact is None:
-        source_id = ensure_source_entity(client, fp)
         artifact = client.call(
             "POST", "/api/v1/model/artifacts",
             {
@@ -666,10 +678,20 @@ def main(argv: list[str] | None = None) -> int:
                 _key(fp, "artifact-attribution"),
             )
             artifact = updated["artifact"]
+            sc.reconcile_catalogues(
+                client,
+                work_catalogues_mappings(source_id, page_ids),
+                key_prefix=_key(fp, "semantic"),
+            )
             observe_generation(artifact)
             print(f"UNCHANGED {fp[:16]} — updated generator attribution only")
             return 0
         else:
+            sc.reconcile_catalogues(
+                client,
+                work_catalogues_mappings(source_id, page_ids),
+                key_prefix=_key(fp, "semantic"),
+            )
             observe_generation(artifact)
             print(f"UNCHANGED {fp[:16]} — nothing to regenerate")
             return 0
@@ -740,6 +762,11 @@ def main(argv: list[str] | None = None) -> int:
     artifact = sc.current_artifact(client, ARTIFACT_KEY)
     if artifact is None:
         raise RuntimeError("publication committed without an active generated-artifact owner")
+    sc.reconcile_catalogues(
+        client,
+        work_catalogues_mappings(source_id, page_ids),
+        key_prefix=_key(fp, "semantic"),
+    )
     observe_generation(artifact)
     print(f"PUBLISHED {len(pages)} page(s), archived {len(stale_paths)} stale path(s), fingerprint {fp[:16]}")
     return 0

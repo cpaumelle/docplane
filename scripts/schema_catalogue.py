@@ -9,6 +9,7 @@ the DocPlane API as a named AUTOMATION principal:
   know     catalogue pages behind a permanent presence page,
            published atomically with exact GENERATED ownership membership
            through change -> validate -> publish
+  model    exact DATABASE/SCHEMA CATALOGUES links after safe publication
   observe  a GENERATION observation carrying the structural fingerprint
 
 Regeneration is fingerprint-bound: when the source structure hash equals the
@@ -300,8 +301,20 @@ def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
 
 # ── The run ─────────────────────────────────────────────────────────────────
 
-def ensure_entities(client: Client, db_key: str, db_display: str, schemas: list[str], structure_hash: str) -> str:
-    """DATABASE + SCHEMA entities with STORES_IN wires. Returns database entity id."""
+def ensure_entities(
+    client: Client,
+    db_key: str,
+    db_display: str,
+    schemas: list[str],
+    structure_hash: str,
+) -> dict[str, Any]:
+    """Reconcile source MODEL identity and return structured catalogue mapping state.
+
+    SCHEMA lifecycle is outside this projection slice, but schemas absent from
+    the current source still need their active CATALOGUES assertion removed.
+    Returning both current and absent entity IDs lets the semantic stage do so
+    without inferring mappings from rendered Markdown.
+    """
     existing = {
         entity["entity_key"]: entity
         for entity in client.call("GET", "/api/v1/model/entities?entity_kind=DATABASE").get("entities", [])
@@ -316,8 +329,11 @@ def ensure_entities(client: Client, db_key: str, db_display: str, schemas: list[
         )["entity_id"]
     schema_entities = {
         entity["entity_key"]: entity
-        for entity in client.call("GET", "/api/v1/model/entities?entity_kind=SCHEMA").get("entities", [])
+        for entity in client.call(
+            "GET", "/api/v1/model/entities?entity_kind=SCHEMA&status=all&limit=1000"
+        ).get("entities", [])
     }
+    schema_ids: dict[str, str] = {}
     for schema in sorted(schemas):
         schema_key = f"{db_key}.{schema}"
         if schema_key in schema_entities:
@@ -328,6 +344,7 @@ def ensure_entities(client: Client, db_key: str, db_display: str, schemas: list[
                 {"entity_kind": "SCHEMA", "entity_key": schema_key, "display_name": f"{db_display} {schema}"},
                 _key(structure_hash, "entity", schema_key),
             )["entity_id"]
+        schema_ids[schema] = schema_id
         # Always wire the link, even for a pre-existing entity: a resumed run
         # may have created the entity without reaching this call, and the
         # server inserts links ON CONFLICT DO NOTHING, so replays are safe.
@@ -336,7 +353,84 @@ def ensure_entities(client: Client, db_key: str, db_display: str, schemas: list[
             {"relation": "STORES_IN", "to_entity_id": database_id},
             _key(structure_hash, "link", schema_key),
         )
-    return database_id
+    prefix = f"{db_key}."
+    stale_schema_ids = sorted(
+        entity["entity_id"]
+        for key, entity in schema_entities.items()
+        if key.startswith(prefix) and key.removeprefix(prefix) not in schema_ids
+    )
+    return {
+        "database_id": database_id,
+        "schema_ids": schema_ids,
+        "stale_schema_ids": stale_schema_ids,
+    }
+
+
+def current_catalogues_page_ids(client: Client, entity_id: str) -> list[str]:
+    """Read only the active semantic catalogue set; other relations are opaque."""
+    detail = client.call("GET", f"/api/v1/model/entities/{entity_id}")
+    return sorted(
+        page["page_resource_id"]
+        for page in detail.get("pages", [])
+        if page.get("relation") == "CATALOGUES"
+    )
+
+
+def reconcile_catalogues(
+    client: Client,
+    desired_by_entity: dict[str, list[str]],
+    *,
+    key_prefix: str,
+) -> list[dict[str, Any]]:
+    """Converge exact MODEL -> KNOW semantics without conferring ownership.
+
+    Reads precede writes so an already exact projection is genuinely
+    zero-mutation. A fresh request identity is correct here: after an unknown
+    HTTP outcome the next invocation reads committed state first, while an
+    uncommitted transaction can safely receive a new exact-set request.
+    """
+    results = []
+    for entity_id, desired_ids in sorted(desired_by_entity.items()):
+        desired = sorted(desired_ids)
+        current = current_catalogues_page_ids(client, entity_id)
+        if current == desired:
+            continue
+        results.append(
+            client.call(
+                "PUT",
+                f"/api/v1/model/entities/{entity_id}/page-links/catalogues",
+                {"page_resource_ids": desired},
+                f"{key_prefix}-catalogues-{uuid4()}",
+            )
+        )
+    return results
+
+
+def page_ids_for_paths(client: Client, paths: list[str]) -> dict[str, str]:
+    """Resolve exact active-or-archived page identity without path inference."""
+    resolved: dict[str, str] = {}
+    for path in paths:
+        pages = client.call("GET", f"/api/v1/pages?path={path}&status=all").get("pages", [])
+        if not pages:
+            raise RuntimeError(f"generated catalogue target is missing: {path}")
+        resolved[path] = pages[0]["resource_id"]
+    return resolved
+
+
+def schema_catalogues_mappings(
+    entities: dict[str, Any],
+    page_ids: dict[str, str],
+    db_key: str,
+) -> dict[str, list[str]]:
+    """Derive DATABASE/SCHEMA mappings from introspection identity, never content."""
+    desired = {
+        entities["database_id"]: [page_ids[f"{SECTION}/{db_key}/index.md"]],
+    }
+    for schema, entity_id in sorted(entities["schema_ids"].items()):
+        desired[entity_id] = [page_ids[f"{SECTION}/{db_key}/{schema}.md"]]
+    for entity_id in entities["stale_schema_ids"]:
+        desired[entity_id] = []
+    return desired
 
 
 def current_artifact(client: Client, artifact_key: str) -> dict[str, Any] | None:
@@ -559,13 +653,26 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_SCHEMA_CATALOGUE_TOKEN"])
-    database_id = ensure_entities(client, db_key, db_display, schemas, structure_hash)
+    entities = ensure_entities(client, db_key, db_display, schemas, structure_hash)
     artifact_key = f"schema-catalogue-{db_key}"
     artifact = current_artifact(client, artifact_key)
     desired_paths = sorted(page["path"] for page in pages)
     if artifact is not None:
         previous = last_generation_fingerprint(client, artifact["artifact_id"])
         if previous == structure_hash and not needs_reconciliation(artifact, desired_paths):
+            page_ids = page_ids_for_paths(client, desired_paths)
+            repaired = reconcile_catalogues(
+                client,
+                schema_catalogues_mappings(entities, page_ids, db_key),
+                key_prefix=_key(structure_hash, "semantic"),
+            )
+            if repaired:
+                emit_generation(
+                    client,
+                    artifact["artifact_id"],
+                    structure_hash,
+                    f"Confirmed {len(pages)} catalogue pages for {db_key} ({len(schemas)} schemas)",
+                )
             print(f"UNCHANGED {structure_hash[:16]} — nothing to regenerate")
             return 0
 
@@ -593,6 +700,11 @@ def main(argv: list[str] | None = None) -> int:
                 _key(structure_hash, "artifact-attribution"),
             )
             artifact = updated["artifact"]
+            reconcile_catalogues(
+                client,
+                schema_catalogues_mappings(entities, page_ids, db_key),
+                key_prefix=_key(structure_hash, "semantic"),
+            )
             emit_generation(
                 client,
                 artifact["artifact_id"],
@@ -609,7 +721,12 @@ def main(argv: list[str] | None = None) -> int:
         include_presence=True,
         artifact=artifact,
         artifact_key=artifact_key,
-        database_id=database_id,
+        database_id=entities["database_id"],
+    )
+    reconcile_catalogues(
+        client,
+        schema_catalogues_mappings(entities, page_ids, db_key),
+        key_prefix=_key(structure_hash, "semantic"),
     )
     emit_generation(
         client, artifact["artifact_id"], structure_hash,

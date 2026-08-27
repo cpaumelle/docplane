@@ -431,6 +431,10 @@ def test_probe_and_generation_emit_the_same_fingerprint_for_identical_work(monke
         "target_page_paths": paths, "version": 1,
     })
     monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *args: expected)
+    monkeypatch.setattr(
+        sc, "page_ids_for_paths", lambda _client, paths: {path: f"id-{path}" for path in paths}
+    )
+    monkeypatch.setattr(sc, "reconcile_catalogues", lambda *_args, **_kwargs: [])
     monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
     monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
 
@@ -462,11 +466,16 @@ def test_unchanged_main_replays_observation_and_never_publishes(monkeypatch, cap
 
     monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
     monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(work_catalogue, "ensure_source_entity", lambda *_: "source-entity")
     monkeypatch.setattr(sc, "current_artifact", lambda *a: {
         "artifact_id": "artifact", "generator_version": work_catalogue.GENERATOR_VERSION,
         "target_page_paths": paths, "version": 1,
     })
     monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: fp)
+    monkeypatch.setattr(
+        sc, "page_ids_for_paths", lambda _client, wanted: {path: f"id-{path}" for path in wanted}
+    )
+    monkeypatch.setattr(sc, "reconcile_catalogues", lambda *_args, **_kwargs: [])
     monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
     monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
 
@@ -485,6 +494,51 @@ def test_membership_and_software_version_do_not_require_succession():
     assert work_catalogue.needs_reconciliation(artifact, ["work/index.md", "work/now.md"]) is True
     assert work_catalogue.needs_reconciliation(artifact, ["work/index.md"]) is True
     assert work_catalogue.needs_succession({**artifact, "projection_contract_version": 2}) is True
+
+
+def test_work_catalogues_mapping_is_exactly_the_system_index():
+    assert work_catalogue.work_catalogues_mappings(
+        "system-docplane-work",
+        {"work/index.md": "page-index", "work/now.md": "page-now"},
+    ) == {"system-docplane-work": ["page-index"]}
+
+
+def test_unchanged_work_repairs_semantics_without_publication_before_generation(monkeypatch):
+    state = _state([_initiative()])
+    fp = work_catalogue.fingerprint(state)
+    paths = work_catalogue.desired_page_paths(state)
+    events = []
+
+    class Client:
+        def __init__(self, *args): pass
+        def call(self, method, path, body=None, key=None):
+            if path == "/api/v1/observations":
+                events.append("generation")
+                return {"recorded": [{"replayed": True}]}
+            raise AssertionError(f"unexpected API call: {method} {path}")
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(work_catalogue, "Client", Client)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda _client: state)
+    monkeypatch.setattr(work_catalogue, "ensure_source_entity", lambda *_: "system-1")
+    monkeypatch.setattr(sc, "current_artifact", lambda *_: {
+        "artifact_id": "artifact-1", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "target_page_paths": paths, "version": 1,
+    })
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *_: fp)
+    monkeypatch.setattr(sc, "page_ids_for_paths", lambda _client, wanted: {
+        path: f"id-{path}" for path in wanted
+    })
+    monkeypatch.setattr(
+        sc, "reconcile_catalogues",
+        lambda *_args, **_kwargs: events.append("catalogues") or [{"changed": True}],
+    )
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main([]) == 0
+    assert events == ["catalogues", "generation"]
 
 
 def test_reopened_initiative_restores_then_replaces_archived_page(monkeypatch, capsys):
@@ -527,11 +581,13 @@ def test_reopened_initiative_restores_then_replaces_archived_page(monkeypatch, c
 
     monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
     monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(work_catalogue, "ensure_source_entity", lambda *_: "source-entity")
     monkeypatch.setattr(sc, "current_artifact", lambda *a: {
         "artifact_id": "artifact", "generator_version": work_catalogue.GENERATOR_VERSION,
         "target_page_paths": desired_paths, "version": 1,
     })
     monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: "stale")
+    monkeypatch.setattr(sc, "reconcile_catalogues", lambda *_args, **_kwargs: [])
     monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
     monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
 
