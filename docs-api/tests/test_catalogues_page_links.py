@@ -47,8 +47,12 @@ def test_catalogues_contract_is_relation_specific_without_source_text_brittlenes
     schema = app.openapi()
     operation = schema["paths"][ROUTE]["put"]
     assert operation["tags"] == ["model-v1"]
-    assert "page_resource_ids" in str(operation)
-    # Relation choice is encoded by the dedicated route: callers cannot supply
-    # DESCRIBES/OPERATES/DECIDES and therefore cannot broaden exact-set scope.
+
     request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
     assert request_schema["$ref"].endswith("CataloguesPageLinkSet")
+    component = schema["components"]["schemas"]["CataloguesPageLinkSet"]
+    assert "page_resource_ids" in component["properties"]
+
+    # Relation choice is encoded by the dedicated route: callers cannot supply
+    # DESCRIBES/OPERATES/DECIDES and therefore cannot broaden exact-set scope.
+    assert "relation" not in component["properties"]
