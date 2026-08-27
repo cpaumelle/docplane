@@ -39,6 +39,7 @@ def _mint_contributor() -> tuple[str, dict[str, str]]:
 
 
 def _seed_artifact(principal_id: str) -> str:
+    seed = f"{RUN}-{uuid.uuid4().hex[:8]}"
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -48,7 +49,7 @@ def _seed_artifact(principal_id: str) -> str:
             VALUES ('SYSTEM', %s, %s, '{}'::jsonb, %s, %s)
             RETURNING entity_id::text
             """,
-            (f"work-condition-source-{RUN}", f"Work condition source {RUN}", principal_id, f"source-{RUN}"),
+            (f"work-condition-source-{seed}", f"Work condition source {seed}", principal_id, f"source-{seed}"),
         )
         source_id = cur.fetchone()[0]
         cur.execute(
@@ -58,7 +59,7 @@ def _seed_artifact(principal_id: str) -> str:
             VALUES (%s, 'work-condition-e2e', '1', %s, %s, %s)
             RETURNING artifact_id::text
             """,
-            (f"work-condition-artifact-{RUN}", source_id, principal_id, f"artifact-{RUN}"),
+            (f"work-condition-artifact-{seed}", source_id, principal_id, f"artifact-{seed}"),
         )
         artifact_id = cur.fetchone()[0]
         conn.commit()
