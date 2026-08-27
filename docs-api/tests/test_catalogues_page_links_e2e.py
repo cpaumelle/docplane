@@ -107,6 +107,7 @@ def test_catalogues_exact_set_transaction_replay_and_relation_isolation():
     )
     assert first.status_code == 200, first.text
     assert first.json()["changed"] is True
+    assert first.json()["entity_status"] == "ACTIVE"
     assert set(first.json()["added"]) == {page_one, page_two}
     assert first.json()["removed"] == []
     assert _event_count(entity_id) == 1
@@ -167,3 +168,39 @@ def test_catalogues_exact_set_transaction_replay_and_relation_isolation():
     )
     assert rejected.status_code == 409
     assert rejected.json()["detail"]["code"] == "CATALOGUES_PAGE_NOT_ACTIVE"
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE model.entities SET status = 'RETIRED', retired_at = now(), version = version + 1 WHERE entity_id = %s",
+            (entity_id,),
+        )
+        conn.commit()
+
+    retired_add = client.put(
+        f"/api/v1/model/entities/{entity_id}/page-links/catalogues",
+        json={"page_resource_ids": [page_two]},
+        headers={**headers, "Idempotency-Key": f"catalogues-e2e-retired-add-{RUN}"},
+    )
+    assert retired_add.status_code == 409
+    assert retired_add.json()["detail"]["code"] == "MODEL_ENTITY_NOT_ACTIVE"
+
+    retired_cleanup = client.put(
+        f"/api/v1/model/entities/{entity_id}/page-links/catalogues",
+        json={"page_resource_ids": []},
+        headers={**headers, "Idempotency-Key": f"catalogues-e2e-retired-cleanup-{RUN}"},
+    )
+    assert retired_cleanup.status_code == 200, retired_cleanup.text
+    assert retired_cleanup.json()["entity_status"] == "RETIRED"
+    assert retired_cleanup.json()["removed"] == [page_two]
+    assert retired_cleanup.json()["changed"] is True
+
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT relation, page_resource_id::text FROM model.entity_page_links WHERE entity_id = %s ORDER BY relation, page_resource_id",
+            (entity_id,),
+        )
+        rows = cur.fetchall()
+    assert ("DESCRIBES", page_one) in rows
+    assert all(relation != "CATALOGUES" for relation, _ in rows)

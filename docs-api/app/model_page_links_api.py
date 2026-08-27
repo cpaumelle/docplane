@@ -53,9 +53,10 @@ def reconcile_catalogues_page_links(
 ) -> dict[str, Any]:
     """Reconcile the complete active CATALOGUES page set for one entity.
 
-    This deliberately does not touch DESCRIBES/OPERATES/DECIDES and does not
-    confer generated-artifact ownership. Archived pages are rejected: active
-    semantic catalogue links describe the current projection only.
+    ACTIVE entities may reconcile any exact active page set. RETIRED entities may
+    reconcile only the empty set so stale active semantic assertions can be
+    removed without allowing retired MODEL identities to acquire new current
+    catalogue links. Archived pages are never valid active CATALOGUES targets.
     """
     key = _key(idempotency_key)
     desired = {str(value) for value in request.page_resource_ids}
@@ -77,8 +78,12 @@ def reconcile_catalogues_page_links(
         row = cur.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail={"code": "MODEL_ENTITY_NOT_FOUND"})
-        if row[0] != "ACTIVE":
-            raise HTTPException(status_code=409, detail={"code": "MODEL_ENTITY_NOT_ACTIVE"})
+        entity_status = row[0]
+        if entity_status != "ACTIVE" and desired:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "MODEL_ENTITY_NOT_ACTIVE", "status": entity_status},
+            )
 
         if desired:
             cur.execute(
@@ -121,6 +126,7 @@ def reconcile_catalogues_page_links(
         changed = bool(added or removed)
         response = {
             "entity_id": str(entity_id),
+            "entity_status": entity_status,
             "relation": "CATALOGUES",
             "page_resource_ids": sorted(desired),
             "added": added,
@@ -141,6 +147,7 @@ def reconcile_catalogues_page_links(
                 resource_id=str(entity_id),
                 metadata={
                     "relation": "CATALOGUES",
+                    "entity_status": entity_status,
                     "added": added,
                     "removed": removed,
                     "continuing_count": len(continuing),
