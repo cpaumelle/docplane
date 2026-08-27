@@ -13,6 +13,7 @@ DocPlane API as a named AUTOMATION principal:
            generated content and exact-set ownership commit together
   model    one artifact declaration binding the generated pages; ordinary
            rule-file membership evolution reconciles that declaration in place
+  model    exact SERVICE/active-rule CATALOGUES links after safe publication
   observe  a GENERATION observation carrying the rule-set fingerprint
 
 Coverage is populated as gaps, never stubs: rules without descriptions carry
@@ -391,7 +392,9 @@ def reconcile_entities(
     Creates and link-adds are idempotent server-side (ON CONFLICT), the
     lifecycle verbs are versioned CAS calls keyed by fingerprint, so a
     resumed run converges — the Sprint 5 resume lesson, now for every verb.
-    Returns the source entity id plus a reconciliation summary."""
+    Returns the source entity id, structured rule-to-page identity and a
+    reconciliation summary. CATALOGUES adoption consumes that structured
+    result; it never reverse-parses generated Markdown."""
     def list_all(query: str) -> list[dict[str, Any]]:
         # A reconciler must never act on a truncated world-view: a hidden
         # entity would read as "new" (create → 409 crash) or escape
@@ -530,7 +533,35 @@ def reconcile_entities(
                 )
                 summary["links_removed"] += 1
 
-    return {"source_id": source_id, **summary}
+    return {
+        "source_id": source_id,
+        "active_rule_pages": {
+            rules[rule_key]["entity_id"]: wanted["attributes"]["source_page_path"]
+            for rule_key, wanted in sorted(desired.items())
+        },
+        "retired_rule_ids": sorted(
+            entity["entity_id"] for rule_key, entity in rules.items() if rule_key not in desired
+        ),
+        **summary,
+    }
+
+
+def meter_catalogues_mappings(
+    reconciled: dict[str, Any],
+    page_ids: dict[str, str],
+    source_key: str,
+) -> dict[str, list[str]]:
+    """Build SERVICE/rule CATALOGUES sets from structured source metadata."""
+    mappings = {
+        reconciled["source_id"]: [page_ids[f"{SECTION}/{_path_slug(source_key)}/index.md"]]
+    }
+    for entity_id, path in sorted(reconciled["active_rule_pages"].items()):
+        mappings[entity_id] = [page_ids[path]]
+    # A retired identity remains historical MODEL state, but CATALOGUES is an
+    # active semantic assertion and therefore has an exact empty set.
+    for entity_id in reconciled["retired_rule_ids"]:
+        mappings[entity_id] = []
+    return mappings
 
 
 def artifact_needs_succession(artifact: dict[str, Any]) -> bool:
@@ -604,16 +635,17 @@ def main(argv: list[str] | None = None) -> int:
         ))
         return 0
 
-    print(f"fingerprint {structure_hash}")
-    print(
-        f"parsed {total_rules} rules from {len(structure)} files; rendered {len(pages)} pages; "
-        f"{unwired} rules carry no service label and get no WATCHES wire"
-    )
-
     if args.dry_run:
+        print(f"fingerprint {structure_hash}")
+        print(
+            f"parsed {total_rules} rules from {len(structure)} files; rendered {len(pages)} pages; "
+            f"{unwired} rules carry no service label and get no WATCHES wire"
+        )
         for page in pages:
             print(f"DRY-RUN would publish {page['path']} ({len(page['content'])} bytes)")
         return 0
+
+    print(f"fingerprint {structure_hash}")
 
     # Reuse the proven Sprint 5 machinery via the shared client: the
     # publish/declare/observe helpers live in schema_catalogue and operate on
@@ -628,6 +660,10 @@ def main(argv: list[str] | None = None) -> int:
         service_overlay=service_overlay,
     )
     source_id = reconciled["source_id"]
+    print(
+        f"parsed {total_rules} rules from {len(structure)} files; rendered {len(pages)} pages; "
+        f"{unwired} rules carry no service label and get no WATCHES wire"
+    )
     print(
         "reconciled entities: "
         + ", ".join(f"{reconciled[key]} {key}" for key in ("created", "updated", "retired", "reactivated", "links_added", "links_updated", "links_removed"))
@@ -665,6 +701,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if artifact is not None:
         if previous == structure_hash and not artifact_needs_reconciliation(artifact, sorted(page["path"] for page in pages)):
+            page_ids = sc.page_ids_for_paths(client, sorted(page["path"] for page in pages))
+            sc.reconcile_catalogues(
+                client,
+                meter_catalogues_mappings(reconciled, page_ids, source_key),
+                key_prefix=_key(structure_hash, "semantic"),
+            )
             # Replay the existing fingerprint-bound NOMINAL observation. The
             # API receipt makes this zero-mutation while proving the scheduled
             # loop still has one current success record.
@@ -742,6 +784,11 @@ def main(argv: list[str] | None = None) -> int:
             _key(structure_hash, "artifact-attribution"),
         )
         artifact = updated["artifact"]
+        sc.reconcile_catalogues(
+            client,
+            meter_catalogues_mappings(reconciled, page_ids, source_key),
+            key_prefix=_key(structure_hash, "semantic"),
+        )
         observe_generation(artifact)
         if should_reconcile_gap_work(source_changed=False, explicit=args.reconcile_gaps):
             reconcile_gap_work()
@@ -811,6 +858,11 @@ def main(argv: list[str] | None = None) -> int:
     artifact = sc.current_artifact(client, artifact_key)
     if artifact is None:
         raise RuntimeError("publication committed without an active generated-artifact owner")
+    sc.reconcile_catalogues(
+        client,
+        meter_catalogues_mappings(reconciled, page_ids, source_key),
+        key_prefix=_key(structure_hash, "semantic"),
+    )
     observe_generation(artifact)
     # Coverage changed with this import, so advance the bounded Work
     # projection once. Scheduled UNCHANGED ticks deliberately skip it.

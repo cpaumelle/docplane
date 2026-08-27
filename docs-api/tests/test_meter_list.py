@@ -500,14 +500,20 @@ def test_rules_removed_from_git_are_retired(tmp_path):
     )
     summary = _reconcile(fake, tmp_path, removed)
     assert summary["retired"] == 1
-    assert fake.by_key("rule.backupstale")["status"] == "RETIRED"
+    retired = fake.by_key("rule.backupstale")
+    assert retired["status"] == "RETIRED"
+    assert retired["entity_id"] in summary["retired_rule_ids"]
+    assert retired["entity_id"] not in summary["active_rule_pages"]
     # Retirement converges too — the second pass has nothing left to do.
     assert _reconcile(fake, tmp_path, removed)["retired"] == 0
     # A rule restored in git resumes its identity — (kind, key) is unique
     # across statuses, so resurrection must never mint a duplicate.
     restored = _reconcile(fake, tmp_path, RULES_YML)
     assert restored["reactivated"] == 1 and restored["created"] == 0
-    assert fake.by_key("rule.backupstale")["status"] == "ACTIVE"
+    active = fake.by_key("rule.backupstale")
+    assert active["status"] == "ACTIVE"
+    assert active["entity_id"] in restored["active_rule_pages"]
+    assert active["entity_id"] not in restored["retired_rule_ids"]
 
 
 def test_mass_retirement_is_bounded_and_operator_overridable(tmp_path):
@@ -533,6 +539,31 @@ def test_membership_and_software_version_reconcile_without_succession():
     assert meter_list.artifact_needs_succession(
         {**artifact, "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION + 1}
     )
+
+
+def test_meter_catalogues_mapping_is_structured_many_to_one_and_retired_is_empty():
+    reconciled = {
+        "source_id": "service-source",
+        "active_rule_pages": {
+            "rule-a": "observe/meter-list/example-prometheus/shared.md",
+            "rule-b": "observe/meter-list/example-prometheus/shared.md",
+        },
+        "retired_rule_ids": ["rule-retired"],
+    }
+    mappings = meter_list.meter_catalogues_mappings(
+        reconciled,
+        {
+            "observe/meter-list/example-prometheus/index.md": "page-index",
+            "observe/meter-list/example-prometheus/shared.md": "page-shared",
+        },
+        "example.prometheus",
+    )
+    assert mappings == {
+        "service-source": ["page-index"],
+        "rule-a": ["page-shared"],
+        "rule-b": ["page-shared"],
+        "rule-retired": [],
+    }
 
 
 def _run_changed_main(tmp_path, monkeypatch, *, artifact, page_status=None, previous="stale"):
@@ -577,6 +608,13 @@ def _run_changed_main(tmp_path, monkeypatch, *, artifact, page_status=None, prev
             "source_id": "source", "created": 0, "updated": 0, "retired": 0,
             "reactivated": 0, "links_added": 0, "links_updated": 0,
             "links_removed": 0, "warnings": [],
+            "active_rule_pages": {
+                f"entity-{rule['name']}": meter_list.rule_attributes(
+                    file_stem, group_name, rule, "example.prometheus"
+                )["source_page_path"]
+                for file_stem, group_name, rule in meter_list.iter_rules(structure)
+            },
+            "retired_rule_ids": [],
         },
     )
     monkeypatch.setattr(sc, "current_artifact", lambda *args: artifact)
@@ -623,8 +661,13 @@ def test_changed_generation_uses_in_place_plan_and_preallocates_new_target(tmp_p
     assert new_operation["payload"]["resource_id"] == plan["target_page_resource_ids"][new_index]
     assert not any(path.endswith("/retire") for _, path, _, _ in calls)
     publish_index = next(i for i, call in enumerate(calls) if call[1].endswith("/publish"))
+    catalogues_indices = [
+        i for i, call in enumerate(calls)
+        if call[0] == "PUT" and call[1].endswith("/page-links/catalogues")
+    ]
     observation_index = next(i for i, call in enumerate(calls) if call[1] == "/api/v1/observations")
-    assert observation_index > publish_index
+    assert catalogues_indices
+    assert publish_index < min(catalogues_indices) <= max(catalogues_indices) < observation_index
 
 
 def test_content_only_change_uses_in_place_exact_set_without_succession(tmp_path, monkeypatch):
@@ -763,6 +806,11 @@ def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_pa
 
         def call(self, method, path, body=None, key=None):
             calls.append((method, path, body, key))
+            if method == "GET" and path.startswith("/api/v1/pages?path="):
+                requested = path.removeprefix("/api/v1/pages?path=").removesuffix("&status=all")
+                return {"pages": [{"resource_id": f"resource-{requested}", "status": "active"}]}
+            if method == "GET" and path.startswith("/api/v1/model/entities/"):
+                return {"pages": []}
             return {"recorded": [{"replayed": True}]}
 
     import schema_catalogue as sc
@@ -775,6 +823,13 @@ def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_pa
             "source_id": "source", "created": 0, "updated": 0, "retired": 0,
             "reactivated": 0, "links_added": 0, "links_updated": 0,
             "links_removed": 0, "warnings": [],
+            "active_rule_pages": {
+                f"entity-{rule['name']}": meter_list.rule_attributes(
+                    file_stem, group_name, rule, "example.prometheus"
+                )["source_page_path"]
+                for file_stem, group_name, rule in meter_list.iter_rules(structure)
+            },
+            "retired_rule_ids": [],
         },
     )
     monkeypatch.setattr(
@@ -794,7 +849,8 @@ def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_pa
 
     assert meter_list.main([]) == 0
     assert "UNCHANGED" in capsys.readouterr().out
-    assert [path for _, path, _, _ in calls] == ["/api/v1/observations"]
+    assert not any(path == "/api/v1/changes" for _, path, _, _ in calls)
+    assert [path for _, path, _, _ in calls].count("/api/v1/observations") == 1
     assert all("/work" not in path for _, path, _, _ in calls)
 
 
