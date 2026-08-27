@@ -113,7 +113,7 @@ jobs:
         env:
           PYTHONPATH: docs-api:dashboard
         run: |
-          python -m compileall -q docs-api dashboard mcp
+          python -m compileall -q docs-api dashboard mcp scripts/reconcile_generated_conditions.py
           python -m pytest -q \
             docs-api/tests/test_fresh_contract.py \
             docs-api/tests/test_agent_cold_start_contract.py \
@@ -131,6 +131,7 @@ jobs:
             docs-api/tests/test_observe_contract.py \
             docs-api/tests/test_generated_conditions.py \
             docs-api/tests/test_generated_condition_derivation_contract.py \
+            docs-api/tests/test_generated_condition_reconciler.py \
             docs-api/tests/test_generated_work_conditions.py \
             docs-api/tests/test_generated_work_conditions_e2e.py \
             docs-api/tests/test_closure_gates_contract.py \
