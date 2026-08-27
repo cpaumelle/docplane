@@ -39,7 +39,7 @@ resolved file must be owned by `root:root` with mode `0600` and contain:
 DOCPLANE_API=https://docplane.charliehub.internal
 DOCPLANE_SCHEMA_CATALOGUE_TOKEN=<schema automation bearer>
 CATALOGUE_DB_KEY=docplane
-CATALOGUE_DB_DISPLAY=DocPlane PostgreSQL
+CATALOGUE_DB_DISPLAY='DocPlane PostgreSQL'
 CATALOGUE_SCHEMAS=docplane,docs,model,observe,work
 CATALOGUE_SOURCE_DB=<configured PostgreSQL database>
 CATALOGUE_SOURCE_USER=<configured PostgreSQL user>
