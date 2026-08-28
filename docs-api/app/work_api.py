@@ -9,11 +9,13 @@ from uuid import UUID
 
 import psycopg2.errors
 import psycopg2.extras
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
+from pydantic import ValidationError
 
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
+from app.model_contracts import secret_findings
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.work_models import (
     ActivityCreate,
@@ -54,6 +56,60 @@ def _key(value: str | None) -> str:
     if not value or not value.strip():
         raise HTTPException(status_code=428, detail={"code": "IDEMPOTENCY_KEY_REQUIRED"})
     return value.strip()[:256]
+
+
+def _activity_key(value: str | None) -> str:
+    """Activities are durable evidence, so their replay identity is a UUID."""
+    if not value or not value.strip():
+        raise HTTPException(status_code=428, detail={"code": "IDEMPOTENCY_KEY_REQUIRED"})
+    candidate = value.strip()
+    try:
+        parsed = UUID(candidate)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail={"code": "IDEMPOTENCY_KEY_INVALID"}) from exc
+    if str(parsed) != candidate.lower():
+        raise HTTPException(status_code=422, detail={"code": "IDEMPOTENCY_KEY_INVALID"})
+    return str(parsed)
+
+
+def _activity_request(payload: dict[str, Any]) -> ActivityCreate:
+    """Validate without reflecting rejected request values through FastAPI errors."""
+    try:
+        request = ActivityCreate.model_validate(payload)
+    except ValidationError as exc:
+        codes = sorted({item["type"] for item in exc.errors(include_input=False)})
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "ACTIVITY_REQUEST_INVALID", "validation_codes": codes[:20]},
+        ) from exc
+    findings = secret_findings(request.model_dump(mode="json"))
+    if findings:
+        # Canonical policy decides rejection. The error retains only bounded
+        # classification names; submitted strings and scanner internals never
+        # cross the response boundary.
+        classes = sorted({
+            item
+            for finding in findings
+            for item in finding.get("classes", [])
+            if isinstance(item, str)
+        })
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "ACTIVITY_BODY_SECRET_SHAPED", "classes": classes[:20]},
+        )
+    return request
+
+
+def _activity_metadata(request: ActivityCreate) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in {
+            "title": request.title,
+            "classification": request.classification,
+            "references": [item.model_dump(mode="json") for item in request.references],
+        }.items()
+        if value not in (None, [], "")
+    }
 
 
 
@@ -423,16 +479,47 @@ def transition_initiative(
         return response
 
 
-@router.post("/api/v1/initiatives/{initiative_id}/activities", status_code=201)
+@router.post(
+    "/api/v1/initiatives/{initiative_id}/activities",
+    status_code=201,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    # Runtime parsing stays manual so rejected values are never
+                    # reflected by FastAPI validation errors. Publish the same
+                    # reviewed model here so clients retain a typed contract.
+                    "schema": ActivityCreate.model_json_schema(),
+                },
+            },
+        },
+        "description": (
+            "Append one bounded, attributable activity. Idempotency-Key must be "
+            "a caller-supplied UUID. Unknown fields and explicitly supplied "
+            "whitespace-only title, classification, body, or reference IDs are rejected."
+        ),
+    },
+)
 def add_activity(
     initiative_id: UUID,
-    request: ActivityCreate,
+    payload: dict[str, Any] = Body(...),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
-    key = _key(idempotency_key)
+    key = _activity_key(idempotency_key)
+    request = _activity_request(payload)
+    metadata = _activity_metadata(request)
+    digest = receipt_digest({
+        "route": "initiative-activity-append",
+        "initiative_id": str(initiative_id),
+        **request.model_dump(mode="json"),
+    })
     with get_conn() as conn:
-        initiative = _load(conn, initiative_id)
+        _load(conn, initiative_id)
+        replayed = load_receipt(conn, principal, key, "INITIATIVE_ACTIVITY_APPEND", digest)
+        if replayed is not None:
+            return replayed
         cur = conn.cursor()
         cur.execute(
             """
@@ -441,14 +528,46 @@ def add_activity(
                  activity_type, body, metadata)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (initiative_id, author_principal_id, idempotency_key)
-            DO UPDATE SET body = work.initiative_activities.body
+            DO NOTHING
             RETURNING activity_id::text, created_at
             """,
-            (str(initiative_id), principal.principal_id, key, request.activity_type, request.body.strip(), _json(request.metadata)),
+            (str(initiative_id), principal.principal_id, key, request.activity_type,
+             request.body, _json(metadata)),
         )
         row = cur.fetchone()
+        if row is None:
+            # Compatibility for a pre-receipt UUID-keyed activity: adopt an
+            # identical historical result, but never reinterpret changed intent.
+            cur.execute(
+                """
+                SELECT activity_id::text, created_at, activity_type, body, metadata
+                  FROM work.initiative_activities
+                 WHERE initiative_id = %s AND author_principal_id = %s
+                   AND idempotency_key = %s
+                """,
+                (str(initiative_id), principal.principal_id, key),
+            )
+            existing = cur.fetchone()
+            if existing is None or (
+                existing[2] != request.activity_type
+                or existing[3] != request.body
+                or existing[4] != metadata
+            ):
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            row = existing[:2]
+        response = {
+            "activity_id": row[0],
+            "initiative_id": str(initiative_id),
+            "activity_type": request.activity_type,
+            "created_at": row[1].isoformat().replace("+00:00", "Z"),
+            "author_principal_id": str(principal.principal_id),
+        }
+        save_receipt(
+            conn, principal, key, "INITIATIVE_ACTIVITY_APPEND",
+            str(initiative_id), digest, response,
+        )
         conn.commit()
-    return {"activity_id": row[0], "initiative_id": str(initiative_id), "created_at": row[1], **request.model_dump(mode="json")}
+    return response
 
 
 _LINK_RESOLVERS = {

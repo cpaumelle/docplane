@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -89,6 +90,215 @@ def _work_workspace_id() -> str:
 
 def _key() -> str:
     return f"e2e-{uuid.uuid4()}"
+
+
+def _seed_initiative(label: str) -> dict:
+    response = client.post(
+        "/api/v1/initiatives",
+        json={
+            "initiative_key": f"e2e-activity-{label}-{RUN}",
+            "workspace_id": _work_workspace_id(),
+            "title": f"E2E activity {label}",
+            "objective": "prove bounded activity evidence",
+            "work_state": "ACTIVE",
+        },
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_activity_append_is_secret_safe_attributable_and_replay_exact():
+    initiative = _seed_initiative("contract")
+    initiative_id = initiative["initiative_id"]
+    key = str(uuid.uuid4())
+    body = {
+        "activity_type": "OBSERVATION",
+        "title": "Bounded receiver proof",
+        "classification": "MILESTONE / ACHIEVED",
+        "body": "Receiver validation and exact replay passed.",
+        "references": [
+            {"reference_type": "PR", "reference_id": "cpaumelle/docplane#probe"},
+            {"reference_type": "COMMIT", "reference_id": "commit:e49bee6"},
+        ],
+    }
+    before = client.get(f"/api/v1/initiatives/{initiative_id}", headers=AGENT).json()
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM docplane.events WHERE resource_type = 'INITIATIVE' AND resource_id = %s", (initiative_id,))
+        event_count_before = cur.fetchone()[0]
+    first = client.post(
+        f"/api/v1/initiatives/{initiative_id}/activities",
+        json=body, headers={**AGENT, "Idempotency-Key": key},
+    )
+    assert first.status_code == 201, first.text
+    receipt = first.json()
+    assert set(receipt) == {
+        "activity_id", "initiative_id", "activity_type", "created_at",
+        "author_principal_id",
+    }
+    assert receipt["author_principal_id"] == AGENT_ID
+    assert receipt["initiative_id"] == initiative_id
+
+    replay = client.post(
+        f"/api/v1/initiatives/{initiative_id}/activities",
+        json=body, headers={**AGENT, "Idempotency-Key": key},
+    )
+    assert replay.status_code == 201
+    assert replay.json() == receipt
+    changed = client.post(
+        f"/api/v1/initiatives/{initiative_id}/activities",
+        json={**body, "body": "different intent"},
+        headers={**AGENT, "Idempotency-Key": key},
+    )
+    assert changed.status_code == 409
+    assert changed.json()["detail"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+
+    after = client.get(f"/api/v1/initiatives/{initiative_id}", headers=AGENT).json()
+    matching = [item for item in after["activities"] if item["activity_id"] == receipt["activity_id"]]
+    assert len(matching) == 1
+    assert matching[0]["author_principal_id"] == AGENT_ID
+    assert matching[0]["metadata"] == {
+        "title": body["title"],
+        "classification": body["classification"],
+        "references": body["references"],
+    }
+    for field in ("work_state", "version", "updated_at"):
+        assert after[field] == before[field]
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT count(*) FROM work.initiative_activities WHERE initiative_id = %s AND author_principal_id = %s AND idempotency_key = %s",
+            (initiative_id, AGENT_ID, key),
+        )
+        assert cur.fetchone()[0] == 1
+        cur.execute(
+            "SELECT count(*) FROM docplane.mutation_receipts WHERE principal_id = %s AND idempotency_key = %s AND operation_type = 'INITIATIVE_ACTIVITY_APPEND'",
+            (AGENT_ID, key),
+        )
+        assert cur.fetchone()[0] == 1
+        cur.execute("SELECT count(*) FROM docplane.events WHERE resource_type = 'INITIATIVE' AND resource_id = %s", (initiative_id,))
+        assert cur.fetchone()[0] == event_count_before
+
+
+@pytest.mark.parametrize("secret_payload", [
+    {"body": "a" * 64},
+    {"body": "sha256:" + "b" * 64},
+    {"body": "safe", "title": "c" * 64},
+    {"body": "safe", "classification": "d" * 64},
+    {"body": "safe", "references": [
+        {"reference_type": "ARTIFACT", "reference_id": "e" * 64},
+    ]},
+])
+def test_activity_append_rejects_secret_shaped_digest_without_echo(secret_payload):
+    initiative_id = _seed_initiative(uuid.uuid4().hex[:6])["initiative_id"]
+    payload = {"activity_type": "NOTE", **secret_payload}
+    response = client.post(
+        f"/api/v1/initiatives/{initiative_id}/activities",
+        json=payload,
+        headers={**AGENT, "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "ACTIVITY_BODY_SECRET_SHAPED"
+    assert "HEX_SECRET" in response.json()["detail"]["classes"]
+    for value in secret_payload.values():
+        if isinstance(value, str):
+            assert value not in response.text
+
+
+def test_activity_append_validation_fails_before_mutation_and_never_echoes_body():
+    initiative_id = _seed_initiative("refusals")["initiative_id"]
+    oversized = "bounded-marker-" + "x" * 20000
+    whitespace_cases = [
+        {"activity_type": "NOTE", "body": "   "},
+        {"activity_type": "NOTE", "body": "valid", "title": "   "},
+        {"activity_type": "NOTE", "body": "valid", "classification": "   "},
+        {"activity_type": "NOTE", "body": "valid", "references": [
+            {"reference_type": "PR", "reference_id": "   "},
+        ]},
+    ]
+    cases = [
+        ({"activity_type": "NOTE", "body": oversized}, str(uuid.uuid4())),
+        ({"activity_type": "NOTE", "body": "ok", "unknown": oversized}, str(uuid.uuid4())),
+        *((payload, str(uuid.uuid4())) for payload in whitespace_cases),
+    ]
+    for payload, key in cases:
+        response = client.post(
+            f"/api/v1/initiatives/{initiative_id}/activities",
+            json=payload, headers={**AGENT, "Idempotency-Key": key},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "ACTIVITY_REQUEST_INVALID"
+        assert "bounded-marker" not in response.text
+    malformed = client.post(
+        f"/api/v1/initiatives/{initiative_id}/activities",
+        json={"activity_type": "NOTE", "body": "safe"},
+        headers={**AGENT, "Idempotency-Key": "not-a-uuid"},
+    )
+    assert malformed.status_code == 422
+    assert malformed.json()["detail"] == {"code": "IDEMPOTENCY_KEY_INVALID"}
+    missing_key = client.post(
+        f"/api/v1/initiatives/{initiative_id}/activities",
+        json={"activity_type": "NOTE", "body": "safe"}, headers=AGENT,
+    )
+    assert missing_key.status_code == 428
+    assert missing_key.json()["detail"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
+    malformed_initiative = client.post(
+        "/api/v1/initiatives/not-a-uuid/activities",
+        json={"activity_type": "NOTE", "body": "safe"},
+        headers={**AGENT, "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert malformed_initiative.status_code == 422
+    missing = client.post(
+        f"/api/v1/initiatives/{uuid.uuid4()}/activities",
+        json={"activity_type": "NOTE", "body": "safe"},
+        headers={**AGENT, "Idempotency-Key": str(uuid.uuid4())},
+    )
+    assert missing.status_code == 404
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM work.initiative_activities WHERE initiative_id = %s", (initiative_id,))
+        assert cur.fetchone()[0] == 0
+        cur.execute(
+            "SELECT count(*) FROM docplane.mutation_receipts WHERE principal_id = %s AND idempotency_key = ANY(%s)",
+            (AGENT_ID, [key for _, key in cases]),
+        )
+        assert cur.fetchone()[0] == 0
+
+
+def test_activity_append_openapi_retains_the_structured_contract():
+    operation = app.openapi()["paths"]["/api/v1/initiatives/{initiative_id}/activities"]["post"]
+    schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    assert set(schema["properties"]) == {
+        "activity_type", "title", "classification", "body", "references",
+    }
+    assert set(schema["required"]) == {"activity_type", "body"}
+    assert "caller-supplied UUID" in operation["description"]
+    assert "whitespace-only" in operation["description"]
+
+
+def test_activity_append_concurrent_same_key_creates_at_most_one_activity():
+    initiative_id = _seed_initiative("concurrent")["initiative_id"]
+    key = str(uuid.uuid4())
+    body = {"activity_type": "NOTE", "body": "one logical delivery"}
+
+    def submit():
+        return client.post(
+            f"/api/v1/initiatives/{initiative_id}/activities",
+            json=body, headers={**AGENT, "Idempotency-Key": key},
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: submit(), range(2)))
+    assert [response.status_code for response in responses] == [201, 201]
+    assert responses[0].json() == responses[1].json()
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT count(*) FROM work.initiative_activities WHERE initiative_id = %s AND idempotency_key = %s",
+            (initiative_id, key),
+        )
+        assert cur.fetchone()[0] == 1
 
 
 def test_capture_triage_replay_and_key_misuse():

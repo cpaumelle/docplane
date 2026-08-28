@@ -6,6 +6,7 @@ names, and the work tools register alongside them with domain-verb prefixes.
 from __future__ import annotations
 
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -50,8 +51,66 @@ def test_mcp_callers_can_supply_replayable_idempotency_keys():
     work_tools.register(mcp)
     import inspect
 
-    for tool in ("work_capture", "work_transition"):
+    for tool in ("work_capture", "work_note", "work_transition"):
         assert "idempotency_key" in inspect.signature(mcp.tools[tool]).parameters
+
+
+def test_work_note_requires_uuid_and_returns_bounded_receipt(monkeypatch):
+    calls = []
+    initiative_id = str(uuid.uuid4())
+    key = str(uuid.uuid4())
+
+    def fake_request(method, path, *, body=None, idempotency_key=None):
+        calls.append((method, path, body, idempotency_key))
+        return 201, {
+            "activity_id": str(uuid.uuid4()),
+            "initiative_id": initiative_id,
+            "activity_type": "OBSERVATION",
+            "created_at": "2026-08-28T12:00:00Z",
+            "author_principal_id": str(uuid.uuid4()),
+            "body": "must not escape",
+            "unknown": {"uncontrolled": True},
+        }
+
+    monkeypatch.setattr(work_tools, "_request", fake_request)
+    mcp = RecordingMCP()
+    work_tools.register(mcp)
+    assert "error" in mcp.tools["work_note"](initiative_id, "evidence")
+    assert calls == []
+    result = mcp.tools["work_note"](
+        initiative_id, "evidence", "OBSERVATION", key,
+    )
+    assert calls == [(
+        "POST", f"/api/v1/initiatives/{initiative_id}/activities",
+        {"activity_type": "OBSERVATION", "body": "evidence"}, key,
+    )]
+    assert set(result) == {
+        "activity_id", "initiative_id", "activity_type", "created_at",
+        "author_principal_id",
+    }
+    assert "body" not in result and "unknown" not in result
+
+
+def test_work_note_errors_are_bounded(monkeypatch):
+    initiative_id = str(uuid.uuid4())
+    key = str(uuid.uuid4())
+    secret = "must-never-be-returned"
+    monkeypatch.setattr(
+        work_tools, "_request",
+        lambda *args, **kwargs: (422, {
+            "detail": {"code": "ACTIVITY_BODY_SECRET_SHAPED", "raw": secret},
+            "request": kwargs.get("body"),
+        }),
+    )
+    mcp = RecordingMCP()
+    work_tools.register(mcp)
+    result = mcp.tools["work_note"](initiative_id, secret, "NOTE", key)
+    assert result == {
+        "error": "DocPlane activity append refused",
+        "status_code": 422,
+        "code": "ACTIVITY_BODY_SECRET_SHAPED",
+    }
+    assert secret not in repr(result)
 
 
 def test_document_tool_names_survive_unchanged():
