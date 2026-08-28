@@ -209,9 +209,18 @@ def test_activity_append_rejects_secret_shaped_digest_without_echo(secret_payloa
 def test_activity_append_validation_fails_before_mutation_and_never_echoes_body():
     initiative_id = _seed_initiative("refusals")["initiative_id"]
     oversized = "bounded-marker-" + "x" * 20000
+    whitespace_cases = [
+        {"activity_type": "NOTE", "body": "   "},
+        {"activity_type": "NOTE", "body": "valid", "title": "   "},
+        {"activity_type": "NOTE", "body": "valid", "classification": "   "},
+        {"activity_type": "NOTE", "body": "valid", "references": [
+            {"reference_type": "PR", "reference_id": "   "},
+        ]},
+    ]
     cases = [
         ({"activity_type": "NOTE", "body": oversized}, str(uuid.uuid4())),
         ({"activity_type": "NOTE", "body": "ok", "unknown": oversized}, str(uuid.uuid4())),
+        *((payload, str(uuid.uuid4())) for payload in whitespace_cases),
     ]
     for payload, key in cases:
         response = client.post(
@@ -250,6 +259,22 @@ def test_activity_append_validation_fails_before_mutation_and_never_echoes_body(
         cur = conn.cursor()
         cur.execute("SELECT count(*) FROM work.initiative_activities WHERE initiative_id = %s", (initiative_id,))
         assert cur.fetchone()[0] == 0
+        cur.execute(
+            "SELECT count(*) FROM docplane.mutation_receipts WHERE principal_id = %s AND idempotency_key = ANY(%s)",
+            (AGENT_ID, [key for _, key in cases]),
+        )
+        assert cur.fetchone()[0] == 0
+
+
+def test_activity_append_openapi_retains_the_structured_contract():
+    operation = app.openapi()["paths"]["/api/v1/initiatives/{initiative_id}/activities"]["post"]
+    schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    assert set(schema["properties"]) == {
+        "activity_type", "title", "classification", "body", "references",
+    }
+    assert set(schema["required"]) == {"activity_type", "body"}
+    assert "caller-supplied UUID" in operation["description"]
+    assert "whitespace-only" in operation["description"]
 
 
 def test_activity_append_concurrent_same_key_creates_at_most_one_activity():

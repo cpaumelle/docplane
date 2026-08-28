@@ -84,10 +84,12 @@ class ActivityReference(BaseModel):
     reference_type: Literal["ACTIVITY", "CONDITION", "ARTIFACT", "PR", "COMMIT"]
     reference_id: str = Field(min_length=1, max_length=300)
 
-    @field_validator("reference_id")
+    @field_validator("reference_id", mode="before")
     @classmethod
-    def strip_reference_id(cls, value: str) -> str:
-        return value.strip()
+    def strip_reference_id(cls, value):
+        # Normalise before Field(min_length=1) so whitespace cannot become a
+        # persisted empty identifier after validation.
+        return value.strip() if isinstance(value, str) else value
 
 
 class ActivityCreate(BaseModel):
@@ -99,10 +101,13 @@ class ActivityCreate(BaseModel):
     body: str = Field(min_length=1, max_length=20000)
     references: list[ActivityReference] = Field(default_factory=list, max_length=20)
 
-    @field_validator("title", "classification", "body")
+    @field_validator("title", "classification", "body", mode="before")
     @classmethod
-    def strip_activity_strings(cls, value: str | None) -> str | None:
-        return value.strip() if value is not None else None
+    def strip_activity_strings(cls, value):
+        # Explicit whitespace-only optional values are rejected after this
+        # normalisation; omission/None remains the sole representation of
+        # "not supplied" for title and classification.
+        return value.strip() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def bounded_utf8(self):

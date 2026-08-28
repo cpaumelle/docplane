@@ -479,7 +479,28 @@ def transition_initiative(
         return response
 
 
-@router.post("/api/v1/initiatives/{initiative_id}/activities", status_code=201)
+@router.post(
+    "/api/v1/initiatives/{initiative_id}/activities",
+    status_code=201,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    # Runtime parsing stays manual so rejected values are never
+                    # reflected by FastAPI validation errors. Publish the same
+                    # reviewed model here so clients retain a typed contract.
+                    "schema": ActivityCreate.model_json_schema(),
+                },
+            },
+        },
+        "description": (
+            "Append one bounded, attributable activity. Idempotency-Key must be "
+            "a caller-supplied UUID. Unknown fields and explicitly supplied "
+            "whitespace-only title, classification, body, or reference IDs are rejected."
+        ),
+    },
+)
 def add_activity(
     initiative_id: UUID,
     payload: dict[str, Any] = Body(...),
