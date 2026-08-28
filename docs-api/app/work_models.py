@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WorkspaceCreate(BaseModel):
@@ -76,10 +76,49 @@ class DispositionsUpdate(BaseModel):
     soak_monitoring_ref: str | None = Field(default=None, max_length=2000)
 
 
+class ActivityReference(BaseModel):
+    """Bounded, typed evidence reference; never arbitrary activity metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reference_type: Literal["ACTIVITY", "CONDITION", "ARTIFACT", "PR", "COMMIT"]
+    reference_id: str = Field(min_length=1, max_length=300)
+
+    @field_validator("reference_id")
+    @classmethod
+    def strip_reference_id(cls, value: str) -> str:
+        return value.strip()
+
+
 class ActivityCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     activity_type: Literal["NOTE", "OBSERVATION", "DECISION_REQUIRED", "HANDOFF", "SOAK_OBSERVATION", "BLOCKER", "RESOLUTION"]
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    classification: str | None = Field(default=None, min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=20000)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    references: list[ActivityReference] = Field(default_factory=list, max_length=20)
+
+    @field_validator("title", "classification", "body")
+    @classmethod
+    def strip_activity_strings(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @model_validator(mode="after")
+    def bounded_utf8(self):
+        limits = {"title": 600, "classification": 400, "body": 20000}
+        for field, limit in limits.items():
+            value = getattr(self, field)
+            if value is not None and len(value.encode("utf-8")) > limit:
+                raise ValueError(f"{field} exceeds UTF-8 byte limit")
+        references = json.dumps(
+            [item.model_dump(mode="json") for item in self.references],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if len(references) > 8192:
+            raise ValueError("references exceed UTF-8 byte limit")
+        return self
 
 
 class InitiativeLinkCreate(BaseModel):

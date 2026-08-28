@@ -6,7 +6,7 @@ second act.
 """
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -110,10 +110,51 @@ def register(mcp) -> None:
         return body if code == 200 else _error(code, body)
 
     @mcp.tool()
-    def work_note(initiative_id: str, text: str, activity_type: str = "NOTE") -> dict:
-        """Append an activity to an initiative's timeline (NOTE, OBSERVATION, DECISION_REQUIRED, HANDOFF, SOAK_OBSERVATION, BLOCKER, RESOLUTION)."""
-        code, body = _request("POST", f"/api/v1/initiatives/{initiative_id}/activities", body={"activity_type": activity_type, "body": text}, idempotency_key=_key("note"))
-        return body if code == 201 else _error(code, body)
+    def work_note(
+        initiative_id: str,
+        text: str,
+        activity_type: str = "NOTE",
+        idempotency_key: str = "",
+    ) -> dict:
+        """Append bounded evidence to an initiative's timeline.
+
+        The caller supplies a UUID idempotency key and preserves it exactly for
+        retries. DocPlane atomically owns body validation, secret refusal,
+        attribution, replay comparison and persistence.
+        """
+        try:
+            parsed_initiative = str(UUID(initiative_id.strip()))
+            parsed_key = str(UUID(idempotency_key.strip()))
+        except (AttributeError, TypeError, ValueError):
+            return {"error": "initiative_id and idempotency_key must be UUIDs"}
+        if (
+            parsed_initiative != initiative_id.strip().lower()
+            or parsed_key != idempotency_key.strip().lower()
+        ):
+            return {"error": "initiative_id and idempotency_key must be UUIDs"}
+        allowed_types = {
+            "NOTE", "OBSERVATION", "DECISION_REQUIRED", "HANDOFF",
+            "SOAK_OBSERVATION", "BLOCKER", "RESOLUTION",
+        }
+        if activity_type not in allowed_types:
+            return {"error": "unknown activity_type"}
+        code, body = _request(
+            "POST", f"/api/v1/initiatives/{parsed_initiative}/activities",
+            body={"activity_type": activity_type, "body": text},
+            idempotency_key=parsed_key,
+        )
+        if code != 201 or not isinstance(body, dict):
+            detail = body.get("detail") if isinstance(body, dict) else None
+            error_code = detail.get("code") if isinstance(detail, dict) else None
+            return {"error": "DocPlane activity append refused", "status_code": code,
+                    "code": error_code}
+        expected = {
+            "activity_id", "initiative_id", "activity_type", "created_at",
+            "author_principal_id",
+        }
+        if not expected.issubset(body) or body.get("initiative_id") != parsed_initiative:
+            return {"error": "DocPlane activity append returned an invalid receipt"}
+        return {key: body[key] for key in sorted(expected)}
 
     @mcp.tool()
     def work_transition(
