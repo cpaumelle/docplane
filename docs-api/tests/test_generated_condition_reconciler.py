@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import reconcile_generated_conditions as runner  # noqa: E402
+import meter_list  # noqa: E402
 from app.work_conditions_api import (  # noqa: E402
     GeneratedArtifactConditionSet,
     _validate_briefings,
@@ -29,6 +30,17 @@ SOURCE_IDS = {
     "work": "55555555-5555-4555-8555-555555555555",
     "schema": "66666666-6666-4666-8666-666666666666",
     "meter": "77777777-7777-4777-8777-777777777777",
+}
+
+# This production-shaped identity is anchored independently in the owning
+# generator contract. Artifact entity keys preserve dots; only page-path
+# segments use the separate hyphenating path slug.
+PRODUCTION_METER_SOURCE_KEY = "hub2.prometheus"
+PRODUCTION_METER_ARTIFACT_KEY = "meter-list-hub2.prometheus"
+CANONICAL_ARTIFACT_KEYS = {
+    "work": "work-catalogue",
+    "schema": "schema-catalogue-docplane",
+    "meter": PRODUCTION_METER_ARTIFACT_KEY,
 }
 
 
@@ -111,7 +123,7 @@ class FakeClient:
             return {
                 "artifacts": [{
                     "artifact_id": self.artifact_id,
-                    "artifact_key": self.spec.artifact_key,
+                    "artifact_key": CANONICAL_ARTIFACT_KEYS[self.family],
                     "source_entity_id": self.source_id,
                     "status": "DECLARED",
                     "target_page_paths": self.target_paths,
@@ -220,6 +232,77 @@ def test_family_producer_to_real_work_receiver_contract(family, expected):
     assert artifact_id == ARTIFACT_IDS[family]
     assert [item.condition_kind for item in request.conditions] == expected
     assert result["derived_condition_kinds"] == expected
+
+
+def test_meter_family_identity_is_anchored_in_the_generator_contract():
+    assert meter_list._slug(PRODUCTION_METER_SOURCE_KEY) == PRODUCTION_METER_SOURCE_KEY
+    assert f"meter-list-{meter_list._slug(PRODUCTION_METER_SOURCE_KEY)}" == PRODUCTION_METER_ARTIFACT_KEY
+    assert runner.FAMILIES["meter"] == runner.FamilySpec(
+        PRODUCTION_METER_ARTIFACT_KEY,
+        "SERVICE",
+        PRODUCTION_METER_SOURCE_KEY,
+        "observe/meter-list/hub2-prometheus/index.md",
+    )
+
+
+def test_hyphenated_meter_artifact_key_is_not_an_alias():
+    client = FakeClient("meter")
+    original = client.get
+
+    def wrong_key(path):
+        value = original(path)
+        if path.startswith("/api/v1/model/artifacts?"):
+            value["artifacts"][0]["artifact_key"] = "meter-list-hub2-prometheus"
+        return value
+
+    client.get = wrong_key
+    with pytest.raises(runner.RunnerError, match="found 0"):
+        runner.reconcile(client, "meter", str(uuid4()), PRINCIPAL_ID)
+    assert client.puts == []
+
+
+def test_meter_correct_artifact_and_source_identity_are_accepted():
+    client, _key, result = _invoke("meter")
+    assert result["artifact_key"] == PRODUCTION_METER_ARTIFACT_KEY
+    assert client.entities[client.source_id]["entity_kind"] == "SERVICE"
+    assert client.entities[client.source_id]["entity_key"] == PRODUCTION_METER_SOURCE_KEY
+
+
+@pytest.mark.parametrize("field,value", [("entity_kind", "SYSTEM"), ("entity_key", "other.prometheus")])
+def test_meter_conflicting_source_identity_fails_closed(field, value):
+    client = FakeClient("meter")
+    client.entities[client.source_id][field] = value
+    with pytest.raises(runner.RunnerError, match="source identity"):
+        runner.reconcile(client, "meter", str(uuid4()), PRINCIPAL_ID)
+    assert client.puts == []
+
+
+@pytest.mark.parametrize("shape", ["missing", "duplicate", "retired", "conflicting"])
+def test_meter_missing_duplicate_retired_or_conflicting_artifact_fails_closed(shape):
+    client = FakeClient("meter")
+    original = client.get
+
+    def artifact_shape(path):
+        value = original(path)
+        if not path.startswith("/api/v1/model/artifacts?"):
+            return value
+        artifact = value["artifacts"][0]
+        if shape == "missing":
+            value["artifacts"] = []
+        elif shape == "duplicate":
+            value["artifacts"] = [artifact, {**artifact, "artifact_id": str(uuid4())}]
+        elif shape == "retired":
+            artifact["status"] = "RETIRED"
+        else:
+            conflicting_source = str(uuid4())
+            artifact["source_entity_id"] = conflicting_source
+            client._entity(conflicting_source, "SERVICE", "other.prometheus")
+        return value
+
+    client.get = artifact_shape
+    with pytest.raises(runner.RunnerError):
+        runner.reconcile(client, "meter", str(uuid4()), PRINCIPAL_ID)
+    assert client.puts == []
 
 
 def test_work_empty_set_is_submitted_as_the_complete_set_without_invention():

@@ -49,7 +49,7 @@ FAMILIES = {
         "model/schema-catalogue/docplane/index.md",
     ),
     "meter": FamilySpec(
-        "meter-list-hub2-prometheus",
+        "meter-list-hub2.prometheus",
         "SERVICE",
         "hub2.prometheus",
         "observe/meter-list/hub2-prometheus/index.md",
@@ -185,6 +185,8 @@ def _artifact_context(client: Client, spec: FamilySpec) -> tuple[dict[str, Any],
             f"expected exactly one DECLARED artifact for family key {spec.artifact_key}; found {len(matches)}"
         )
     artifact = matches[0]
+    if artifact.get("status") != "DECLARED":
+        raise RunnerError("family artifact is not DECLARED")
     artifact_id = _uuid(str(artifact.get("artifact_id")), "artifact ID")
     source_id = _uuid(str(artifact.get("source_entity_id")), "source entity ID")
     source = _entity(client, source_id)
