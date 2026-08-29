@@ -1,0 +1,137 @@
+{
+  "docplane": {
+    "principals": {
+      "comment": "Named identities that own automation and hold tokens.",
+      "columns": [
+        {"name": "principal_id", "type": "uuid", "nullable": false, "default": "gen_random_uuid()"},
+        {"name": "principal_key", "type": "text", "nullable": false, "default": null},
+        {"name": "display_name", "type": "text", "nullable": false, "default": null},
+        {"name": "kind", "type": "text", "nullable": false, "default": "'HUMAN'::text"},
+        {"name": "created_at", "type": "timestamp with time zone", "nullable": false, "default": "now()"}
+      ],
+      "constraints": [
+        {"kind": "p", "name": "principals_pkey", "definition": "PRIMARY KEY (principal_id)"},
+        {"kind": "u", "name": "principals_principal_key_key", "definition": "UNIQUE (principal_key)"}
+      ],
+      "indexes": [
+        {"name": "principals_pkey", "definition": "CREATE UNIQUE INDEX principals_pkey ON docplane.principals USING btree (principal_id)"},
+        {"name": "principals_principal_key_key", "definition": "CREATE UNIQUE INDEX principals_principal_key_key ON docplane.principals USING btree (principal_key)"}
+      ]
+    },
+    "tokens": {
+      "comment": "Bearer token metadata for principals. No secret material is stored here.",
+      "columns": [
+        {"name": "token_id", "type": "uuid", "nullable": false, "default": "gen_random_uuid()"},
+        {"name": "principal_id", "type": "uuid", "nullable": false, "default": null},
+        {"name": "token_hash", "type": "text", "nullable": false, "default": null},
+        {"name": "expires_at", "type": "timestamp with time zone", "nullable": true, "default": null},
+        {"name": "revoked", "type": "boolean", "nullable": false, "default": "false"}
+      ],
+      "constraints": [
+        {"kind": "p", "name": "tokens_pkey", "definition": "PRIMARY KEY (token_id)"},
+        {"kind": "f", "name": "tokens_principal_id_fkey", "definition": "FOREIGN KEY (principal_id) REFERENCES docplane.principals(principal_id)"},
+        {"kind": "u", "name": "tokens_token_hash_key", "definition": "UNIQUE (token_hash)"}
+      ],
+      "indexes": [
+        {"name": "tokens_pkey", "definition": "CREATE UNIQUE INDEX tokens_pkey ON docplane.tokens USING btree (token_id)"},
+        {"name": "tokens_principal_id_idx", "definition": "CREATE INDEX tokens_principal_id_idx ON docplane.tokens USING btree (principal_id)"},
+        {"name": "tokens_token_hash_key", "definition": "CREATE UNIQUE INDEX tokens_token_hash_key ON docplane.tokens USING btree (token_hash)"}
+      ]
+    },
+    "schema_migrations": {
+      "comment": "Applied migration ledger; append-only.",
+      "columns": [
+        {"name": "ordinal", "type": "integer", "nullable": false, "default": null},
+        {"name": "filename", "type": "text", "nullable": false, "default": null},
+        {"name": "checksum", "type": "text", "nullable": false, "default": null},
+        {"name": "applied_at", "type": "timestamp with time zone", "nullable": false, "default": "now()"}
+      ],
+      "constraints": [
+        {"kind": "p", "name": "schema_migrations_pkey", "definition": "PRIMARY KEY (ordinal)"},
+        {"kind": "u", "name": "schema_migrations_filename_key", "definition": "UNIQUE (filename)"}
+      ],
+      "indexes": [
+        {"name": "schema_migrations_pkey", "definition": "CREATE UNIQUE INDEX schema_migrations_pkey ON docplane.schema_migrations USING btree (ordinal)"}
+      ]
+    },
+    "workspaces": {
+      "comment": null,
+      "columns": [
+        {"name": "workspace_id", "type": "uuid", "nullable": false, "default": "gen_random_uuid()"},
+        {"name": "workspace_key", "type": "text", "nullable": false, "default": null},
+        {"name": "title", "type": "text", "nullable": false, "default": null}
+      ],
+      "constraints": [
+        {"kind": "p", "name": "workspaces_pkey", "definition": "PRIMARY KEY (workspace_id)"},
+        {"kind": "u", "name": "workspaces_workspace_key_key", "definition": "UNIQUE (workspace_key)"}
+      ],
+      "indexes": [
+        {"name": "workspaces_pkey", "definition": "CREATE UNIQUE INDEX workspaces_pkey ON docplane.workspaces USING btree (workspace_id)"}
+      ]
+    }
+  },
+  "docs": {
+    "pages": {
+      "comment": "Published corpus pages. Content is documentation, never row data of other systems.",
+      "columns": [
+        {"name": "resource_id", "type": "uuid", "nullable": false, "default": "gen_random_uuid()"},
+        {"name": "path", "type": "text", "nullable": false, "default": null},
+        {"name": "title", "type": "text", "nullable": false, "default": null},
+        {"name": "nav_path", "type": "text", "nullable": true, "default": null},
+        {"name": "content", "type": "text", "nullable": false, "default": "''::text"},
+        {"name": "workspace_id", "type": "uuid", "nullable": false, "default": null},
+        {"name": "revision", "type": "integer", "nullable": false, "default": "1"},
+        {"name": "status", "type": "text", "nullable": false, "default": "'active'::text"},
+        {"name": "updated_by", "type": "text", "nullable": false, "default": null},
+        {"name": "updated_at", "type": "timestamp with time zone", "nullable": false, "default": "now()"}
+      ],
+      "constraints": [
+        {"kind": "p", "name": "pages_pkey", "definition": "PRIMARY KEY (resource_id)"},
+        {"kind": "f", "name": "pages_workspace_id_fkey", "definition": "FOREIGN KEY (workspace_id) REFERENCES docplane.workspaces(workspace_id)"},
+        {"kind": "u", "name": "pages_path_key", "definition": "UNIQUE (path)"}
+      ],
+      "indexes": [
+        {"name": "pages_pkey", "definition": "CREATE UNIQUE INDEX pages_pkey ON docs.pages USING btree (resource_id)"},
+        {"name": "pages_path_key", "definition": "CREATE UNIQUE INDEX pages_path_key ON docs.pages USING btree (path)"},
+        {"name": "pages_content_trgm_idx", "definition": "CREATE INDEX pages_content_trgm_idx ON docs.pages USING gin (content gin_trgm_ops)"}
+      ]
+    },
+    "page_versions": {
+      "comment": "Immutable version history for pages.",
+      "columns": [
+        {"name": "version_id", "type": "uuid", "nullable": false, "default": "gen_random_uuid()"},
+        {"name": "resource_id", "type": "uuid", "nullable": false, "default": null},
+        {"name": "revision", "type": "integer", "nullable": false, "default": null},
+        {"name": "content", "type": "text", "nullable": false, "default": null},
+        {"name": "created_at", "type": "timestamp with time zone", "nullable": false, "default": "now()"}
+      ],
+      "constraints": [
+        {"kind": "p", "name": "page_versions_pkey", "definition": "PRIMARY KEY (version_id)"},
+        {"kind": "f", "name": "page_versions_resource_id_fkey", "definition": "FOREIGN KEY (resource_id) REFERENCES docs.pages(resource_id)"},
+        {"kind": "u", "name": "page_versions_resource_revision_key", "definition": "UNIQUE (resource_id, revision)"}
+      ],
+      "indexes": [
+        {"name": "page_versions_pkey", "definition": "CREATE UNIQUE INDEX page_versions_pkey ON docs.page_versions USING btree (version_id)"},
+        {"name": "page_versions_resource_revision_key", "definition": "CREATE UNIQUE INDEX page_versions_resource_revision_key ON docs.page_versions USING btree (resource_id, revision)"}
+      ]
+    },
+    "changes": {
+      "comment": "Publication units grouping page operations.",
+      "columns": [
+        {"name": "change_id", "type": "uuid", "nullable": false, "default": "gen_random_uuid()"},
+        {"name": "title", "type": "text", "nullable": false, "default": null},
+        {"name": "purpose", "type": "text", "nullable": true, "default": null},
+        {"name": "workspace_id", "type": "uuid", "nullable": false, "default": null},
+        {"name": "state", "type": "text", "nullable": false, "default": "'DRAFT'::text"},
+        {"name": "created_at", "type": "timestamp with time zone", "nullable": false, "default": "now()"}
+      ],
+      "constraints": [
+        {"kind": "p", "name": "changes_pkey", "definition": "PRIMARY KEY (change_id)"},
+        {"kind": "f", "name": "changes_workspace_id_fkey", "definition": "FOREIGN KEY (workspace_id) REFERENCES docplane.workspaces(workspace_id)"}
+      ],
+      "indexes": [
+        {"name": "changes_pkey", "definition": "CREATE UNIQUE INDEX changes_pkey ON docs.changes USING btree (change_id)"}
+      ]
+    }
+  }
+}

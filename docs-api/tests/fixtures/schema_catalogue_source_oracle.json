@@ -1,0 +1,24 @@
+{
+  "_provenance": [
+    "Frozen behaviour-preservation oracle for the schema-catalogue source seam.",
+    "Captured from PRISTINE main (commit e13c618, generator version 1.0.4) BEFORE",
+    "introspect()/fingerprint() were extracted from scripts/schema_catalogue.py into",
+    "scripts/schema_catalogue_source.py. The pre-extraction functions were run",
+    "directly (psycopg2 stubbed, since fingerprint/render_pages never touch the",
+    "driver) over the two fixtures below. These are independent expected values:",
+    "the tests assert the newly extracted implementation reproduces them EXACTLY,",
+    "so 'expected' is never computed through the code under test.",
+    "'structure_fingerprint' is fingerprint(STRUCTURE); STRUCTURE is the small",
+    "reviewed fixture defined in test_schema_catalogue.py (copied into the source",
+    "test). 'production_shape_fingerprint' is fingerprint() of the sanitized,",
+    "structure-only production_shape.json fixture. The *_render_sha256 values are",
+    "SHA-256 over the joined (path, rendered content) of render_pages(); render_pages",
+    "is unchanged by this PR and is used only to prove rendered-output equivalence.",
+    "Join format: pages joined by U+001E, each 'path' + U+001F + 'content'."
+  ],
+  "generator_version": "1.0.4",
+  "structure_fingerprint": "d6058d2faa1bb279094ca197b4298a7156fef33e420b5982b1039a304dfab4ee",
+  "production_shape_fingerprint": "b73d39c7e4b946afea165cc00926c013632f52a0c6f10e0a475dd3b62839e258",
+  "structure_render_sha256": "e023540cf933c29c52bf8a2ab44679a86add425bda6b20cdadf5e899115fbcce",
+  "production_shape_render_sha256": "5b710d7aa98e8338a3a250b31f6ca94fa545b00a73a8bcb250e76e3cdc75c810"
+}
