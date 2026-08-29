@@ -292,3 +292,52 @@ def test_pure_module_imports_without_mutation_capable_side_effects():
     )
     assert result.returncode == 0, result.stderr
     assert "clean-import OK" in result.stdout
+
+
+# Role-independence: the fingerprint must be a function of structure alone, not
+# of the connecting role's name. Without the search_path pin, pg_get_constraintdef
+# renders same-schema references unqualified for a role whose "$user" schema is
+# catalogued (e.g. DB_USER=docs over schema `docs`) and qualified for any other
+# role — a divergent fingerprint for identical structure. This test FAILS on the
+# pre-pin implementation and passes with it. (Proof: SCHEMA_OBSERVER_PRIVILEGE_PROOF.md.)
+@pytest.mark.skipif(not os.environ.get("DB_HOST"), reason="requires a PostgreSQL database")
+def test_introspection_is_role_independent():
+    import psycopg2
+
+    def dsn(user):
+        return (
+            f"host={os.environ['DB_HOST']} port={os.environ.get('DB_PORT', '5432')} "
+            f"dbname={os.environ.get('DB_NAME', 'docs')} user={user} "
+            f"password={os.environ.get('DB_PASS', '')}"
+        )
+
+    owner = os.environ.get("DB_USER", "docs")
+    other = f"{owner}_seam_ri"
+    admin = psycopg2.connect(dsn(owner))
+    try:
+        admin.autocommit = True
+        with admin.cursor() as cur:
+            cur.execute(f"DROP ROLE IF EXISTS {other}")
+            # A differently-named superuser: isolates the rendering (search_path)
+            # axis from column visibility — both roles see the full structure.
+            cur.execute(f"CREATE ROLE {other} LOGIN SUPERUSER")
+    finally:
+        admin.close()
+    try:
+        # Schema `owner` (e.g. docs) is the one whose refs render unqualified for
+        # the owner role and qualified for any other — the sensitive case.
+        scopes = [owner, "docplane"]
+        with psycopg2.connect(dsn(owner)) as a:
+            as_owner = schema_catalogue_source.introspect(a, scopes)
+        with psycopg2.connect(dsn(other)) as b:
+            as_other = schema_catalogue_source.introspect(b, scopes)
+        assert as_owner == as_other, "introspection must not depend on the connecting role"
+        assert schema_catalogue_source.fingerprint(as_owner) == schema_catalogue_source.fingerprint(as_other)
+    finally:
+        cleanup = psycopg2.connect(dsn(owner))
+        try:
+            cleanup.autocommit = True
+            with cleanup.cursor() as cur:
+                cur.execute(f"DROP ROLE IF EXISTS {other}")
+        finally:
+            cleanup.close()

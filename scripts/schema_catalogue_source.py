@@ -99,6 +99,24 @@ def introspect(conn, schemas: list[str]) -> dict[str, Any]:
     structure: dict[str, Any] = {}
     cur = conn.cursor()
     cur.execute("SET TRANSACTION READ ONLY")
+    # Deterministic, role-independent DDL rendering. pg_get_constraintdef() and
+    # column-default pg_get_expr() qualify object names RELATIVE TO search_path:
+    # a role whose "$user" schema is catalogued (e.g. the generator's own
+    # CATALOGUE_SOURCE_USER) renders those refs unqualified, while any other
+    # role renders them schema-qualified — a different fingerprint for identical
+    # structure (proven in SCHEMA_OBSERVER_PRIVILEGE_PROOF.md). Pinning
+    # search_path to pg_catalog forces every user-schema reference to render
+    # fully qualified, so the fingerprint is a function of structure alone, not
+    # of the connecting role's name. This lets a future Schema observer share the
+    # generator's exact fingerprint from its own least-privilege role.
+    #
+    # NOTE (fingerprint-moving): this changes today's output — the deployed
+    # catalogue currently renders docs.* unqualified via the generator role's
+    # "$user"=docs path. It is a projection-contract change: deploying it moves
+    # the source fingerprint and re-renders every catalogue page with qualified
+    # names, so the first post-deploy run regenerates the catalogue. Gate deploy
+    # on that ratification/re-baseline; merging this code does not deploy it.
+    cur.execute("SET search_path = pg_catalog")
     for schema in sorted(schemas):
         tables = {}
         cur.execute(_TABLES_SQL, (schema,))
