@@ -94,7 +94,10 @@ SELECT pg_get_viewdef('information_schema.columns'::regclass, true);
   services `postgres:16-alpine`; the PR #173 seam test is recorded as having
   used a disposable PostgreSQL 17. **Resolve that discrepancy before running**,
   run the matrix on the deployed major version, and record `server_version` in
-  the receipt.
+  the receipt. **Resolved (2026-08-29):** the matrix was executed on the deployed
+  major version `16.15` *and* on `17.11`, two fresh instances each; the
+  `information_schema.columns` ACL predicate and every arm verdict were identical
+  across both majors (see **Results**).
 - **Structure-only.** No row data is read, printed or retained by any arm.
 - **Credentials are throwaway.** The disposable instance's passwords are
   generated per run, never templated in this document, never echoed, and never
@@ -173,6 +176,11 @@ Arm roles are created inside the disposable instance only:
 -- B1
 CREATE ROLE observer LOGIN PASSWORD :'throwaway';
 ALTER ROLE observer SET default_transaction_read_only = on;
+-- REQUIRED (see Results): pin search_path so pg_get_constraintdef() and column
+-- default pg_get_expr() render object names identically to the generator role.
+-- Omitting this makes the fingerprint depend on the observer's role name, not
+-- the structure, and every arm below diverges regardless of table privilege.
+ALTER ROLE observer SET search_path = docs;
 
 -- B2
 GRANT USAGE ON SCHEMA docplane, docs, model, observe, work TO observer;
@@ -226,8 +234,12 @@ An arm passes only if all of the following hold:
 The proof produces exactly one of three outcomes, and each authorises a
 different next step — none of which this document grants.
 
-- **C1/C2 pass.** The observer gets its own least-privilege PostgreSQL role;
-  independence is structural. The next authorised step is the observer
+- **C1/C2 pass.** *(This is the outcome the executed proof selected — see
+  Results.)* The observer gets its own least-privilege PostgreSQL role;
+  independence is structural, **provided the role also pins `search_path` to the
+  generator's effective path** (an additional required condition the run
+  surfaced, beyond the original hypotheses). The next authorised step is the
+  observer
   implementation slice, with the role and its default privileges named in the
   execution contract, and `REFERENCES`-only grants documented in
   `docs/operations/SCHEMA_CATALOGUE.md` as a standing requirement of every
@@ -264,6 +276,75 @@ outcome -> decision rule selected
 
 No DSN, password, role password, digest value or source row appears in the
 receipt, the journal or the pull request.
+
+## 10a. Results (executed 2026-08-29)
+
+Executed against disposable instances only — throwaway clusters, trust-auth on
+loopback, destroyed after the run; no production database was touched, no role
+was created outside the disposable instances, and no digest, password or source
+row is recorded here. Genesis applied through `docs/migrate.py` (18 migrations,
+35 tables / 397 columns across the five catalogued schemas). Run on the deployed
+major version **PostgreSQL 16.15** *and* on **17.11**, two fresh instances each;
+all four runs produced identical verdicts.
+
+Verdict receipt (identical on 16.15 and 17.11, both reproduced on a second
+instance):
+
+| Arm | Role configuration | struct= | digest= | cols | row read | write |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | owner (`CATALOGUE_SOURCE_USER`) | ref | ref | 397 | allowed | allowed |
+| B1 | bare role (`PUBLIC` CONNECT) | ✗ | ✗ | **0** | refused | refused |
+| B2 | + `USAGE` on schemas | ✗ | ✗ | **0** | refused | refused |
+| C1 | + `REFERENCES` on tables + pinned `search_path` | **✓** | **✓** | 397 | **refused** | **refused** |
+| C2 | C1 + `ALTER DEFAULT PRIVILEGES … REFERENCES` | **✓** | **✓** | 397 | **refused** | **refused** |
+| D | `SELECT` + pinned `search_path` (contrast) | ✓ | ✓ | 397 | **allowed** | refused |
+| E | `pg_catalog`-only columns + pinned `search_path` | ✓ | ✓ | 397 | refused | refused |
+
+H4 (durability): a table created by the migrating role *after* the grants —
+C1 does **not** observe its columns (0/2, parity lapses); C2 **does** (2/2,
+parity survives). Confirmed on both majors.
+
+**Outcome: C1/C2 pass → the observer gets its own least-privilege PostgreSQL
+role.** H1 (catalogue symmetry) and H2 (`information_schema.columns` hides
+columns from an unprivileged role — B1/B2 see every table but zero columns) both
+held. `REFERENCES` restores full column visibility **without** granting any row
+read (C1: 397 columns, every row read and write refused). `ALTER DEFAULT
+PRIVILEGES` for the migrating role is required for durability across future
+migrations (H4). The role config the execution contract must name is: `USAGE` +
+`REFERENCES` on all tables + `ALTER DEFAULT PRIVILEGES … GRANT REFERENCES` +
+`default_transaction_read_only = on` + a pinned `search_path`.
+
+### The search_path finding (beyond the original hypotheses)
+
+The hypotheses framed the risk as `information_schema` column ACL filtering only.
+The run surfaced a **second, independent** divergence the plan had not
+anticipated: `pg_get_constraintdef()` and column-default `pg_get_expr()` render
+object names relative to the **connecting role's `search_path`**. The generator
+role (`docs`) resolves its own schema through the default `"$user"` element, so
+`docs.*` foreign-key and default references render **unqualified**
+(`REFERENCES changes(...)`); a role with any other name gets them
+**schema-qualified** (`REFERENCES docs.changes(...)`) — a different fingerprint
+for identical structure. This is why arm **D (full `SELECT`) still diverged**
+until `search_path` was pinned: the divergence is not about column visibility at
+all. Pinning the observer role's `search_path` to the generator's effective path
+(`docs`) restores byte-identical output; setting it to the full schema list does
+*not* (it would move the generator's own baseline). Two consequences:
+
+1. The observer's execution contract must pin `search_path`, not only grant
+   privileges.
+2. The **existing generator** carries a latent fragility: its fingerprint is a
+   function of the connecting role's name via `search_path`. Renaming
+   `CATALOGUE_SOURCE_USER`, or connecting with a different `search_path`, would
+   move the fingerprint with no structural change. Worth a follow-up: have
+   `introspect()` set an explicit, role-independent `search_path` — but that
+   moves the current fingerprint and is therefore a projection-contract change,
+   decided separately.
+
+Arm **E** (privilege-independent `pg_catalog` column read) happened to be
+byte-identical on this fixture, but that is fixture-specific: `format_type()`
+type spellings can differ from `information_schema.data_type` (e.g.
+`character varying(n)` vs `character varying`), so E remains a projection-contract
+change, not a safe drop-in, exactly as H6 cautioned.
 
 ## 11. What this proof deliberately does not settle
 
