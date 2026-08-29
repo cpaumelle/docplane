@@ -67,7 +67,7 @@ def _activity_key(value: str | None) -> str:
         parsed = UUID(candidate)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail={"code": "IDEMPOTENCY_KEY_INVALID"}) from exc
-    if str(parsed) != candidate.lower():
+    if str(parsed) != value:
         raise HTTPException(status_code=422, detail={"code": "IDEMPOTENCY_KEY_INVALID"})
     return str(parsed)
 
@@ -494,6 +494,15 @@ def transition_initiative(
                 },
             },
         },
+        # Runtime extraction remains optional/manual so rejected header values
+        # never enter FastAPI validation errors. This is the sole published
+        # contract for the same header and deliberately requires canonical UUID.
+        "parameters": [{
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": True,
+            "schema": {"type": "string", "format": "uuid"},
+        }],
         "description": (
             "Append one bounded, attributable activity. Idempotency-Key must be "
             "a caller-supplied UUID. Unknown fields and explicitly supplied "
@@ -504,7 +513,9 @@ def transition_initiative(
 def add_activity(
     initiative_id: UUID,
     payload: dict[str, Any] = Body(...),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", include_in_schema=False,
+    ),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     key = _activity_key(idempotency_key)

@@ -206,7 +206,7 @@ def test_activity_append_rejects_secret_shaped_digest_without_echo(secret_payloa
             assert value not in response.text
 
 
-def test_activity_append_validation_fails_before_mutation_and_never_echoes_body():
+def test_activity_append_validation_fails_before_mutation_and_never_echoes_body(caplog):
     initiative_id = _seed_initiative("refusals")["initiative_id"]
     oversized = "bounded-marker-" + "x" * 20000
     whitespace_cases = [
@@ -230,13 +230,24 @@ def test_activity_append_validation_fails_before_mutation_and_never_echoes_body(
         assert response.status_code == 422
         assert response.json()["detail"]["code"] == "ACTIVITY_REQUEST_INVALID"
         assert "bounded-marker" not in response.text
-    malformed = client.post(
-        f"/api/v1/initiatives/{initiative_id}/activities",
-        json={"activity_type": "NOTE", "body": "safe"},
-        headers={**AGENT, "Idempotency-Key": "not-a-uuid"},
-    )
-    assert malformed.status_code == 422
-    assert malformed.json()["detail"] == {"code": "IDEMPOTENCY_KEY_INVALID"}
+    canonical = str(uuid.UUID("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"))
+    invalid_keys = [
+        "not-a-uuid",
+        canonical.upper(),
+        "{" + canonical + "}",
+        " " + canonical,
+        canonical + " ",
+    ]
+    for invalid_key in invalid_keys:
+        malformed = client.post(
+            f"/api/v1/initiatives/{initiative_id}/activities",
+            json={"activity_type": "NOTE", "body": "safe"},
+            headers={**AGENT, "Idempotency-Key": invalid_key},
+        )
+        assert malformed.status_code == 422
+        assert malformed.json()["detail"] == {"code": "IDEMPOTENCY_KEY_INVALID"}
+        assert invalid_key not in malformed.text
+        assert invalid_key not in caplog.text
     missing_key = client.post(
         f"/api/v1/initiatives/{initiative_id}/activities",
         json={"activity_type": "NOTE", "body": "safe"}, headers=AGENT,
@@ -264,17 +275,48 @@ def test_activity_append_validation_fails_before_mutation_and_never_echoes_body(
             (AGENT_ID, [key for _, key in cases]),
         )
         assert cur.fetchone()[0] == 0
+        cur.execute(
+            "SELECT count(*) FROM docplane.mutation_receipts "
+            "WHERE principal_id = %s AND operation_type = 'INITIATIVE_ACTIVITY_APPEND' "
+            "AND resource_ref = %s",
+            (AGENT_ID, initiative_id),
+        )
+        assert cur.fetchone()[0] == 0
 
 
 def test_activity_append_openapi_retains_the_structured_contract():
-    operation = app.openapi()["paths"]["/api/v1/initiatives/{initiative_id}/activities"]["post"]
+    paths = app.openapi()["paths"]
+    operation = paths["/api/v1/initiatives/{initiative_id}/activities"]["post"]
     schema = operation["requestBody"]["content"]["application/json"]["schema"]
     assert set(schema["properties"]) == {
         "activity_type", "title", "classification", "body", "references",
     }
     assert set(schema["required"]) == {"activity_type", "body"}
+    headers = [
+        parameter for parameter in operation["parameters"]
+        if parameter.get("in") == "header" and parameter.get("name", "").lower() == "idempotency-key"
+    ]
+    assert headers == [{
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": True,
+        "schema": {"type": "string", "format": "uuid"},
+    }]
     assert "caller-supplied UUID" in operation["description"]
     assert "whitespace-only" in operation["description"]
+
+    # The explicit activity-only contract must not alter unrelated routes.
+    workspace = paths["/api/v1/workspaces"]["post"]
+    workspace_headers = [
+        parameter for parameter in workspace["parameters"]
+        if parameter.get("in") == "header" and parameter.get("name", "").lower() == "idempotency-key"
+    ]
+    assert len(workspace_headers) == 1
+    assert workspace_headers[0]["required"] is False
+    assert workspace_headers[0]["schema"] == {
+        "anyOf": [{"type": "string"}, {"type": "null"}],
+        "title": "Idempotency-Key",
+    }
 
 
 def test_activity_append_concurrent_same_key_creates_at_most_one_activity():
