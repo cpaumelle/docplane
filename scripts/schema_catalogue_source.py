@@ -34,9 +34,10 @@ semantics as the generator always has:
   * primary-key, foreign-key and unique constraints (by name);
   * indexes (by name);
 
-with all ordering fixed by the SQL below and the fingerprint canonicalised by
-``json.dumps(..., sort_keys=True)`` so neither the schema allowlist order nor
-the database row-return order can affect the result.
+with list ordering fixed by the SQL below and mapping keys canonicalised by
+``json.dumps(..., sort_keys=True)``. Schema allowlist order is normalised by
+``introspect()``; column, constraint and index order is guaranteed by the
+queries' explicit ``ORDER BY`` clauses rather than by JSON canonicalisation.
 """
 from __future__ import annotations
 
@@ -50,9 +51,9 @@ __all__ = ["introspect", "fingerprint"]
 # ── Introspection: structure only, deterministic order, never row data ──────
 #
 # These queries return metadata only. Ordering is pinned inside SQL (ORDER BY)
-# so a run is reproducible regardless of the database's physical row order; the
-# fingerprint additionally sorts keys, so any residual ordering is irrelevant to
-# the canonical output.
+# so a run is reproducible regardless of the database's physical row order.
+# The fingerprint separately canonicalises mapping-key order; it does not sort
+# the list values returned by these queries.
 
 _TABLES_SQL = """
 SELECT c.relname,
@@ -136,11 +137,12 @@ def introspect(conn, schemas: list[str]) -> dict[str, Any]:
 def fingerprint(structure: dict[str, Any]) -> str:
     """Canonical SHA-256 of the source structure.
 
-    Canonicalised with ``sort_keys=True`` so neither schema allowlist order nor
-    database row-return order changes the digest. This is the exact fingerprint
-    algorithm the generator has always used; it is intentionally unversioned
-    here — its stability across the extraction is a behaviour-preservation
-    contract (see ``test_schema_catalogue_source.py``).
+    Canonicalised with ``sort_keys=True`` so mapping insertion order does not
+    change the digest. Ordered list values remain significant and are made
+    deterministic by ``introspect()`` and its SQL ``ORDER BY`` clauses. This is
+    the exact fingerprint algorithm the generator has always used; it is
+    intentionally unversioned here — its stability across the extraction is a
+    behaviour-preservation contract (see ``test_schema_catalogue_source.py``).
     """
     canonical = json.dumps(structure, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

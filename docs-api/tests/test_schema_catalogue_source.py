@@ -11,8 +11,8 @@ These tests exist to prove the extraction changed *nothing* observable:
     (frozen in ``fixtures/schema_catalogue_source_oracle.json``), so "expected"
     is never computed through the code under test;
   * the generator now holds a single implementation and re-exports it;
-  * canonical output is invariant to schema-allowlist order and to database
-    row-return order;
+  * schema-allowlist order is normalised, SQL pins list order, and fingerprint
+    canonicalisation absorbs mapping insertion order;
   * rendering the extracted structure is byte-identical to before;
   * the pure module imports with no API/DB/redaction/generator side effects and
     exposes no mutation surface.
@@ -119,11 +119,11 @@ def test_schema_allowlist_order_is_irrelevant():
     assert reverse._cur.schemas_probed == ["audit", "docplane", "docs"]
 
 
-# 5. Database/catalog row-return ORDER does not affect canonical output.
-#    (Ordering is pinned in SQL; the fingerprint additionally sort_keys, so even
-#    if the driver returned rows in a different order the canonical digest is
-#    invariant. Proven here by shuffling dict/list structure that json canonicalises.)
-def test_row_return_order_does_not_change_canonical_output():
+# 5. Mapping insertion order does not affect the canonical fingerprint.
+#    List order is significant and is made deterministic by the introspection
+#    SQL's explicit ORDER BY clauses; this test deliberately changes mappings
+#    only and proves exactly what json.dumps(sort_keys=True) guarantees.
+def test_mapping_insertion_order_does_not_change_canonical_fingerprint():
     ordered = PRODUCTION_SHAPE
     # Reverse every schema's table insertion order and every table's key order:
     # canonicalisation with sort_keys must absorb it entirely.
