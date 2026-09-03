@@ -238,5 +238,8 @@ def test_disposable_least_privilege_role_preserves_projection_without_row_access
                 cur.execute(sql.SQL("REVOKE REFERENCES ON ALL TABLES IN SCHEMA {} FROM {}").format(
                     sql.Identifier(schema), sql.Identifier(role)
                 ))
+            cur.execute(sql.SQL("REVOKE USAGE ON SCHEMA {} FROM {}").format(
+                sql.SQL(", ").join(map(sql.Identifier, schemas)), sql.Identifier(role)
+            ))
             cur.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
         owner.close()
