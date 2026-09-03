@@ -55,6 +55,34 @@ def operation_types() -> list[str]:
     return sorted(_OPERATION_TYPES)
 
 
+# Remediation hints attached to specific operation-level rejection codes so an
+# author gets an actionable next step, not just a machine code. Kept as pure data
+# so the exception path stays a thin, uniform funnel through _record_operation_result.
+_OPERATION_REMEDIATIONS = {
+    "RESTORE_TARGET_HAS_REDIRECT": (
+        "A redirect already occupies this path, so restoring the page here would make a "
+        "live page and a redirect share one URL. Remove the redirect first "
+        "(REMOVE_REDIRECT from_path=<path>) in the same change, then restore the page."
+    ),
+}
+
+
+def redirect_source_active_page_conflicts(active_paths: set[str], redirects: dict[str, str]) -> list[str]:
+    """Sources that are also active page paths — the corpus-invalid shape that wedges deploys.
+
+    A redirect source may never also be an active page: mkdocs-redirects writes its
+    stub at exactly the URL the live page renders to, so the page silently vanishes
+    from the built site while every authored surface still reports success.
+    generator.validate_redirects enforces this at corpus BUILD (deploy) time; this is
+    the faithful commit-time subset so the invalid state is rejected BEFORE authored
+    state commits — not discovered later by a failed whole-corpus deployment. Because
+    it inspects the resulting corpus rather than one operation, it also covers any
+    operation (RESTORE_PAGE, MOVE_PAGE, CREATE_PAGE, or a future one) that could
+    produce the collision, so a new operation type cannot bypass the invariant.
+    """
+    return sorted(source for source in redirects if source in active_paths)
+
+
 def _json(value: Any) -> psycopg2.extras.Json:
     return psycopg2.extras.Json(value, dumps=lambda item: json.dumps(item, sort_keys=True, default=str))
 
@@ -475,6 +503,13 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                 page["publication_state"] = "ARCHIVED"
                 touched.add(page["resource_id"])
             elif op_type == "RESTORE_PAGE":
+                # Reactivating a page whose path is currently a redirect source is
+                # exactly what wedged the publication plane: the restored page and the
+                # redirect then claim one URL, and the whole-corpus deploy fails closed
+                # on every subsequent publish. Reject it here, before authored commit,
+                # with an actionable remediation. Mirrors the ADD_REDIRECT guard.
+                if page["path"] in redirects:
+                    raise ValueError("RESTORE_TARGET_HAS_REDIRECT:" + page["path"])
                 page["status"] = "active"
                 page["publication_state"] = "PUBLISHED"
                 touched.add(page["resource_id"])
@@ -500,6 +535,9 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
             entry = {"code": code}
             if detail:
                 entry["detail"] = detail
+            remedy = _OPERATION_REMEDIATIONS.get(code)
+            if remedy:
+                entry["remedy"] = remedy
             op_errors.append(entry)
         _record_operation_result(result, results, errors, warnings)
 
@@ -553,7 +591,23 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
     active_paths = [page["path"] for page in active_pages]
     if len(active_paths) != len(set(active_paths)):
         errors.append({"code": "ACTIVE_PATH_COLLISION"})
-    redirect_targets = {page["path"] for page in active_pages}
+    active_path_set = set(active_paths)
+    # Commit-time backstop for the redirect/active-page invariant (a faithful subset
+    # of generator.validate_redirects). Any operation that leaves a redirect source
+    # sitting on an active page path is rejected here, before the authored write —
+    # not later by the whole-corpus deploy, where it fails closed and freezes the
+    # served corpus. This is what covers MOVE_PAGE/CREATE_PAGE and any future op even
+    # though only ADD_REDIRECT/RESTORE_PAGE carry their own operation-local guard.
+    for source in redirect_source_active_page_conflicts(active_path_set, redirects):
+        errors.append({
+            "code": "REDIRECT_SOURCE_IS_ACTIVE_PAGE",
+            "from_path": source,
+            "remedy": (
+                "A live page and a redirect cannot share a path. Remove the redirect "
+                "(REMOVE_REDIRECT) or move/rename the active page before publishing."
+            ),
+        })
+    redirect_targets = active_path_set
     for source, target in redirects.items():
         if source == target:
             errors.append({"code": "REDIRECT_SELF_LOOP", "path": source})

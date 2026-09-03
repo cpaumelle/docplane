@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from app import generator
+from app import generator, publication, runtime
 
 ROOT = Path(__file__).resolve().parents[2]
 REPO_MKDOCS = ROOT / "mkdocs"
@@ -357,3 +357,75 @@ def test_the_corrected_corpus_shape_passes():
               "Control Plane/Specs/WG Mesh Topology Correctness"),
     ]
     generator.validate_routes(pages, {})
+
+
+# --------------------------------------------------------------------------
+# Commit-time backstop: a redirect source may never also be an active page.
+# generator.validate_redirects enforces this at DEPLOY; publication now enforces
+# the same fact at CHANGE-EVALUATION, so the invalid state is rejected before the
+# authored write instead of freezing the served corpus on the next deploy
+# (the redirect/active-page publication wedge, 2026-09-03).
+# --------------------------------------------------------------------------
+
+def test_corpus_backstop_flags_a_redirect_whose_source_is_an_active_page():
+    active = {"agent-guides/agent-context.md", "reference/target.md"}
+    redirects = {"agent-guides/agent-context.md": "reference/target.md"}
+    assert publication.redirect_source_active_page_conflicts(active, redirects) == [
+        "agent-guides/agent-context.md"
+    ]
+
+
+def test_corpus_backstop_allows_a_redirect_from_a_non_active_path():
+    """An archived page (or a bare removed path) may legitimately be a redirect
+    source; only an ACTIVE page path is the conflict."""
+    active = {"reference/target.md"}
+    redirects = {"archive/old.md": "reference/target.md"}
+    assert publication.redirect_source_active_page_conflicts(active, redirects) == []
+
+
+def test_negative_control_pre_fix_corpus_checks_miss_the_offending_state():
+    """Negative control: reconstruct the corpus redirect checks as they stood on
+    main BEFORE this fix (self-loop + target-missing only, no source-is-active
+    branch) and show they accept the exact shape that wedged production, while the
+    new backstop rejects it. This is the gap the commit-time backstop closes."""
+    active_paths = {"agent-guides/agent-context.md", "reference/target.md"}
+    redirects = {"agent-guides/agent-context.md": "reference/target.md"}
+
+    def _pre_fix_corpus_errors(active, redirect_map):
+        errors = []
+        redirect_targets = set(active)
+        for source, target in redirect_map.items():
+            if source == target:
+                errors.append({"code": "REDIRECT_SELF_LOOP", "path": source})
+            if target not in redirect_targets:
+                errors.append({"code": "REDIRECT_TARGET_MISSING", "from_path": source})
+        return errors
+
+    assert _pre_fix_corpus_errors(active_paths, redirects) == []          # main allowed it
+    assert publication.redirect_source_active_page_conflicts(active_paths, redirects) == [
+        "agent-guides/agent-context.md"
+    ]                                                                     # the fix rejects it
+
+
+def test_deployment_failure_receipt_names_the_redirect_source_without_leaking_content():
+    exc = generator.RedirectConflict(
+        "source-is-active-page",
+        "agent-guides/agent-context.md",
+        "'agent-guides/agent-context.md' is an active page and cannot be a redirect source",
+    )
+    receipt = runtime.deployment_failure_receipt(exc)
+    assert receipt["type"] == "RedirectConflict"
+    assert set(receipt) == {"type", "message", "redirect_conflict"}
+    conflict = receipt["redirect_conflict"]
+    assert set(conflict) == {"kind", "source", "remedy"}
+    assert conflict["kind"] == "source-is-active-page"
+    assert conflict["source"] == "agent-guides/agent-context.md"
+    assert "REMOVE_REDIRECT" in conflict["remedy"]
+
+
+def test_deployment_failure_receipt_is_bounded_and_opaque_for_unknown_errors():
+    receipt = runtime.deployment_failure_receipt(RuntimeError("x" * 5000))
+    assert receipt["type"] == "RuntimeError"
+    assert len(receipt["message"]) == 2000           # bounded, never unbounded exception text
+    assert "redirect_conflict" not in receipt
+    assert "route_conflict" not in receipt
