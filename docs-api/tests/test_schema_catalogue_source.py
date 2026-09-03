@@ -1,8 +1,8 @@
 """Behaviour-preservation proofs for the schema-catalogue *source seam*.
 
 ``scripts/schema_catalogue_source.py`` was extracted from the generator
-(``scripts/schema_catalogue.py``) so that a future SCHEDULED schema observer can
-import the authoritative source projection — ``introspect`` and
+(``scripts/schema_catalogue.py``) so the SCHEDULED schema observer can import
+the authoritative source projection — ``introspect`` and
 ``fingerprint`` — without importing the mutation-capable generator.
 
 These tests exist to prove the extraction changed *nothing* observable:

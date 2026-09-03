@@ -134,9 +134,12 @@ def test_runtime_wrapper_contract_is_bounded_and_contains_no_secrets_or_schedule
     assert "DOCPLANE_SCHEMA_CATALOGUE_TOKEN=" not in wrapper
     assert "CATALOGUE_SOURCE_PASSWORD=" not in wrapper
     assert "172." not in wrapper
+    # Observation units may be shipped inert. Generation remains attended and
+    # must not acquire a service/timer path implicitly.
     assert not any(
         path.name.endswith((".service", ".timer"))
         and "schema-catalogue" in path.name
+        and "observer" not in path.name
         for path in ROOT.rglob("*")
     )
 
