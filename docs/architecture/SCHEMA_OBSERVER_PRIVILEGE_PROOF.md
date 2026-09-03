@@ -1,26 +1,27 @@
 # Schema source-observer PostgreSQL privilege proof
 
-Plan for the disposable-PostgreSQL experiment that resolves the one decision
-recorded as **UNRESOLVED** in the ratified Schema source-observer design.
+Record of the completed disposable-PostgreSQL experiment that resolved the one
+database-privilege decision previously recorded as **UNRESOLVED** in the
+ratified Schema source-observer design.
 
-This document is a proof plan. It authorises no role creation, grant,
+This document is completed proof evidence. It authorises no role creation, grant,
 deployment, timer, execution-contract declaration, observation, generation,
-publication or reconciliation — in production or anywhere else. Executing the
-proof is a separate attended act against a disposable instance; acting on its
-outcome is a further separate decision.
+publication or reconciliation in production. The proof was executed only
+against disposable instances; implementing its selected outcome remains a
+separate decision and authorization.
 
-## 1. The unresolved decision
+## 1. The resolved decision
 
-The ratified Schema observer design fixes everything except one thing: the
-PostgreSQL identity the observer connects as. Already ratified and not in
-question here — a dedicated Schema observer principal, `SCHEDULED` trigger, a
+Before this proof, the ratified Schema observer design fixed everything except
+the PostgreSQL identity the observer connects as. Already ratified and not in
+question here were a dedicated Schema observer principal, `SCHEDULED` trigger, a
 30-minute cadence, a 2-hour maximum evidence age, an unchanged generation owner
 on `MANUAL`, the shared `schema-catalogue` exclusion domain, canary before
 execution-contract declaration, units installed disabled and activated
 separately, and a 24-hour observer soak.
 
 Those cover the *DocPlane* identity — a named `AUTOMATION` principal with its
-own bearer. They say nothing about the *database* identity. Today one
+own bearer. They did not settle the *database* identity. Today one
 PostgreSQL role, configured as `CATALOGUE_SOURCE_USER`, is used by the
 generator (`docs/operations/SCHEMA_CATALOGUE.md`). The question this proof
 settles:
@@ -44,7 +45,8 @@ correctness question rather than a hardening preference:
 - **Nominal independence.** If the observer must reuse the generator's role,
   the two operations are independent in process topology only, not in
   authority. That may still be an acceptable decision, but it must be a
-  *declared* one, recorded in the execution contract as a known limitation —
+  *declared* one, recorded in the Schema observer's runtime/configuration and
+  runbook contract as a known limitation —
   not inherited silently because nobody tested the alternative.
 
 Building the observer first and discovering either at canary time costs the
@@ -53,9 +55,10 @@ assumption.
 
 ## 3. The reading surface
 
-`introspect()` issues exactly four statements per table inside a read-only
-transaction (`scripts/schema_catalogue.py`; after PR #173 the same functions
-live in `scripts/schema_catalogue_source.py`, unchanged):
+`introspect()` first marks the transaction read-only, then issues one table-list
+query per schema and three metadata queries per discovered table
+(`scripts/schema_catalogue.py`; after PR #173 the same functions live in
+`scripts/schema_catalogue_source.py`, unchanged):
 
 | Query | Reads | ACL-filtered? |
 | --- | --- | --- |
@@ -80,22 +83,19 @@ this table:
 SELECT pg_get_viewdef('information_schema.columns'::regclass, true);
 ```
 
-## 4. Proof parameters
+## 4. Proof parameters used
 
 - **Disposable only.** A throwaway container, destroyed after the run. The
   proof never connects to the deployed database and creates no production role.
 - **Genesis-applied.** `python docs-api/migrate.py apply --dir db/migrations`,
   so the fixture is the real catalogued surface (`docplane`, `docs`, `model`,
   `observe`, `work`), not a toy schema.
-- **Major-version parity is mandatory.** ACL predicates in
+- **Major-version parity.** ACL predicates in
   `information_schema` and the set of predefined roles vary by major version, so
   a proof on one major version is not a proof for another. The deployed source
   is `postgres:16-alpine` (`docker-compose.yml`), and `fresh-instance.yml`
-  services `postgres:16-alpine`; the PR #173 seam test is recorded as having
-  used a disposable PostgreSQL 17. **Resolve that discrepancy before running**,
-  run the matrix on the deployed major version, and record `server_version` in
-  the receipt. **Resolved (2026-08-29):** the matrix was executed on the deployed
-  major version `16.15` *and* on `17.11`, two fresh instances each; the
+  services `postgres:16-alpine`. The matrix was executed on the deployed major
+  version `16.15` *and* on `17.11`, two fresh instances each; the
   `information_schema.columns` ACL predicate and every arm verdict were identical
   across both majors (see **Results**).
 - **Structure-only.** No row data is read, printed or retained by any arm.
@@ -145,7 +145,7 @@ the observer read access to every row in the corpus database, which is a
 larger exposure than the observer needs and is rejected unless C1/C2 fail and
 E is judged too costly.
 
-## 7. Procedure
+## 7. Procedure used
 
 Every arm follows the same shape: connect as the arm's role, run the
 *unmodified* `introspect()` and `fingerprint()` over the catalogued schema
@@ -238,10 +238,11 @@ different next step — none of which this document grants.
   Results.)* The observer gets its own least-privilege PostgreSQL role;
   independence is structural, **provided the role also pins `search_path` to the
   generator's effective path** (an additional required condition the run
-  surfaced, beyond the original hypotheses). The next authorised step is the
-  observer
-  implementation slice, with the role and its default privileges named in the
-  execution contract, and `REFERENCES`-only grants documented in
+  surfaced, beyond the original hypotheses). The next separately gated step is
+  the observer
+  implementation slice, with the role and its default privileges owned by the
+  Schema observer's runtime/configuration and runbook contract, and
+  `REFERENCES`-only grants documented in
   `docs/operations/SCHEMA_CATALOGUE.md` as a standing requirement of every
   future migration.
 - **C1/C2 fail, E passes.** Privilege independence requires changing what the
@@ -251,7 +252,8 @@ different next step — none of which this document grants.
   handoff. It must be decided and ratified **before** any observer is built,
   not discovered during a canary.
 - **Both fail.** The observer shares the generator's PostgreSQL role. That is
-  a permissible outcome, but the execution contract must then record
+  a permissible outcome, but the Schema observer runtime/configuration and
+  runbook contract must then record
   explicitly that database-level independence is not achieved, so that
   "independent source observation" is never read as stronger evidence than it
   is.
@@ -282,7 +284,7 @@ receipt, the journal or the pull request.
 Executed against disposable instances only — throwaway clusters, trust-auth on
 loopback, destroyed after the run; no production database was touched, no role
 was created outside the disposable instances, and no digest, password or source
-row is recorded here. Genesis applied through `docs/migrate.py` (18 migrations,
+row is recorded here. Genesis applied through `docs-api/migrate.py` (18 migrations,
 35 tables / 397 columns across the five catalogued schemas). Run on the deployed
 major version **PostgreSQL 16.15** *and* on **17.11**, two fresh instances each;
 all four runs produced identical verdicts.
@@ -310,7 +312,8 @@ columns from an unprivileged role — B1/B2 see every table but zero columns) bo
 held. `REFERENCES` restores full column visibility **without** granting any row
 read (C1: 397 columns, every row read and write refused). `ALTER DEFAULT
 PRIVILEGES` for the migrating role is required for durability across future
-migrations (H4). The role config the execution contract must name is: `USAGE` +
+migrations (H4). The Schema observer runtime/configuration and runbook contract
+must name: `USAGE` +
 `REFERENCES` on all tables + `ALTER DEFAULT PRIVILEGES … GRANT REFERENCES` +
 `default_transaction_read_only = on` + a pinned `search_path`.
 
@@ -330,8 +333,11 @@ all. Pinning the observer role's `search_path` to the generator's effective path
 (`docs`) restores byte-identical output; setting it to the full schema list does
 *not* (it would move the generator's own baseline). Two consequences:
 
-1. The observer's execution contract must pin `search_path`, not only grant
-   privileges.
+1. The observer's runtime/configuration and runbook contract must pin
+   `search_path`, not only grant privileges. The existing MODEL artifact
+   execution contract continues to own principal, trigger, evidence-age and
+   exclusion-domain semantics; this proof does not extend that MODEL contract
+   into a shadow runtime registry.
 2. The **existing generator** carries a latent fragility: its fingerprint is a
    function of the connecting role's name via `search_path`. Renaming
    `CATALOGUE_SOURCE_USER`, or connecting with a different `search_path`, would
@@ -359,11 +365,13 @@ change, not a safe drop-in, exactly as H6 cautioned.
 
 ## 12. PR review disclosures (charter §14)
 
-1. **Lane and layer.** Evidence lane, source-observation layer — design only.
+1. **Lane and layer.** Evidence lane, source-observation layer — completed
+   disposable proof evidence.
 2. **Authoritative inputs.** The ratified Schema observer decisions, the
    deployed generator's introspection surface, and the deployed PostgreSQL
    major version.
-3. **Durable state it may mutate.** None. This is a document.
+3. **Durable state it may mutate.** Repository documentation only. The proof
+   execution used disposable instances and mutated no production state.
 4. **What it does not mutate.** Generation, publication, ownership,
    `CATALOGUES`, `OBSERVE`, artifact state, WORK conditions, credentials,
    runtime units, and the production database.
@@ -372,7 +380,9 @@ change, not a safe drop-in, exactly as H6 cautioned.
    container.
 6. **Ordering.** Precedes the Schema observer implementation slice, which
    precedes the observer canary, which precedes execution-contract declaration.
-7. **Downstream contract tested.** None yet — that is the point of the
-   experiment this plan describes.
+7. **Downstream contract tested.** The real source-projection seam's
+   `introspect()` and `fingerprint()` behavior against genesis-applied
+   PostgreSQL 16.15 and 17.11 under the candidate privilege and search-path
+   configurations.
 8. **Authorised.** Merge only. Not deployment, scheduling, credential
    mutation, production execution or publication.
