@@ -1,0 +1,388 @@
+# Schema source-observer PostgreSQL privilege proof
+
+Record of the completed disposable-PostgreSQL experiment that resolved the one
+database-privilege decision previously recorded as **UNRESOLVED** in the
+ratified Schema source-observer design.
+
+This document is completed proof evidence. It authorises no role creation, grant,
+deployment, timer, execution-contract declaration, observation, generation,
+publication or reconciliation in production. The proof was executed only
+against disposable instances; implementing its selected outcome remains a
+separate decision and authorization.
+
+## 1. The resolved decision
+
+Before this proof, the ratified Schema observer design fixed everything except
+the PostgreSQL identity the observer connects as. Already ratified and not in
+question here were a dedicated Schema observer principal, `SCHEDULED` trigger, a
+30-minute cadence, a 2-hour maximum evidence age, an unchanged generation owner
+on `MANUAL`, the shared `schema-catalogue` exclusion domain, canary before
+execution-contract declaration, units installed disabled and activated
+separately, and a 24-hour observer soak.
+
+Those cover the *DocPlane* identity — a named `AUTOMATION` principal with its
+own bearer. They did not settle the *database* identity. Today one
+PostgreSQL role, configured as `CATALOGUE_SOURCE_USER`, is used by the
+generator (`docs/operations/SCHEMA_CATALOGUE.md`). The question this proof
+settles:
+
+> Can the Schema source observer hold a PostgreSQL role distinct from the
+> generator's, restricted to structural metadata, and still compute a
+> fingerprint byte-identical to the generator's over the same source state?
+
+## 2. Why it must be settled before the observer is built
+
+The charter invariant is that source observation and generation are
+independent operations, and that only a successful canonical probe fingerprint
+participates in freshness comparison. Two failure modes make this a
+correctness question rather than a hardening preference:
+
+- **False drift.** If the observer's role sees less structure than the
+  generator's, its fingerprint differs permanently. Correspondence reads
+  `MISMATCH` forever, `DRIFTED` opens and never resolves, and the first
+  actionable condition the remediation plane ever produces is an artefact of
+  privilege rather than of reality.
+- **Nominal independence.** If the observer must reuse the generator's role,
+  the two operations are independent in process topology only, not in
+  authority. That may still be an acceptable decision, but it must be a
+  *declared* one, recorded in the Schema observer's runtime/configuration and
+  runbook contract as a known limitation —
+  not inherited silently because nobody tested the alternative.
+
+Building the observer first and discovering either at canary time costs the
+principal, credential, wrapper, unit and canary that were built on the
+assumption.
+
+## 3. The reading surface
+
+`introspect()` first marks the transaction read-only, then issues one table-list
+query per schema and three metadata queries per discovered table
+(`scripts/schema_catalogue.py`; after PR #173 the same functions live in
+`scripts/schema_catalogue_source.py`, unchanged):
+
+| Query | Reads | ACL-filtered? |
+| --- | --- | --- |
+| `_TABLES_SQL` | `pg_class`, `pg_namespace`, `obj_description` | hypothesis: no |
+| `_COLUMNS_SQL` | `information_schema.columns` | hypothesis: **yes** |
+| `_CONSTRAINTS_SQL` | `pg_constraint`, `pg_get_constraintdef` | hypothesis: no |
+| `_INDEXES_SQL` | `pg_indexes` | hypothesis: no |
+
+The asymmetry is the whole problem. Three of the four read `pg_catalog`
+relations that PostgreSQL exposes to every role; one reads an
+`information_schema` view whose definition filters on role and column
+privilege. A role with no privileges is therefore expected to observe every
+table, comment, constraint and index — and no columns at all. That is not a
+loud failure. It is a structurally plausible projection with a stable, wrong
+fingerprint, which is precisely the "reads clean while split" class this
+fabric has been bitten by before.
+
+Step 0 of the proof records the deployed view definition rather than trusting
+this table:
+
+```sql
+SELECT pg_get_viewdef('information_schema.columns'::regclass, true);
+```
+
+## 4. Proof parameters used
+
+- **Disposable only.** A throwaway container, destroyed after the run. The
+  proof never connects to the deployed database and creates no production role.
+- **Genesis-applied.** `python docs-api/migrate.py apply --dir db/migrations`,
+  so the fixture is the real catalogued surface (`docplane`, `docs`, `model`,
+  `observe`, `work`), not a toy schema.
+- **Major-version parity.** ACL predicates in
+  `information_schema` and the set of predefined roles vary by major version, so
+  a proof on one major version is not a proof for another. The deployed source
+  is `postgres:16-alpine` (`docker-compose.yml`), and `fresh-instance.yml`
+  services `postgres:16-alpine`. The matrix was executed on the deployed major
+  version `16.15` *and* on `17.11`, two fresh instances each; the
+  `information_schema.columns` ACL predicate and every arm verdict were identical
+  across both majors (see **Results**).
+- **Structure-only.** No row data is read, printed or retained by any arm.
+- **Credentials are throwaway.** The disposable instance's passwords are
+  generated per run, never templated in this document, never echoed, and never
+  reused from any real environment.
+
+## 5. Hypotheses
+
+Each is falsifiable by one arm of the matrix.
+
+- **H1 — catalogue symmetry.** A role holding no grant beyond the default
+  `PUBLIC` `CONNECT` observes the same tables, comments, constraints and
+  indexes as the owner role.
+- **H2 — information_schema asymmetry.** That same role observes zero columns,
+  producing a complete-looking structure with a divergent fingerprint.
+- **H3 — `REFERENCES` sufficiency.** `USAGE` on each catalogued schema plus
+  `REFERENCES` on its tables restores byte-identical structure and fingerprint
+  *without* permitting any row to be read.
+- **H4 — default-privilege durability.** Without `ALTER DEFAULT PRIVILEGES`,
+  a table created after the grants reintroduces divergence; with it, parity
+  survives new objects. Default privileges are per-granting-role, so they must
+  be set for the role that applies migrations, not merely for a convenient one.
+- **H5 — write refusal.** The observer role cannot `INSERT`, `UPDATE`,
+  `DELETE` or `CREATE` in any catalogued schema, and
+  `default_transaction_read_only` holds server-side rather than relying on the
+  client's `SET TRANSACTION READ ONLY`.
+- **H6 — `pg_catalog` fallback.** Replacing the `information_schema.columns`
+  read with an equivalent `pg_attribute` read makes the projection
+  privilege-independent, but changes the rendered type spellings and therefore
+  the fingerprint — making it a projection-contract change, not a drop-in.
+
+## 6. Matrix
+
+| Arm | Role configuration | Measures |
+| --- | --- | --- |
+| A | owner / current `CATALOGUE_SOURCE_USER` | reference structure + fingerprint |
+| B1 | new role, no explicit grants (default `PUBLIC` `CONNECT`) | H1, H2 |
+| B2 | B1 + `USAGE` on catalogued schemas | whether schema `USAGE` alone matters |
+| C1 | B2 + `REFERENCES` on all existing tables | H3 |
+| C2 | C1 + `ALTER DEFAULT PRIVILEGES … GRANT REFERENCES` | H4 |
+| D | B2 + `SELECT` on all tables | contrast: parity at the cost of row exposure |
+| E | B1 with `pg_catalog`-only column introspection | H6 |
+
+Arm D is measured, not proposed. It is expected to achieve parity by granting
+the observer read access to every row in the corpus database, which is a
+larger exposure than the observer needs and is rejected unless C1/C2 fail and
+E is judged too costly.
+
+## 7. Procedure used
+
+Every arm follows the same shape: connect as the arm's role, run the
+*unmodified* `introspect()` and `fingerprint()` over the catalogued schema
+list, and compare against arm A.
+
+```bash
+# 1. disposable instance on the deployed major version, throwaway credentials.
+#    The password lives in an unechoed shell variable and dies with the shell.
+proof_password="$(openssl rand -hex 24)"
+docker run --rm -d --name docplane-privilege-proof \
+  -e POSTGRES_DB=docs -e POSTGRES_USER=docs \
+  -e POSTGRES_PASSWORD="$proof_password" \
+  -p 55432:5432 postgres:16-alpine
+
+# 2. genesis, through the repository's own runner
+DB_HOST=127.0.0.1 DB_PORT=55432 DB_NAME=docs DB_USER=docs DB_PASS="$proof_password" \
+  python docs-api/migrate.py apply --dir db/migrations
+
+# 3. step 0 evidence: what this major version actually filters on
+PGPASSWORD="$proof_password" psql -h 127.0.0.1 -p 55432 -U docs -d docs \
+  -c "SELECT version()" \
+  -c "SELECT pg_get_viewdef('information_schema.columns'::regclass, true)"
+```
+
+Arm roles are created inside the disposable instance only:
+
+```sql
+-- B1
+CREATE ROLE observer LOGIN PASSWORD :'throwaway';
+ALTER ROLE observer SET default_transaction_read_only = on;
+-- REQUIRED (see Results): pin search_path so pg_get_constraintdef() and column
+-- default pg_get_expr() render object names identically to the generator role.
+-- Omitting this makes the fingerprint depend on the observer's role name, not
+-- the structure, and every arm below diverges regardless of table privilege.
+ALTER ROLE observer SET search_path = docs;
+
+-- B2
+GRANT USAGE ON SCHEMA docplane, docs, model, observe, work TO observer;
+
+-- C1
+GRANT REFERENCES ON ALL TABLES IN SCHEMA docplane, docs, model, observe, work
+  TO observer;
+
+-- C2 (as the role that applies migrations)
+ALTER DEFAULT PRIVILEGES FOR ROLE docs
+  IN SCHEMA docplane, docs, model, observe, work
+  GRANT REFERENCES ON TABLES TO observer;
+```
+
+Comparison is made on the structure and its digest, never on printed digests:
+
+```python
+import psycopg2
+from schema_catalogue import introspect, fingerprint   # schema_catalogue_source after #173
+
+schemas = ["docplane", "docs", "model", "observe", "work"]
+with psycopg2.connect(owner_dsn) as owner, psycopg2.connect(observer_dsn) as obs:
+    reference = introspect(owner, schemas)
+    candidate = introspect(obs, schemas)
+
+equal_structure = reference == candidate
+equal_digest = fingerprint(reference) == fingerprint(candidate)
+```
+
+H4 is measured by creating one table as the migrating role *after* the grants
+and repeating the comparison. H5 is measured by attempting one write per
+catalogued schema as the observer role and requiring every attempt to be
+refused.
+
+## 8. Pass criteria
+
+An arm passes only if all of the following hold:
+
+1. `introspect()` under the arm's role is **structurally equal** to arm A's,
+   and its fingerprint is byte-identical;
+2. every table in the catalogued schemas carries a non-empty column list — an
+   equal-but-empty projection is a failure, not a pass;
+3. no row of any catalogued table is readable by the arm's role;
+4. every write attempt is refused;
+5. parity survives a table created after the grants (H4 arms);
+6. the comparison is reproduced on a second, freshly created disposable
+   instance, so a pass is not an artefact of one container's state.
+
+## 9. Decision rules
+
+The proof produces exactly one of three outcomes, and each authorises a
+different next step — none of which this document grants.
+
+- **C1/C2 pass.** *(This is the outcome the executed proof selected — see
+  Results.)* The observer gets its own least-privilege PostgreSQL role;
+  independence is structural, **provided the role also pins `search_path` to the
+  generator's effective path** (an additional required condition the run
+  surfaced, beyond the original hypotheses). The next separately gated step is
+  the observer
+  implementation slice, with the role and its default privileges owned by the
+  Schema observer's runtime/configuration and runbook contract, and
+  `REFERENCES`-only grants documented in
+  `docs/operations/SCHEMA_CATALOGUE.md` as a standing requirement of every
+  future migration.
+- **C1/C2 fail, E passes.** Privilege independence requires changing what the
+  generator reads. That is a projection-contract change: it moves the
+  fingerprint, needs a generator version and contract-version decision, a
+  re-baseline of the artifact's last generation fingerprint, and a successor
+  handoff. It must be decided and ratified **before** any observer is built,
+  not discovered during a canary.
+- **Both fail.** The observer shares the generator's PostgreSQL role. That is
+  a permissible outcome, but the Schema observer runtime/configuration and
+  runbook contract must then record
+  explicitly that database-level independence is not achieved, so that
+  "independent source observation" is never read as stronger evidence than it
+  is.
+
+If C1 passes but C2 fails, treat it as a failure of the whole approach: a
+parity that silently lapses the next time a migration adds a table is a false
+clean waiting for a release.
+
+## 10. Receipt
+
+The proof records a bounded receipt, and records verdicts rather than digests
+— raw source fingerprints do not belong in remediation evidence:
+
+```text
+server_version, image tag, genesis migration count
+arm, structure_equal (bool), digest_equal (bool), tables, columns_observed
+row_read_refused (bool), write_refused (bool)
+post-grant new-table parity (bool, H4 arms)
+second-instance reproduction (bool)
+outcome -> decision rule selected
+```
+
+No DSN, password, role password, digest value or source row appears in the
+receipt, the journal or the pull request.
+
+## 10a. Results (executed 2026-08-29)
+
+Executed against disposable instances only — throwaway clusters, trust-auth on
+loopback, destroyed after the run; no production database was touched, no role
+was created outside the disposable instances, and no digest, password or source
+row is recorded here. Genesis applied through `docs-api/migrate.py` (18 migrations,
+35 tables / 397 columns across the five catalogued schemas). Run on the deployed
+major version **PostgreSQL 16.15** *and* on **17.11**, two fresh instances each;
+all four runs produced identical verdicts.
+
+Verdict receipt (identical on 16.15 and 17.11, both reproduced on a second
+instance):
+
+| Arm | Role configuration | struct= | digest= | cols | row read | write |
+| --- | --- | --- | --- | --- | --- | --- |
+| A | owner (`CATALOGUE_SOURCE_USER`) | ref | ref | 397 | allowed | allowed |
+| B1 | bare role (`PUBLIC` CONNECT) | ✗ | ✗ | **0** | refused | refused |
+| B2 | + `USAGE` on schemas | ✗ | ✗ | **0** | refused | refused |
+| C1 | + `REFERENCES` on tables + pinned `search_path` | **✓** | **✓** | 397 | **refused** | **refused** |
+| C2 | C1 + `ALTER DEFAULT PRIVILEGES … REFERENCES` | **✓** | **✓** | 397 | **refused** | **refused** |
+| D | `SELECT` + pinned `search_path` (contrast) | ✓ | ✓ | 397 | **allowed** | refused |
+| E | `pg_catalog`-only columns + pinned `search_path` | ✓ | ✓ | 397 | refused | refused |
+
+H4 (durability): a table created by the migrating role *after* the grants —
+C1 does **not** observe its columns (0/2, parity lapses); C2 **does** (2/2,
+parity survives). Confirmed on both majors.
+
+**Outcome: C1/C2 pass → the observer gets its own least-privilege PostgreSQL
+role.** H1 (catalogue symmetry) and H2 (`information_schema.columns` hides
+columns from an unprivileged role — B1/B2 see every table but zero columns) both
+held. `REFERENCES` restores full column visibility **without** granting any row
+read (C1: 397 columns, every row read and write refused). `ALTER DEFAULT
+PRIVILEGES` for the migrating role is required for durability across future
+migrations (H4). The Schema observer runtime/configuration and runbook contract
+must name: `USAGE` +
+`REFERENCES` on all tables + `ALTER DEFAULT PRIVILEGES … GRANT REFERENCES` +
+`default_transaction_read_only = on` + a pinned `search_path`.
+
+### The search_path finding (beyond the original hypotheses)
+
+The hypotheses framed the risk as `information_schema` column ACL filtering only.
+The run surfaced a **second, independent** divergence the plan had not
+anticipated: `pg_get_constraintdef()` and column-default `pg_get_expr()` render
+object names relative to the **connecting role's `search_path`**. The generator
+role (`docs`) resolves its own schema through the default `"$user"` element, so
+`docs.*` foreign-key and default references render **unqualified**
+(`REFERENCES changes(...)`); a role with any other name gets them
+**schema-qualified** (`REFERENCES docs.changes(...)`) — a different fingerprint
+for identical structure. This is why arm **D (full `SELECT`) still diverged**
+until `search_path` was pinned: the divergence is not about column visibility at
+all. Pinning the observer role's `search_path` to the generator's effective path
+(`docs`) restores byte-identical output; setting it to the full schema list does
+*not* (it would move the generator's own baseline). Two consequences:
+
+1. The observer's runtime/configuration and runbook contract must pin
+   `search_path`, not only grant privileges. The existing MODEL artifact
+   execution contract continues to own principal, trigger, evidence-age and
+   exclusion-domain semantics; this proof does not extend that MODEL contract
+   into a shadow runtime registry.
+2. The **existing generator** carries a latent fragility: its fingerprint is a
+   function of the connecting role's name via `search_path`. Renaming
+   `CATALOGUE_SOURCE_USER`, or connecting with a different `search_path`, would
+   move the fingerprint with no structural change. Worth a follow-up: have
+   `introspect()` set an explicit, role-independent `search_path` — but that
+   moves the current fingerprint and is therefore a projection-contract change,
+   decided separately.
+
+Arm **E** (privilege-independent `pg_catalog` column read) happened to be
+byte-identical on this fixture, but that is fixture-specific: `format_type()`
+type spellings can differ from `information_schema.data_type` (e.g.
+`character varying(n)` vs `character varying`), so E remains a projection-contract
+change, not a safe drop-in, exactly as H6 cautioned.
+
+## 11. What this proof deliberately does not settle
+
+- Whether the Schema observer is authorised to be built, deployed, enabled or
+  scheduled.
+- The DocPlane `AUTOMATION` principal, its bearer, or its rotation — already
+  ratified and separate from the database role.
+- Whether `EXECUTION_CONTRACT_MISSING` or `SOURCE_OBSERVATION_MISSING` may be
+  resolved. Both remain open until the authorised acts that resolve them occur.
+- Anything about the Meter or Work families. Their soaks and gates are
+  independent and this proof must not touch them.
+
+## 12. PR review disclosures (charter §14)
+
+1. **Lane and layer.** Evidence lane, source-observation layer — completed
+   disposable proof evidence.
+2. **Authoritative inputs.** The ratified Schema observer decisions, the
+   deployed generator's introspection surface, and the deployed PostgreSQL
+   major version.
+3. **Durable state it may mutate.** Repository documentation only. The proof
+   execution used disposable instances and mutated no production state.
+4. **What it does not mutate.** Generation, publication, ownership,
+   `CATALOGUES`, `OBSERVE`, artifact state, WORK conditions, credentials,
+   runtime units, and the production database.
+5. **Idempotency and failure behaviour.** Not applicable; the described
+   procedure is repeatable by construction and every arm is destroyed with its
+   container.
+6. **Ordering.** Precedes the Schema observer implementation slice, which
+   precedes the observer canary, which precedes execution-contract declaration.
+7. **Downstream contract tested.** The real source-projection seam's
+   `introspect()` and `fingerprint()` behavior against genesis-applied
+   PostgreSQL 16.15 and 17.11 under the candidate privilege and search-path
+   configurations.
+8. **Authorised.** Merge only. Not deployment, scheduling, credential
+   mutation, production execution or publication.
