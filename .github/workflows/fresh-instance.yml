@@ -140,6 +140,7 @@ jobs:
             docs-api/tests/test_migrate_compat.py \
             docs-api/tests/test_domain_e2e.py \
             docs-api/tests/test_schema_catalogue.py \
+            docs-api/tests/test_schema_catalogue_source.py \
             docs-api/tests/test_meter_list.py \
             docs-api/tests/test_work_catalogue.py \
             docs-api/tests/test_coverage_burndown_contract.py \

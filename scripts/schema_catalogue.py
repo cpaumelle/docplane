@@ -33,7 +33,6 @@ Usage: schema_catalogue.py [--dry-run]
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -48,8 +47,17 @@ import psycopg2.extras
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from migration.redaction import redact  # noqa: E402
+
+# The authoritative source projection (structure introspection + fingerprint)
+# lives in a pure, side-effect-free module so a future SCHEDULED schema observer
+# can import the same seam without importing this mutation-capable generator.
+# This is the sole implementation of introspect()/fingerprint(); re-exporting
+# the names keeps `schema_catalogue.introspect` / `.fingerprint` working for the
+# generator body and its existing tests.
+from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
 
 GENERATOR_NAME = "docplane-schema-catalogue"
 GENERATOR_VERSION = "1.0.4"
@@ -58,82 +66,8 @@ SECTION = "model/schema-catalogue"
 PRESENCE_PATH = f"{SECTION}/index.md"
 
 
-# ── Introspection: structure only, deterministic order, never row data ──────
-
-_TABLES_SQL = """
-SELECT c.relname,
-       obj_description(c.oid, 'pg_class')
-  FROM pg_class c
-  JOIN pg_namespace n ON n.oid = c.relnamespace
- WHERE n.nspname = %s AND c.relkind IN ('r', 'p')
- ORDER BY c.relname
-"""
-
-_COLUMNS_SQL = """
-SELECT column_name, data_type, is_nullable, column_default
-  FROM information_schema.columns
- WHERE table_schema = %s AND table_name = %s
- ORDER BY ordinal_position
-"""
-
-_CONSTRAINTS_SQL = """
-SELECT con.contype, con.conname, pg_get_constraintdef(con.oid)
-  FROM pg_constraint con
-  JOIN pg_class c ON c.oid = con.conrelid
-  JOIN pg_namespace n ON n.oid = c.relnamespace
- WHERE n.nspname = %s AND c.relname = %s AND con.contype IN ('p', 'f', 'u')
- ORDER BY con.conname
-"""
-
-_INDEXES_SQL = """
-SELECT indexname, indexdef
-  FROM pg_indexes
- WHERE schemaname = %s AND tablename = %s
- ORDER BY indexname
-"""
-
-
-def introspect(conn, schemas: list[str]) -> dict[str, Any]:
-    structure: dict[str, Any] = {}
-    cur = conn.cursor()
-    cur.execute("SET TRANSACTION READ ONLY")
-    for schema in sorted(schemas):
-        tables = {}
-        cur.execute(_TABLES_SQL, (schema,))
-        for table_name, comment in cur.fetchall():
-            cur.execute(_COLUMNS_SQL, (schema, table_name))
-            columns = [
-                {
-                    "name": name,
-                    "type": data_type,
-                    "nullable": nullable == "YES",
-                    "default": default,
-                }
-                for name, data_type, nullable, default in cur.fetchall()
-            ]
-            cur.execute(_CONSTRAINTS_SQL, (schema, table_name))
-            constraints = [
-                {"kind": kind, "name": name, "definition": definition}
-                for kind, name, definition in cur.fetchall()
-            ]
-            cur.execute(_INDEXES_SQL, (schema, table_name))
-            indexes = [
-                {"name": name, "definition": definition}
-                for name, definition in cur.fetchall()
-            ]
-            tables[table_name] = {
-                "comment": comment,
-                "columns": columns,
-                "constraints": constraints,
-                "indexes": indexes,
-            }
-        structure[schema] = tables
-    return structure
-
-
-def fingerprint(structure: dict[str, Any]) -> str:
-    canonical = json.dumps(structure, sort_keys=True, ensure_ascii=False, default=str)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+# Source projection (introspect + fingerprint) is imported from
+# schema_catalogue_source above — this generator holds no second copy.
 
 
 # ── Rendering: deterministic markdown, redaction-gated at the boundary ──────
