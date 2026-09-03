@@ -126,6 +126,7 @@ jobs:
             docs-api/tests/test_knowledge_class_apply.py \
             docs-api/tests/test_knowledge_class_migration.py \
             docs-api/tests/test_redirect_serving.py \
+            docs-api/tests/test_redirect_source_active_page_guard.py \
             docs-api/tests/test_work_capture_contract.py \
             docs-api/tests/test_model_contract.py \
             docs-api/tests/test_observe_contract.py \

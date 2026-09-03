@@ -25,6 +25,32 @@ def _canonical_hash(value: Any) -> str:
     ).hexdigest()
 
 
+def deployment_failure_receipt(exc: Exception) -> dict[str, Any]:
+    """Bounded, structured evidence for a failed whole-corpus deployment build.
+
+    Diagnostic hardening only (the redirect/active-page wedge left operators with an
+    opaque ``RedirectConflict`` string). When the build fails on a known corpus fault
+    the receipt names the conflict kind, the offending source, and a safe remediation
+    so the fault is actionable. This is failure REPORTING, never an alternative repair
+    path. It exposes only routing paths (already public) and fixed remedy text — never
+    page content, credentials, or raw exception internals.
+    """
+    receipt: dict[str, Any] = {"type": type(exc).__name__, "message": str(exc)[:2000]}
+    if isinstance(exc, generator.RedirectConflict):
+        receipt["redirect_conflict"] = {
+            "kind": exc.kind,
+            "source": exc.source,
+            "remedy": (
+                "Remove the offending redirect (REMOVE_REDIRECT from_path=<source>) or "
+                "reconcile the page at that path, then republish. A redirect source may "
+                "never also be an active page."
+            ),
+        }
+    elif isinstance(exc, generator.RouteConflict):
+        receipt["route_conflict"] = {"urls": sorted(exc.collisions)}
+    return receipt
+
+
 def load_release_state(conn) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, str]]:
     cur = conn.cursor()
     cur.execute(
@@ -170,7 +196,7 @@ def deploy_current_state(*, requested_by: str, change_id: str | None = None) -> 
                 **result,
             }
         except Exception as exc:
-            failure = {"type": type(exc).__name__, "message": str(exc)[:2000]}
+            failure = deployment_failure_receipt(exc)
             with get_conn() as conn:
                 cur = conn.cursor()
                 cur.execute(
