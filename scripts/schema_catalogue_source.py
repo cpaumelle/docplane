@@ -5,9 +5,9 @@ This module owns the *source projection seam* only: reading STRUCTURE-ONLY
 metadata from a PostgreSQL connection and reducing it to a deterministic
 structural fingerprint. It is the single implementation of that projection.
 
-The generator (``schema_catalogue.py``) imports :func:`introspect` and
-:func:`fingerprint` from here; a future SCHEDULED schema *observer* is intended
-to import the same seam so that observation and generation share one exact
+The generator (``schema_catalogue.py``) and source-only observer
+(``schema_catalogue_observer.py``) both import :func:`introspect` and
+:func:`fingerprint` from here, so observation and generation share one exact
 notion of "the source structure" and one exact fingerprint algorithm.
 
 Deliberate boundary — this module contains and imports **nothing** beyond the

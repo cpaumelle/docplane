@@ -1,0 +1,16 @@
+[Unit]
+Description=Observe the DocPlane Schema catalogue authoritative source
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/docplane
+ExecStart=/bin/bash /opt/docplane/scripts/run_schema_catalogue_source_observer.sh
+TimeoutStartSec=2min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/lock
