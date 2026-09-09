@@ -51,6 +51,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# SECRETS-V3: the catalogue bearer is resolved through the `_FILE` secret-source contract
+# (protected runtime file preferred, plaintext environment deprecated). Non-secret settings
+# such as DOCPLANE_API continue to come straight from the environment.
+from secret_source import read_secret  # noqa: E402
+
 from migration.redaction import redact  # noqa: E402
 from schema_catalogue import Client  # noqa: E402  (shared API client)
 import schema_catalogue as sc  # noqa: E402
@@ -533,7 +538,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.observe_source and (args.dry_run or args.metrics_file or args.reconcile_success != "1"):
         parser.error("--observe-source cannot generate, reconcile, or write metrics")
 
-    client = Client(_required_environment("DOCPLANE_API"), _required_environment("DOCPLANE_WORK_CATALOGUE_TOKEN"))
+    # DOCPLANE_API is non-secret configuration; the bearer goes through the SECRETS-V3
+    # `_FILE` contract so a materialization failure can never silently fall back to a legacy
+    # plaintext environment value.
+    client = Client(
+        _required_environment("DOCPLANE_API"),
+        read_secret("DOCPLANE_WORK_CATALOGUE_TOKEN"),
+    )
     if args.observe_source:
         probe_id = args.probe_id or str(uuid4())
         try:
