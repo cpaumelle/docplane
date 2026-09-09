@@ -621,14 +621,70 @@ def test_dry_run_performs_no_writes(monkeypatch, capsys):
 
 
 def test_missing_dedicated_token_fails_fast_without_fallback(monkeypatch):
+    """Unchanged intent: with no dedicated token configured, fail fast rather than borrow
+    another principal's credential. SECRETS-V3 moved the resolution into secret_source, so
+    the message now names BOTH accepted sources -- the file path and the legacy variable."""
     monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
     monkeypatch.setenv("DOCPLANE_TOKEN", "wrong-principal")
     monkeypatch.delenv("DOCPLANE_WORK_CATALOGUE_TOKEN", raising=False)
+    monkeypatch.delenv("DOCPLANE_WORK_CATALOGUE_TOKEN_FILE", raising=False)
     try:
         work_catalogue.main(["--dry-run"])
         raise AssertionError("missing dedicated automation token must fail")
     except RuntimeError as exc:
-        assert "DOCPLANE_WORK_CATALOGUE_TOKEN is required" in str(exc)
+        message = str(exc)
+        assert "DOCPLANE_WORK_CATALOGUE_TOKEN_FILE" in message
+        assert "DOCPLANE_WORK_CATALOGUE_TOKEN" in message
+        assert "refusing to fall back to another principal" in message
+        # The other principal's credential must never appear, used or quoted.
+        assert "wrong-principal" not in message
+
+
+def test_dedicated_token_file_is_used_and_env_is_not(monkeypatch, tmp_path):
+    """SECRETS-V3: when the runtime secret file is configured it wins, and a stale legacy
+    environment value for the same principal is ignored entirely."""
+    token_file = tmp_path / "token"
+    token_file.write_text("FROM-RUNTIME-FILE")
+    token_file.chmod(0o600)
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "STALE-ENV-VALUE")
+
+    seen = {}
+
+    class RecordingClient:
+        def __init__(self, api, token):
+            seen["api"] = api
+            seen["token"] = token
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    try:
+        work_catalogue.main(["--dry-run"])
+    except Exception:
+        pass                      # the dry run may fail later; the credential choice is the point
+    assert seen.get("token") == "FROM-RUNTIME-FILE"
+
+
+def test_unreadable_token_file_does_not_revive_the_legacy_value(monkeypatch, tmp_path):
+    """The rule carrying the security weight: once _FILE is configured, a materialization
+    failure must be fatal, not a silent fallback to plaintext environment delivery."""
+    import os
+
+    if os.geteuid() == 0:
+        import pytest as _pytest
+
+        _pytest.skip("running as root: DAC does not deny root")
+    token_file = tmp_path / "token"
+    token_file.write_text("FROM-RUNTIME-FILE")
+    token_file.chmod(0o000)
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "STALE-ENV-VALUE")
+    try:
+        work_catalogue.main(["--dry-run"])
+        raise AssertionError("an unreadable token file must fail, not fall back")
+    except RuntimeError as exc:
+        assert "STALE-ENV-VALUE" not in str(exc)
 
 
 def test_status_reports_drift_and_writes_atomic_metrics(monkeypatch, tmp_path, capsys):
