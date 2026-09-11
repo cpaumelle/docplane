@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.application import app
 from app.operation_contract_api import CONTRACT_ENDPOINT, CONTRACT_VERSION, OPERATION_ENDPOINT
 from app.publication import operation_types
+from app.trust_models import CRITICALITY_VALUES
 
 client = TestClient(app)
 
@@ -25,6 +26,8 @@ def test_operation_contract_endpoint_covers_every_runtime_operation():
         None, "ARCHITECTURE", "OPERATION", "REFERENCE", "POLICY",
         "DECISION", "EVIDENCE", "DESIGN", "WORK_NOTE",
     }
+    assert create["payload_schema"]["properties"]["criticality"]["enum"] == list(CRITICALITY_VALUES)
+    assert body["operations"]["PATCH_METADATA"]["payload_schema"]["properties"]["criticality"]["enum"] == list(CRITICALITY_VALUES)
 
     section = body["operations"]["REPLACE_SECTION"]
     assert section["binding"]["page_resource_id"] == "required"

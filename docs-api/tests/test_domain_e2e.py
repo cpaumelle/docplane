@@ -1097,6 +1097,71 @@ def test_generated_page_guard_fails_closed_at_publish_evaluation():
     assert any(item.get("code") == "PROVENANCE_GENERATED_PAGE_PROTECTED" for item in errors)
 
 
+def test_create_page_rejects_unsupported_criticality_before_publication():
+    change = client.post(
+        "/api/v1/changes",
+        json={"title": "Invalid criticality", "purpose": "prove contract validation", "workspace_key": "reference"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert change.status_code == 201, change.text
+    change_id = change.json()["change_id"]
+    operation = client.post(
+        f"/api/v1/changes/{change_id}/operations",
+        json={
+            "operation_type": "CREATE_PAGE",
+            "payload": {
+                "path": f"reference/e2e-{RUN}-invalid-criticality.md",
+                "title": "Invalid criticality",
+                "nav_path": "E2E/Invalid criticality",
+                "content": "# invalid criticality\n",
+                "criticality": "HIGH",
+            },
+        },
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert operation.status_code == 201, operation.text
+    validated = client.post(f"/api/v1/changes/{change_id}/validate", json={}, headers=AGENT)
+    assert validated.status_code == 200, validated.text
+    errors = validated.json()["validation_summary"]["errors"]
+    assert any(item == {"code": "CRITICALITY_INVALID", "detail": "HIGH"} for item in errors)
+    refused = client.post(
+        f"/api/v1/changes/{change_id}/publish", json={},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert refused.status_code == 409, refused.text
+
+
+def test_patch_metadata_rejects_unsupported_criticality_before_publication():
+    page = _seed_page(f"reference/e2e-{RUN}-invalid-patch-criticality.md")
+    change = client.post(
+        "/api/v1/changes",
+        json={"title": "Invalid metadata criticality", "purpose": "prove metadata contract validation", "workspace_key": "reference"},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert change.status_code == 201, change.text
+    change_id = change.json()["change_id"]
+    operation = client.post(
+        f"/api/v1/changes/{change_id}/operations",
+        json={
+            "operation_type": "PATCH_METADATA",
+            "page_resource_id": page["resource_id"],
+            "expected_revision": page["revision"],
+            "payload": {"criticality": "HIGH"},
+        },
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert operation.status_code == 201, operation.text
+    validated = client.post(f"/api/v1/changes/{change_id}/validate", json={}, headers=AGENT)
+    assert validated.status_code == 200, validated.text
+    errors = validated.json()["validation_summary"]["errors"]
+    assert any(item == {"code": "CRITICALITY_INVALID", "detail": "HIGH"} for item in errors)
+    refused = client.post(
+        f"/api/v1/changes/{change_id}/publish", json={},
+        headers={**AGENT, "Idempotency-Key": _key()},
+    )
+    assert refused.status_code == 409, refused.text
+
+
 def test_archived_page_requires_restore_and_restore_replace_publishes_atomically():
     page = _seed_page(f"reference/e2e-{RUN}-reopen.md")
 

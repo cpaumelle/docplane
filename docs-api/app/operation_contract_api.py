@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.publication import operation_types
+from app.trust_models import CRITICALITY_VALUES
 
 router = APIRouter(tags=["docplane-contract"])
 
@@ -59,7 +60,7 @@ _PAYLOAD_SCHEMAS: dict[str, dict[str, Any]] = {
             "workspace_key": {"type": "string", "pattern": r"^[a-z0-9][a-z0-9_-]{0,62}$"},
             "resource_id": {"type": "string", "format": "uuid"},
             "knowledge_class": _KNOWLEDGE_CLASS_SCHEMA,
-            "criticality": {"type": "string", "default": "NORMAL"},
+            "criticality": {"type": "string", "enum": list(CRITICALITY_VALUES), "default": "NORMAL"},
         },
         required=["path", "title", "nav_path", "content"],
         description="Create one active page. resource_id is optional; the server mints one when omitted.",
@@ -100,7 +101,7 @@ _PAYLOAD_SCHEMAS: dict[str, dict[str, Any]] = {
             "nav_path": {"type": "string", "minLength": 1},
             "workspace_key": {"type": "string", "pattern": r"^[a-z0-9][a-z0-9_-]{0,62}$"},
             "knowledge_class": _KNOWLEDGE_CLASS_SCHEMA,
-            "criticality": {"type": "string"},
+            "criticality": {"type": "string", "enum": list(CRITICALITY_VALUES)},
         },
         description="Patch only the listed metadata fields; content and path are not changed.",
     ),
