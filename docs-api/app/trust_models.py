@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
+
+class Criticality(str, Enum):
+    NORMAL = "NORMAL"
+    IMPORTANT = "IMPORTANT"
+    OPERATIONAL_CRITICAL = "OPERATIONAL_CRITICAL"
+    POLICY_REQUIRED = "POLICY_REQUIRED"
+
+
+CRITICALITY_VALUES = tuple(item.value for item in Criticality)
 
 
 class PageClassificationUpdate(BaseModel):
@@ -21,9 +31,7 @@ class PageClassificationUpdate(BaseModel):
         "EVIDENCE",
         "WORK_NOTE",
     ] | None
-    criticality: Literal["NORMAL", "IMPORTANT", "OPERATIONAL_CRITICAL", "POLICY_REQUIRED"] = (
-        "NORMAL"
-    )
+    criticality: Criticality = Criticality.NORMAL
     owner_principal_id: UUID | None = None
     review_due_at: datetime | None = None
     provenance: Literal["AUTHORED", "GENERATED"] | None = None

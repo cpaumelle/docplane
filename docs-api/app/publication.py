@@ -26,6 +26,7 @@ from app.event_store import append_event
 from app.markdown_sections import find_section
 from app.runtime import deploy_current_state, state_identity
 from app.text_patch import apply_text_patch
+from app.trust_models import CRITICALITY_VALUES
 from migration.links import plan_rewrites, plan_source_move
 
 _PATH_RE = re.compile(r"^[a-z0-9/_-]+\.md$")
@@ -368,6 +369,9 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                 knowledge_class = payload.get("knowledge_class")
                 if knowledge_class is not None and knowledge_class not in _KNOWLEDGE_CLASSES:
                     raise ValueError("KNOWLEDGE_CLASS_INVALID:" + str(knowledge_class))
+                criticality = payload.get("criticality", "NORMAL")
+                if criticality not in CRITICALITY_VALUES:
+                    raise ValueError("CRITICALITY_INVALID:" + str(criticality))
                 if not _PATH_RE.fullmatch(path):
                     raise ValueError("PATH_INVALID")
                 existing = next((candidate for candidate in pages if candidate["path"] == path), None)
@@ -401,7 +405,7 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     "verification_state": "UNVERIFIED",
                     "owner_principal_id": None,
                     "review_due_at": None,
-                    "criticality": str(payload.get("criticality", "NORMAL")),
+                    "criticality": criticality,
                     "metadata_review_required": False,
                     "metadata_version": 1,
                     "updated_at": datetime.now(timezone.utc),
@@ -445,6 +449,8 @@ def evaluate_change(conn, change: dict[str, Any], operations: list[dict[str, Any
                     raise ValueError("METADATA_FIELD_UNSUPPORTED:" + ",".join(sorted(unexpected)))
                 if "knowledge_class" in payload and payload["knowledge_class"] is not None and payload["knowledge_class"] not in _KNOWLEDGE_CLASSES:
                     raise ValueError("KNOWLEDGE_CLASS_INVALID:" + str(payload["knowledge_class"]))
+                if "criticality" in payload and payload["criticality"] not in CRITICALITY_VALUES:
+                    raise ValueError("CRITICALITY_INVALID:" + str(payload["criticality"]))
                 for field in ("title", "nav_path", "knowledge_class", "criticality"):
                     if field in payload:
                         page[field] = payload[field]
