@@ -44,19 +44,29 @@ def _routes(app: FastAPI) -> dict[str, set[str]]:
 
 
 class RecordingCursor:
-    """Captures the SQL and params; returns nothing, so only predicates are asserted."""
+    """Captures the SQL and params.
 
-    def __init__(self, rows: list[tuple] | None = None):
+    `existence` drives the docs.pages probe that _resolve_link_resource runs:
+    True means the page exists, False means it does not (so the endpoint must
+    404 rather than report zero links).
+    """
+
+    def __init__(self, rows: list[tuple] | None = None, existence: bool = True):
         self.rows = rows or []
+        self.existence = existence
         self.calls: list[tuple[str, list | tuple]] = []
+        self._last = ""
 
     def execute(self, query, params=None):
-        self.calls.append((" ".join(str(query).split()), params))
+        self._last = " ".join(str(query).split())
+        self.calls.append((self._last, params))
 
     def fetchall(self):
         return self.rows
 
     def fetchone(self):
+        if self._last.startswith("SELECT 1 FROM docs.pages"):
+            return (1,) if self.existence else None
         return self.rows[0] if self.rows else None
 
 
@@ -176,8 +186,62 @@ def test_page_initiatives_queries_the_reverse_edge(monkeypatch):
         UUID("97cbd90d-70b2-514d-bd7e-c4f943078045"), principal=None
     )
 
-    sql, params = cur.calls[0]
+    # calls[0] is the docs.pages existence probe; find the reverse-edge query
+    # by content rather than position, so adding a guard does not break this.
+    sql, params = next(c for c in cur.calls if "work.initiative_links" in c[0])
     assert "l.resource_type = 'PAGE'" in sql
     assert "l.resource_id = %s" in sql
     assert "JOIN work.initiatives" in sql
     assert params == ("97cbd90d-70b2-514d-bd7e-c4f943078045",)
+
+
+# --- an unknown page must not report "nothing owns me" -----------------------
+
+def test_unlinked_but_real_page_returns_an_empty_set(monkeypatch):
+    cur = RecordingCursor(rows=[], existence=True)
+    monkeypatch.setattr(work_api, "get_conn", lambda: RecordingConnection(cur))
+
+    from uuid import UUID
+    out = work_api.list_page_initiatives(
+        UUID("97cbd90d-70b2-514d-bd7e-c4f943078045"), principal=None
+    )
+
+    assert out["count"] == 0 and out["initiatives"] == []
+    assert any(c[0].startswith("SELECT 1 FROM docs.pages") for c in cur.calls)
+
+
+def test_nonexistent_page_is_a_404_not_an_empty_set(monkeypatch):
+    """A stale or mistyped UUID must not read as "no work owns this page".
+
+    That is the dangerous wrong answer for an endpoint whose purpose is
+    "may I edit this?" — it invites exactly the edit it should have blocked.
+    """
+    import pytest
+    from fastapi import HTTPException
+
+    cur = RecordingCursor(rows=[], existence=False)
+    monkeypatch.setattr(work_api, "get_conn", lambda: RecordingConnection(cur))
+
+    from uuid import UUID
+    with pytest.raises(HTTPException) as excinfo:
+        work_api.list_page_initiatives(
+            UUID("00000000-0000-4000-8000-000000000000"), principal=None
+        )
+
+    assert excinfo.value.status_code == 404
+    assert excinfo.value.detail["code"] == "LINK_RESOURCE_NOT_FOUND"
+    # and it must not have run the reverse-edge query at all
+    assert not any("work.initiative_links" in c[0] for c in cur.calls)
+
+
+def test_blank_key_is_not_treated_as_a_filter(monkeypatch):
+    """"   " must not both vanish from the SQL and suppress the closed filter."""
+    cur = RecordingCursor()
+    monkeypatch.setattr(work_api, "get_conn", lambda: RecordingConnection(cur))
+    monkeypatch.setattr(work_api, "_stamp_soak_resolution", lambda *a, **k: None)
+
+    work_api.list_initiatives(key="   ", principal=None)
+
+    sql, params = cur.calls[0]
+    assert "i.initiative_key = %s" not in sql
+    assert "NOT IN ('COMPLETE', 'ABANDONED')" in sql

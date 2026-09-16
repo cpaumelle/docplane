@@ -329,9 +329,10 @@ def list_initiatives(
     """
     predicates: list[str] = []
     params: list[Any] = []
+    key = key.strip() if key else None
     if key:
         predicates.append("i.initiative_key = %s")
-        params.append(key.strip())
+        params.append(key)
     if workspace_id:
         predicates.append("i.workspace_id = %s")
         params.append(str(workspace_id))
@@ -663,6 +664,11 @@ def list_page_initiatives(
     owned by live work?" before editing it.
     """
     with get_conn() as conn:
+        # An unknown page id must 404, not report zero links. Otherwise a stale or
+        # mistyped UUID is indistinguishable from a live page that nothing owns —
+        # and the question this endpoint answers is "may I edit this?", where
+        # "nothing owns me" is precisely the dangerous wrong answer.
+        _resolve_link_resource(conn, "PAGE", str(page_resource_id))
         cur = conn.cursor()
         cur.execute(
             """
