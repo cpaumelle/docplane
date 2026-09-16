@@ -313,12 +313,25 @@ def list_initiatives(
     workspace_id: UUID | None = None,
     work_state: str | None = None,
     owner_principal_id: UUID | None = None,
+    key: str | None = None,
     include_closed: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
+    """`key` resolves a slug to an initiative without a client-side scan.
+
+    GET /api/v1/initiatives/{initiative_id} takes a canonical UUID, so a caller
+    holding only an initiative_key previously had to list everything with
+    include_closed=true and match in the client. `?key=` is exact and implies
+    include_closed, since resolving a slug should not depend on the initiative
+    still being open. Offered as a filter rather than /by-key/{slug} so it cannot
+    shadow the UUID route.
+    """
     predicates: list[str] = []
     params: list[Any] = []
+    if key:
+        predicates.append("i.initiative_key = %s")
+        params.append(key.strip())
     if workspace_id:
         predicates.append("i.workspace_id = %s")
         params.append(str(workspace_id))
@@ -327,7 +340,7 @@ def list_initiatives(
             raise HTTPException(status_code=422, detail={"code": "WORK_STATE_INVALID"})
         predicates.append("i.work_state = %s")
         params.append(work_state)
-    elif not include_closed:
+    elif not include_closed and not key:
         predicates.append("i.work_state NOT IN ('COMPLETE', 'ABANDONED')")
     if owner_principal_id:
         predicates.append("i.owner_principal_id = %s")
@@ -605,6 +618,68 @@ def _resolve_link_resource(conn, resource_type: str, resource_id: str) -> None:
         raise HTTPException(status_code=422, detail={"code": "LINK_RESOURCE_ID_INVALID", "resource_type": resource_type})
     if cur.fetchone() is None:
         raise HTTPException(status_code=404, detail={"code": "LINK_RESOURCE_NOT_FOUND", "resource_type": resource_type, "resource_id": resource_id})
+
+
+@router.get("/api/v1/initiatives/{initiative_id}/links")
+def list_initiative_links(
+    initiative_id: UUID,
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Read the links of one initiative.
+
+    The same rows appear inside GET /api/v1/initiatives/{id}; this is the
+    focused read, so a caller after just the edges need not pull every activity
+    on the initiative to get them.
+    """
+    with get_conn() as conn:
+        _load(conn, initiative_id)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT relation, resource_type, resource_id, created_by::text, created_at
+            FROM work.initiative_links
+            WHERE initiative_id = %s
+            ORDER BY relation, resource_type, resource_id
+            """,
+            (str(initiative_id),),
+        )
+        links = [
+            dict(zip(("relation", "resource_type", "resource_id", "created_by", "created_at"), row))
+            for row in cur.fetchall()
+        ]
+    return {"initiative_id": str(initiative_id), "links": links, "count": len(links)}
+
+
+@router.get("/api/v1/pages/{page_resource_id}/initiatives")
+def list_page_initiatives(
+    page_resource_id: UUID,
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Which initiatives link to this page — the reverse edge.
+
+    This is the direction that had no read at all: the only signal was the
+    rendered 'Linked' block on a generated initiative page, reversible only by
+    scanning every initiative. Page -> initiative is how you ask "is this page
+    owned by live work?" before editing it.
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT l.relation, l.created_at,
+                   i.initiative_id::text, i.initiative_key, i.title, i.work_state
+            FROM work.initiative_links l
+            JOIN work.initiatives i ON i.initiative_id = l.initiative_id
+            WHERE l.resource_type = 'PAGE' AND l.resource_id = %s
+            ORDER BY i.initiative_key, l.relation
+            """,
+            (str(page_resource_id),),
+        )
+        rows = [
+            dict(zip(("relation", "created_at", "initiative_id", "initiative_key", "title", "work_state"), row))
+            for row in cur.fetchall()
+        ]
+    return {"page_resource_id": str(page_resource_id), "initiatives": rows, "count": len(rows)}
 
 
 @router.post("/api/v1/initiatives/{initiative_id}/links", status_code=201)
