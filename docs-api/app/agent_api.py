@@ -88,6 +88,12 @@ def _page_select() -> str:
     """
 
 
+# SUPERSEDED — NOT SERVED. This handler is listed in
+# agent_contract_api.REPLACED_AGENT_PATHS and is filtered out of the assembled
+# app by application.py, which extends only the routes NOT in that set.
+# The live implementation is the discovery contract in app/agent_contract_api.py.
+# Editing this function changes nothing at runtime. Change the replacement, or
+# remove the path from REPLACED_AGENT_PATHS to hand the route back to this one.
 @router.get("/.well-known/docplane.json")
 def discovery() -> dict[str, Any]:
     return {
@@ -458,6 +464,12 @@ def revoke_principal_token(
     return PrincipalTokenRevokeResponse(**metadata, replayed=False)
 
 
+# SUPERSEDED — NOT SERVED. This handler is listed in
+# agent_contract_api.REPLACED_AGENT_PATHS and is filtered out of the assembled
+# app by application.py, which extends only the routes NOT in that set.
+# The live implementation is list_pages() in app/agent_contract_api.py.
+# Editing this function changes nothing at runtime. Change the replacement, or
+# remove the path from REPLACED_AGENT_PATHS to hand the route back to this one.
 @router.get("/api/v1/pages")
 def list_pages(
     status: str = Query(default="active", pattern="^(active|archived|all)$"),
@@ -541,6 +553,12 @@ def get_page_section(
     }
 
 
+# SUPERSEDED — NOT SERVED. This handler is listed in
+# agent_contract_api.REPLACED_AGENT_PATHS and is filtered out of the assembled
+# app by application.py, which extends only the routes NOT in that set.
+# The live implementation is search_pages() in app/agent_contract_api.py.
+# Editing this function changes nothing at runtime. Change the replacement, or
+# remove the path from REPLACED_AGENT_PATHS to hand the route back to this one.
 @router.get("/api/v1/search")
 def search_pages(
     q: str = Query(min_length=2, max_length=500),

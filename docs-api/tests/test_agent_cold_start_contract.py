@@ -297,3 +297,45 @@ def test_contract_documents_publication_timing_and_targeted_edits() -> None:
     targeted = " ".join(body["quick_start"]["targeted_edit"])
     assert "REPLACE_SECTION" in targeted
     assert "INSERT_AFTER_HEADING" in targeted
+
+
+def test_replaced_agent_paths_all_still_exist_in_the_monolithic_router():
+    """A stale entry in REPLACED_AGENT_PATHS silently protects nothing.
+
+    The set exists to strip superseded handlers out of the assembled app. If a
+    path is listed but no longer defined in the monolithic router, the entry is
+    dead weight and hides the fact that nothing is being replaced any more.
+    """
+    from app.agent_api import router as monolithic_agent_router
+
+    monolithic_paths = {
+        getattr(route, "path", None) for route in monolithic_agent_router.routes
+    }
+    for path in agent_contract_api.REPLACED_AGENT_PATHS:
+        assert path in monolithic_paths, (
+            f"{path} is in REPLACED_AGENT_PATHS but no longer exists in agent_api — "
+            "remove the stale entry"
+        )
+
+
+def test_every_superseded_handler_is_marked_as_not_served():
+    """Each superseded handler must say so in the source.
+
+    Reading an unmarked superseded handler gives a completely wrong model of the
+    API: the /api/v1/search one is a whole-string ILIKE with no tokenisation,
+    while the served implementation splits the query into terms and ANDs them.
+    The marker is what stops the next reader (or a future edit) trusting it.
+    """
+    import inspect
+
+    from app import agent_api
+
+    source = inspect.getsource(agent_api)
+    for path in agent_contract_api.REPLACED_AGENT_PATHS:
+        decorator_index = source.find(f'"{path}")')
+        assert decorator_index != -1, f"no decorator found for {path}"
+        preamble = source[max(0, decorator_index - 600):decorator_index]
+        assert "SUPERSEDED" in preamble, (
+            f"the handler for {path} is filtered out of the app but is not marked "
+            "SUPERSEDED — a reader will believe it is live"
+        )
