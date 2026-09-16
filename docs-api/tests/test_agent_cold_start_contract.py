@@ -204,6 +204,44 @@ def test_search_matches_non_contiguous_terms_and_ranks_exact_phrase_first(monkey
     assert rows_params[-1] == 10
 
 
+def test_search_response_exposes_the_effective_terms(monkeypatch):
+    """The caller must be able to see what their query actually became.
+
+    Filler words are not removed, so a question-shaped query carries every word
+    into matching and ranking. Without this field a caller cannot tell a sparse
+    topic from a query diluted by common words.
+    """
+    cursor = FakeCursor(total=3, rows=[_page_row()])
+    monkeypatch.setattr(agent_contract_api, "get_conn", lambda: FakeConnection(cursor))
+
+    result = agent_contract_api.search_pages(
+        q="what is the DNS authority invariant",
+        include_archived=False,
+        limit=1,
+        principal=_principal(),
+    )
+
+    assert result["terms"] == ["what", "is", "the", "dns", "authority", "invariant"]
+    assert result["query"] == "what is the DNS authority invariant"
+
+
+def test_search_effective_terms_reflect_the_maximum_terms_cap(monkeypatch):
+    """`terms` must show the cap, so silent truncation is visible to the caller."""
+    cursor = FakeCursor(total=0, rows=[])
+    monkeypatch.setattr(agent_contract_api, "get_conn", lambda: FakeConnection(cursor))
+
+    query = " ".join(f"term-{index}" for index in range(20))
+    result = agent_contract_api.search_pages(
+        q=query,
+        include_archived=False,
+        limit=1,
+        principal=_principal(),
+    )
+
+    assert result["terms"] == agent_contract_api._search_terms(query)
+    assert len(result["terms"]) == agent_contract_api._MAX_SEARCH_TERMS
+
+
 def test_search_terms_are_unique_and_bounded():
     query = " ".join(["repeat", "repeat", *(f"term-{index}" for index in range(20))])
 

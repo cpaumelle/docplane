@@ -118,6 +118,13 @@ def discovery() -> dict[str, Any]:
             "matching": "All distinct query terms must match across the indexed fields; contiguous phrase and title/path matches rank first.",
             "maximum_terms": 12,
             "result_context": ["matched_in", "snippet", "summary", "workspace_key", "revision"],
+            "effective_terms": (
+                "The `terms` field on a search response is the exact term list the "
+                "server matched on, after tokenisation and the maximum_terms cap. "
+                "No stopwords are removed; every word is kept and matched as a "
+                "substring, so common words match broadly and still contribute to "
+                "ranking. Read `terms` to see what a query actually became."
+            ),
         },
         "resolve": {"endpoint": "/api/v1/resolve", "keys": ["path", "title"]},
         "list_filters": {"endpoint": "/api/v1/pages", "fields": ["status", "path", "workspace_key"]},
