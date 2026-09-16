@@ -512,6 +512,13 @@ def search_pages(
                 "version": page["version"],
                 "workspace_key": page["workspace_key"],
                 "summary": page["summary"],
+                # AUTHORED vs GENERATED is the field that says "do not edit me".
+                # _page_select already retrieves it and _page_dict already maps
+                # it, so surfacing it here costs nothing — it was simply dropped
+                # when this result dict was assembled. Without it, a client that
+                # discovers a page through search has no way to know it is
+                # derived output short of a second request per result.
+                "provenance": page["provenance"],
                 "snippet": search_snippet(page["content"], q),
                 "matched_in": _matched_in(page, q),
                 "uri": page["uri"],

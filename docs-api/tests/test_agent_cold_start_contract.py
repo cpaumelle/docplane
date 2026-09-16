@@ -43,6 +43,7 @@ def _page_row(content: str = "# Example\n\nThe target phrase is documented here.
         "NORMAL",
         False,
         1,
+        "AUTHORED",
         datetime(2026, 7, 28, tzinfo=timezone.utc),
         "agent",
     )
@@ -339,3 +340,43 @@ def test_every_superseded_handler_is_marked_as_not_served():
             f"the handler for {path} is filtered out of the app but is not marked "
             "SUPERSEDED — a reader will believe it is live"
         )
+
+
+def test_search_results_carry_provenance(monkeypatch):
+    """A page discovered through search must say whether it is derived output.
+
+    _page_select already retrieves provenance and _page_dict already maps it, so
+    this costs no extra query — the field was simply dropped when the result
+    dict was assembled. Without it a client has to spend one request per result
+    to learn what it already fetched.
+    """
+    cursor = FakeCursor(total=1, rows=[_page_row()])
+    monkeypatch.setattr(agent_contract_api, "get_conn", lambda: FakeConnection(cursor))
+
+    result = agent_contract_api.search_pages(
+        q="anything", include_archived=False, limit=1, principal=_principal(),
+    )
+
+    hit = result["results"][0]
+    assert "provenance" in hit
+    assert hit["provenance"] in ("AUTHORED", "GENERATED")
+
+
+def test_page_row_fixture_matches_the_real_column_list():
+    """The fixture is positional, so a new column in _page_select silently shifts it.
+
+    That had already happened: the fixture carried 20 values against a 21-column
+    select, so _page_dict mapped updated_at into provenance and updated_by into
+    updated_at, with updated_by falling off the end. Every test passed, because
+    none of them asserted on those three fields.
+    """
+    from app.agent_api import _page_select
+
+    select = _page_select().split("FROM")[0]
+    columns = [c.strip().split(".")[-1] for c in select.replace("SELECT", "").split(",")]
+    assert len(_page_row()) == len(columns), (
+        f"_page_row has {len(_page_row())} values against {len(columns)} selected columns"
+    )
+    # provenance must be a provenance value, not whatever fell into its slot
+    from app.agent_api import _page_dict
+    assert _page_dict(_page_row())["provenance"] in ("AUTHORED", "GENERATED")
