@@ -149,6 +149,38 @@ def me(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
     }
 
 
+@router.get("/api/v1/principals/{principal_id}")
+def get_principal(principal_id: UUID, principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
+    """Resolve a principal UUID to a name and kind.
+
+    Work records carry author_principal_id / owner_principal_id /
+    triaged_by_principal_id as bare UUIDs with nothing to resolve them against,
+    so authorship of an activity could only be inferred from timing. Pages
+    already expose the resolved name through updated_by; this closes the same
+    gap for WORK.
+
+    Identity only. Credential material lives in docplane.api_tokens, a separate
+    table this never reads, and `metadata` is withheld because it is free-form
+    and may carry operational context that is not identity. Single lookup by id
+    — deliberately not a list endpoint, which would turn a resolver into a
+    directory of every principal ever minted.
+    """
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT principal_id::text, display_name, principal_kind, status, created_at
+            FROM docplane.principals
+            WHERE principal_id = %s
+            """,
+            (str(principal_id),),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "PRINCIPAL_NOT_FOUND"})
+    return dict(zip(("principal_id", "display_name", "principal_kind", "status", "created_at"), row))
+
+
 @router.post("/api/v1/bootstrap/principals", response_model=PrincipalToken, status_code=201)
 def create_principal(
     request: PrincipalCreate,
