@@ -517,4 +517,11 @@ def search_pages(
                 "uri": page["uri"],
             }
         )
-    return {"query": q, "results": results, "count": len(results), "total": total, "limit": limit}
+    return {
+        "query": q,
+        "terms": terms,
+        "results": results,
+        "count": len(results),
+        "total": total,
+        "limit": limit,
+    }
