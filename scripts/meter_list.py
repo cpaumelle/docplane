@@ -57,9 +57,19 @@ from migration.redaction import redact  # noqa: E402
 from schema_catalogue import ApiError, Client  # noqa: E402  (shared API client)
 
 GENERATOR_NAME = "docplane-meter-list"
-GENERATOR_VERSION = "1.3.1"
+GENERATOR_VERSION = "1.4.0"
 PROJECTION_CONTRACT_VERSION = 1
 SECTION = "observe/meter-list"
+
+# Generated catalogue pages are REFERENCE: they describe what exists now.
+# Without a marker every generated page lands in the observatory's
+# missing_lifecycle signal, so each new rule file or schema silently enlarged
+# a structural signal that nobody could act on (capture 075a36de).
+# The lifecycle of the underlying *thing* lives in its own system; a
+# projection's header must not try to carry it.
+LIFECYCLE = "REFERENCE"
+LIFECYCLE_LINES = (f"**Lifecycle:** {LIFECYCLE}", f"<!-- lifecycle: {LIFECYCLE} -->")
+
 PRESENCE_PATH = f"{SECTION}/index.md"
 
 _SLUG_RE = re.compile(r"[^a-z0-9_.-]+")
@@ -272,7 +282,7 @@ def render_pages(source_key: str, structure: dict[str, Any], structure_hash: str
         # that same directory, so prefixing the source slug again resolves to
         # SECTION/<source_slug>/<source_slug>/<stem> and lands nowhere.
         index_lines.append(f"- [`{file_stem}`]({stem_slug}.md) — {rule_count} rules")
-        body = [f"# Meter list — `{file_stem}`", "", stamp, ""]
+        body = [f"# Meter list — `{file_stem}`", "", *LIFECYCLE_LINES, "", stamp, ""]
         for group_name in sorted(groups):
             body += [f"## Group `{group_name}`", ""]
             for rule in groups[group_name]:
@@ -290,6 +300,8 @@ def render_pages(source_key: str, structure: dict[str, Any], structure_hash: str
     total_rules = sum(len(rules) for groups in structure.values() for rules in groups.values())
     overview = [
         f"# {source_key} meter list",
+        "",
+        *LIFECYCLE_LINES,
         "",
         stamp,
         "",
@@ -326,6 +338,8 @@ def presence_page() -> dict[str, str]:
         "nav_path": "Observe / Meter list / Overview",
         "content": (
             "# Meter list\n\n"
+            f"**Lifecycle:** {LIFECYCLE}\n"
+            f"<!-- lifecycle: {LIFECYCLE} -->\n\n"
             "Prometheus holds the readings; DocPlane holds the meter list. "
             "Pages under this section are generated from the monitoring "
             f"configuration in git by the `{GENERATOR_NAME}` AUTOMATION "

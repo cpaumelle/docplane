@@ -14,11 +14,12 @@
     "structure-only production_shape.json fixture. The *_render_sha256 values are",
     "SHA-256 over the joined (path, rendered content) of render_pages(); render_pages",
     "is unchanged by this PR and is used only to prove rendered-output equivalence.",
-    "Join format: pages joined by U+001E, each 'path' + U+001F + 'content'."
+    "Join format: pages joined by U+001E, each 'path' + U+001F + 'content'.",
+    "RE-FROZEN 2026-09-17 (capture 075a36de): the two *_render_sha256 values only. render_pages() now emits a '**Lifecycle:** REFERENCE' marker under the H1, so generated pages stop landing in the observatory's missing_lifecycle signal. That is a deliberate output change, so the render epoch moved. The two *_fingerprint values are UNTOUCHED and still carry the original pre-extraction oracle: fingerprint() is computed over the introspected structure, never over rendered content, so the extraction proof this file exists for is unaffected."
   ],
-  "generator_version": "1.0.4",
+  "generator_version": "1.1.0",
   "structure_fingerprint": "d6058d2faa1bb279094ca197b4298a7156fef33e420b5982b1039a304dfab4ee",
   "production_shape_fingerprint": "b73d39c7e4b946afea165cc00926c013632f52a0c6f10e0a475dd3b62839e258",
-  "structure_render_sha256": "e023540cf933c29c52bf8a2ab44679a86add425bda6b20cdadf5e899115fbcce",
-  "production_shape_render_sha256": "5b710d7aa98e8338a3a250b31f6ca94fa545b00a73a8bcb250e76e3cdc75c810"
+  "structure_render_sha256": "b8e838593fa0a2b03445a97a94e0b2a9dc077373b62745fe83f0bda33e2ec978",
+  "production_shape_render_sha256": "74b98bb1836e2f2fa4ca90ae730d3f0acc760a661294358f0e7007ce5b5bdb95"
 }

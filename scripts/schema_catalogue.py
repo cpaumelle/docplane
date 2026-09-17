@@ -60,9 +60,19 @@ from migration.redaction import redact  # noqa: E402
 from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
 
 GENERATOR_NAME = "docplane-schema-catalogue"
-GENERATOR_VERSION = "1.0.4"
+GENERATOR_VERSION = "1.1.0"
 PROJECTION_CONTRACT_VERSION = 1
 SECTION = "model/schema-catalogue"
+
+# Generated catalogue pages are REFERENCE: they describe what exists now.
+# Without a marker every generated page lands in the observatory's
+# missing_lifecycle signal, so each new rule file or schema silently enlarged
+# a structural signal that nobody could act on (capture 075a36de).
+# The lifecycle of the underlying *thing* lives in its own system; a
+# projection's header must not try to carry it.
+LIFECYCLE = "REFERENCE"
+LIFECYCLE_LINES = (f"**Lifecycle:** {LIFECYCLE}", f"<!-- lifecycle: {LIFECYCLE} -->")
+
 PRESENCE_PATH = f"{SECTION}/index.md"
 
 
@@ -126,7 +136,7 @@ def render_pages(
         schema_lines.append(
             f"- [`{schema}`]({schema}.md) — {len(tables)} tables"
         )
-        body = [f"# {db_display} — `{schema}`", "", stamp, ""]
+        body = [f"# {db_display} — `{schema}`", "", *LIFECYCLE_LINES, "", stamp, ""]
         for table_name in sorted(tables):
             body += _table_section(table_name, tables[table_name])
         pages.append(
@@ -139,6 +149,8 @@ def render_pages(
         )
     overview = [
         f"# {db_display} schema catalogue",
+        "",
+        *LIFECYCLE_LINES,
         "",
         stamp,
         "",
@@ -175,6 +187,8 @@ def presence_page() -> dict[str, str]:
         "nav_path": "Model / Schema catalogue / Overview",
         "content": (
             "# Schema catalogue\n\n"
+            f"**Lifecycle:** {LIFECYCLE}\n"
+            f"<!-- lifecycle: {LIFECYCLE} -->\n\n"
             "Generated database schema documentation. Catalogue pages under "
             "this section carry `provenance=GENERATED`, are owned by the "
             f"`{GENERATOR_NAME}` AUTOMATION principal, and regenerate only "

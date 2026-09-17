@@ -13,7 +13,10 @@ These tests exist to prove the extraction changed *nothing* observable:
   * the generator now holds a single implementation and re-exports it;
   * schema-allowlist order is normalised, SQL pins list order, and fingerprint
     canonicalisation absorbs mapping insertion order;
-  * rendering the extracted structure is byte-identical to before;
+  * rendering the extracted structure matches a frozen render oracle (whose
+    epoch was deliberately moved 2026-09-17 when render_pages() began emitting
+    a lifecycle marker -- see the fixture's _provenance; the *fingerprint*
+    oracles are untouched and still carry the pre-extraction values);
   * the pure module imports with no API/DB/redaction/generator side effects and
     exposes no mutation surface.
 """
@@ -139,7 +142,7 @@ def test_mapping_insertion_order_does_not_change_canonical_fingerprint():
 
 
 # 6. Rendering the same extracted structure is byte-identical to pre-extraction.
-def test_rendered_output_is_byte_identical_to_preextraction():
+def test_rendered_output_matches_the_frozen_render_oracle():
     assert _render_sha(STRUCTURE) == ORACLE["structure_render_sha256"]
     assert _render_sha(PRODUCTION_SHAPE) == ORACLE["production_shape_render_sha256"]
 
