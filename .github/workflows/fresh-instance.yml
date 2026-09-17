@@ -114,45 +114,25 @@ jobs:
           PYTHONPATH: docs-api:dashboard
         run: |
           python -m compileall -q docs-api dashboard mcp scripts/reconcile_generated_conditions.py
+          # Every pytest root in the repository, named as directories rather
+          # than as a file list. The previous hand-maintained enumeration
+          # silently excluded every test file added after someone last
+          # remembered to update it -- ten of them, including regression
+          # tests written to guard specific defects.
+          #
+          # migration/tests and scripts/tests also have dedicated path-scoped
+          # workflows; running them here too makes `verify` authoritative, so a
+          # change outside those paths cannot skip them.
+          #
+          # test_ci_runs_every_test_file.py discovers test files REPO-WIDE and
+          # fails the build if any is unreachable from this command, so a new
+          # test root cannot appear without CI noticing.
           python -m pytest -q \
-            docs-api/tests/test_fresh_contract.py \
-            docs-api/tests/test_agent_cold_start_contract.py \
-            docs-api/tests/test_operation_contract.py \
-            docs-api/tests/test_private_fabric_access.py \
-            docs-api/tests/test_generated_release.py \
-            docs-api/tests/test_page_badges.py \
-            docs-api/tests/test_domain_nav.py \
-            docs-api/tests/test_knowledge_class_suggest.py \
-            docs-api/tests/test_knowledge_class_apply.py \
-            docs-api/tests/test_knowledge_class_migration.py \
-            docs-api/tests/test_redirect_serving.py \
-            docs-api/tests/test_redirect_source_active_page_guard.py \
-            docs-api/tests/test_work_capture_contract.py \
-            docs-api/tests/test_model_contract.py \
-            docs-api/tests/test_observe_contract.py \
-            docs-api/tests/test_generated_conditions.py \
-            docs-api/tests/test_generated_condition_derivation_contract.py \
-            docs-api/tests/test_generated_condition_reconciler.py \
-            docs-api/tests/test_generated_work_conditions.py \
-            docs-api/tests/test_generated_work_conditions_e2e.py \
-            docs-api/tests/test_closure_gates_contract.py \
-            docs-api/tests/test_verification_requests_contract.py \
-            docs-api/tests/test_corpus_observatory.py \
-            docs-api/tests/test_migrate_compat.py \
-            docs-api/tests/test_domain_e2e.py \
-            docs-api/tests/test_schema_catalogue.py \
-            docs-api/tests/test_schema_catalogue_source.py \
-            docs-api/tests/test_schema_catalogue_observer.py \
-            docs-api/tests/test_meter_list.py \
-            docs-api/tests/test_work_catalogue.py \
-            docs-api/tests/test_coverage_burndown_contract.py \
-            mcp/tests/test_allowed_hosts.py \
-            mcp/tests/test_work_tools.py \
-            mcp/tests/test_content_path.py \
-            mcp/tests/test_docs_tools.py \
-            dashboard/tests/test_authoring.py \
-            dashboard/tests/test_work_view.py \
-            dashboard/tests/test_observatory.py
+            docs-api/tests \
+            mcp/tests \
+            dashboard/tests \
+            migration/tests \
+            scripts/tests
       - name: Static legacy scan
         run: |
           ! grep -R -nE 'DOCS_API_KEY|X-API-Key|/api/agent-config|/api/docs/|workspace_memberships|change_proposals|reorganisation_reviews|Submit for review|SUBMITTED|APPROVED' \

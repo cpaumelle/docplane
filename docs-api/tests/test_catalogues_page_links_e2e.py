@@ -56,6 +56,15 @@ def _seed_entity(principal_id: str) -> str:
 
 
 def _seed_page(path: str, *, status: str = "active") -> str:
+    # nav_path must be unique per page. These rows are inserted with raw SQL,
+    # which bypasses the publication contract's nav validation -- so a shared
+    # nav_path is accepted here and then makes EVERY later change validation in
+    # the same database fail with NAV_CONFLICT/duplicate-leaf, including tests
+    # in other modules. The leaf is derived from the path, which is already
+    # unique per page.
+    leaf = path.rsplit("/", 1)[-1]
+    if leaf.endswith(".md"):
+        leaf = leaf[: -len(".md")]
     with get_conn() as conn:
         cur = conn.cursor()
         cur.execute("SELECT workspace_id FROM docplane.workspaces WHERE workspace_key = 'reference'")
@@ -67,7 +76,7 @@ def _seed_page(path: str, *, status: str = "active") -> str:
             VALUES (%s, %s, %s, %s, %s, 'PUBLISHED', 'REFERENCE', %s, 'catalogues-e2e')
             RETURNING resource_id::text
             """,
-            (path, f"Catalogues E2E {RUN}", f"Catalogues/{RUN}", f"# Catalogues E2E {RUN}\n", workspace_id, status),
+            (path, f"Catalogues E2E {leaf}", f"Catalogues/{RUN}/{leaf}", f"# Catalogues E2E {leaf}\n", workspace_id, status),
         )
         resource_id = cur.fetchone()[0]
         conn.commit()
