@@ -723,7 +723,11 @@ def add_dependency(
         _load(conn, initiative_id)
         _load(conn, request.depends_on_initiative_id)
         cur = conn.cursor()
-        cur.execute("INSERT INTO work.initiative_dependencies (initiative_id, depends_on_initiative_id, dependency_kind) VALUES (%s, %s, %s) ON CONFLICT DO UPDATE SET dependency_kind = EXCLUDED.dependency_kind", (str(initiative_id), str(request.depends_on_initiative_id), request.dependency_kind))
+        # ON CONFLICT DO UPDATE requires an explicit conflict target; only
+        # DO NOTHING may omit it. Without one this is a parse-time syntax
+        # error, so every call failed -- not just the conflicting ones.
+        # The target is the table's primary key.
+        cur.execute("INSERT INTO work.initiative_dependencies (initiative_id, depends_on_initiative_id, dependency_kind) VALUES (%s, %s, %s) ON CONFLICT (initiative_id, depends_on_initiative_id) DO UPDATE SET dependency_kind = EXCLUDED.dependency_kind", (str(initiative_id), str(request.depends_on_initiative_id), request.dependency_kind))
         conn.commit()
     return {"initiative_id": str(initiative_id), **request.model_dump(mode="json")}
 
