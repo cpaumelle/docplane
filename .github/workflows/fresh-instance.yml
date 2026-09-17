@@ -114,12 +114,25 @@ jobs:
           PYTHONPATH: docs-api:dashboard
         run: |
           python -m compileall -q docs-api dashboard mcp scripts/reconcile_generated_conditions.py
-          # Directories, not an enumeration. The previous hand-maintained file
-          # list silently excluded every test file added after someone last
-          # remembered to update it -- 10 files, including regression tests
-          # written specifically to guard defects. test_ci_runs_every_test_file.py
-          # fails the build if any test file stops being reachable from here.
-          python -m pytest -q docs-api/tests mcp/tests dashboard/tests
+          # Every pytest root in the repository, named as directories rather
+          # than as a file list. The previous hand-maintained enumeration
+          # silently excluded every test file added after someone last
+          # remembered to update it -- ten of them, including regression
+          # tests written to guard specific defects.
+          #
+          # migration/tests and scripts/tests also have dedicated path-scoped
+          # workflows; running them here too makes `verify` authoritative, so a
+          # change outside those paths cannot skip them.
+          #
+          # test_ci_runs_every_test_file.py discovers test files REPO-WIDE and
+          # fails the build if any is unreachable from this command, so a new
+          # test root cannot appear without CI noticing.
+          python -m pytest -q \
+            docs-api/tests \
+            mcp/tests \
+            dashboard/tests \
+            migration/tests \
+            scripts/tests
       - name: Static legacy scan
         run: |
           ! grep -R -nE 'DOCS_API_KEY|X-API-Key|/api/agent-config|/api/docs/|workspace_memberships|change_proposals|reorganisation_reviews|Submit for review|SUBMITTED|APPROVED' \
