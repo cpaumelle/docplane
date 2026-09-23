@@ -272,26 +272,9 @@ def observe_source(client: Client, probe_id: str) -> tuple[dict[str, Any], bool]
 
 
 def _write_metrics(path: str, *, drift: bool, success: bool) -> None:
-    """Atomically publish low-cardinality textfile metrics for node_exporter."""
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    now = int(time.time())
-    content = (
-        "# HELP docplane_generated_projection_drift Whether live source state differs from the published generation fingerprint.\n"
-        "# TYPE docplane_generated_projection_drift gauge\n"
-        f'docplane_generated_projection_drift{{artifact="{ARTIFACT_KEY}"}} {int(drift)}\n'
-        "# HELP docplane_generated_projection_reconcile_success Whether the most recent reconciliation completed successfully.\n"
-        "# TYPE docplane_generated_projection_reconcile_success gauge\n"
-        f'docplane_generated_projection_reconcile_success{{artifact="{ARTIFACT_KEY}"}} {int(success)}\n'
-        "# HELP docplane_generated_projection_last_run_unixtime Unix time of the most recent reconciliation status check.\n"
-        "# TYPE docplane_generated_projection_last_run_unixtime gauge\n"
-        f'docplane_generated_projection_last_run_unixtime{{artifact="{ARTIFACT_KEY}"}} {now}\n'
-    )
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=destination.parent, delete=False) as handle:
-        handle.write(content)
-        temporary = Path(handle.name)
-    temporary.chmod(0o644)
-    temporary.replace(destination)
+    """This artifact's projection status. The writer is shared (schema_catalogue), so the
+    series and their alerts stay identical across every generated projection."""
+    sc.write_projection_metrics(path, artifact=ARTIFACT_KEY, drift=drift, success=success)
 
 
 def _by_state(projection: dict[str, Any], work_state: str) -> list[dict[str, Any]]:

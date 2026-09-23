@@ -36,6 +36,8 @@ import argparse
 import json
 import os
 import sys
+import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -379,6 +381,38 @@ def schema_catalogues_mappings(
     for entity_id in entities["stale_schema_ids"]:
         desired[entity_id] = []
     return desired
+
+
+def write_projection_metrics(path: str, *, artifact: str, drift: bool, success: bool) -> None:
+    """Atomically publish the generated-projection status metrics for node_exporter.
+
+    ONE writer for every generated projection (work catalogue, meter list, ...), so a new
+    projection inherits the same three series and the alerts that already read them rather
+    than growing a private metric name nobody alerts on. `artifact` is the label that keeps
+    them apart.
+
+    Atomic by rename: the textfile collector scrapes this directory continuously, and a
+    partially written file is a parse error at scrape time — which reads as absence.
+    """
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    now = int(time.time())
+    content = (
+        "# HELP docplane_generated_projection_drift Whether live source state differs from the published generation fingerprint.\n"
+        "# TYPE docplane_generated_projection_drift gauge\n"
+        f'docplane_generated_projection_drift{{artifact="{artifact}"}} {int(drift)}\n'
+        "# HELP docplane_generated_projection_reconcile_success Whether the most recent reconciliation completed successfully.\n"
+        "# TYPE docplane_generated_projection_reconcile_success gauge\n"
+        f'docplane_generated_projection_reconcile_success{{artifact="{artifact}"}} {int(success)}\n'
+        "# HELP docplane_generated_projection_last_run_unixtime Unix time of the most recent reconciliation status check.\n"
+        "# TYPE docplane_generated_projection_last_run_unixtime gauge\n"
+        f'docplane_generated_projection_last_run_unixtime{{artifact="{artifact}"}} {now}\n'
+    )
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=destination.parent, delete=False) as handle:
+        handle.write(content)
+        temporary = Path(handle.name)
+    temporary.chmod(0o644)
+    temporary.replace(destination)
 
 
 def current_artifact(client: Client, artifact_key: str) -> dict[str, Any] | None:

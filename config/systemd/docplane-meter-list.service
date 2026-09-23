@@ -1,0 +1,22 @@
+[Unit]
+Description=Reconcile the DocPlane generated meter list from the Prometheus rule files
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/docplane
+# Non-secret configuration plus the named AUTOMATION bearer. The bearer should move to
+# DOCPLANE_METER_LIST_TOKEN_FILE (SECRETS-V3): meter_list.py resolves it through
+# read_secret(), so the file wins as soon as it is configured and no unit change is needed.
+EnvironmentFile=/etc/charliehub/docplane-meter-list.env
+ExecStart=/bin/bash /opt/docplane/scripts/run_meter_list_reconciliation.sh
+TimeoutStartSec=10min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+# The rule files are the authoritative SOURCE and are only ever read.
+ReadOnlyPaths=/opt/charliehub/monitoring/prometheus/rules
+ReadWritePaths=/run/lock -/var/lib/node_exporter/textfile_collector

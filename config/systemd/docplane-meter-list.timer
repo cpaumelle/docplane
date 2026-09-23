@@ -1,0 +1,16 @@
+[Unit]
+Description=Keep the DocPlane meter list aligned with the deployed Prometheus rules
+
+[Timer]
+# 15 minutes: rule files change at deploy cadence, not continuously, and each tick costs a
+# full parse of the rule set plus API reads. An unchanged source exits on the UNCHANGED
+# fast path, so a quiet estate stays cheap.
+OnBootSec=5min
+OnUnitInactiveSec=15min
+AccuracySec=1min
+RandomizedDelaySec=1min
+Persistent=true
+Unit=docplane-meter-list.service
+
+[Install]
+WantedBy=timers.target
