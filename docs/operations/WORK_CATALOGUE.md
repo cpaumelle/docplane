@@ -18,10 +18,14 @@ thoughts are not documentation.
 
 ```text
 DOCPLANE_API=https://docplane.example.internal
-DOCPLANE_WORK_CATALOGUE_TOKEN=<named AUTOMATION bearer>
+DOCPLANE_WORK_CATALOGUE_TOKEN_FILE=/etc/charliehub/docplane-work-catalogue.token   # deployed; 0600 root:root
+# DOCPLANE_WORK_CATALOGUE_TOKEN=<named AUTOMATION bearer>   # legacy plaintext delivery, removed 2026-09-23
 ```
 
-Never print the bearer. Use the routed origin, not the direct API port.
+Never print the bearer. Use the routed origin, not the direct API port. The bearer is delivered
+by file through the SECRETS-V3 `_FILE` contract; see
+[METER_LIST_IMPORTER.md](METER_LIST_IMPORTER.md) for the two-step migration this consumer also
+followed, and for what the file contract does and does not buy.
 
 ## Running
 

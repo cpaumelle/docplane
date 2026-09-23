@@ -14,8 +14,8 @@ discipline in `DOMAIN_MODEL.md`.
 
 ```text
 DOCPLANE_API=https://docplane.example.internal
-DOCPLANE_METER_LIST_TOKEN_FILE=/run/secrets/docplane-meter-list-token   # preferred (SECRETS-V3)
-DOCPLANE_METER_LIST_TOKEN=<named AUTOMATION bearer>   # transitional; the _FILE path wins when both are set
+DOCPLANE_METER_LIST_TOKEN_FILE=/etc/charliehub/docplane-meter-list.token   # deployed; 0600 root:root
+# DOCPLANE_METER_LIST_TOKEN=<named AUTOMATION bearer>   # legacy plaintext delivery, removed 2026-09-23
 METER_RULES_DIR=/srv/monitoring/prometheus/rules
 METER_SOURCE_KEY=hub2.prometheus   # required; production identity — never guess or substitute
 METER_SERVICE_MAP=/srv/docplane/config/meter-list-service-map.yml
@@ -26,11 +26,28 @@ Never print the bearer. Use the routed DocPlane origin, not the direct API
 port.
 
 The bearer is resolved through the SECRETS-V3 `_FILE` contract
-(`scripts/secret_source.py`), the same as the work catalogue. This matters most for the
-scheduled unit: an `EnvironmentFile` bearer is visible in `/proc/<pid>/environ` and in
-`systemctl show --property=Environment` on every tick. Configuring `_FILE` switches delivery
-with no unit change; once it is set, an unreadable file is a hard failure and never falls
-back to the plaintext value.
+(`scripts/secret_source.py`), the same as the work catalogue, and **production delivers it by
+file** as of 2026-09-23: `DOCPLANE_METER_LIST_TOKEN_FILE=/etc/charliehub/docplane-meter-list.token`
+(`0600 root:root`), with no plaintext bearer left in the env file. Once `_FILE` is set an
+unreadable or empty file is a hard failure and never falls back to a legacy value.
+
+!!! note "What the file contract does and does not buy here"
+    A correction to an earlier version of this page, which claimed an `EnvironmentFile` bearer
+    is visible in `systemctl show --property=Environment`. **It is not** — systemd exposes only
+    the file path (`EnvironmentFiles=`), never its contents; verified on hub2. The plaintext
+    value was readable in `/proc/<pid>/environ` of the running unit, which on this host is
+    root-only, the same audience as the `0600` env file itself. So the migration is not a
+    material change in exposure on a single-admin host. What it does buy is a journal free of
+    the once-a-minute `SecretSourceDeprecation` (88/hour before the change), and survival when
+    the deprecated fallback is eventually removed — at which point both generators would fail
+    closed instead.
+
+Migrating a consumer is two reversible steps, in this order, because the contract says the file
+wins when both are set:
+
+1. write the bare-token file `0600 root:root`, add `<NAME>_FILE` to the env file, leave
+   `<NAME>` in place, and prove a real run is clean (no deprecation warning, unit `Result=success`);
+2. only then delete `<NAME>` from the env file, keeping a `0600` backup, and prove a run again.
 
 !!! warning "A revoked bearer fails as a permissions error"
     A token the API has revoked returns `403 AUTH_PRINCIPAL_INACTIVE` — "principal or token
