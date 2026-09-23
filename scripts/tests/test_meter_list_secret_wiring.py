@@ -2,9 +2,11 @@
 `_FILE` contract, not through the plaintext environment.
 
 Same shape as test_work_catalogue_secret_wiring.py — the second consumer inherits the contract
-rather than re-deciding it. Scheduling this generator is what makes the difference concrete: a
-timer's EnvironmentFile puts a plaintext bearer in /proc/<pid>/environ and in
-`systemctl show --property=Environment` on every tick.
+rather than re-deciding it. Scheduling this generator is what makes it concrete: a timer's
+EnvironmentFile puts a plaintext bearer in /proc/<pid>/environ on every tick. (It does NOT
+appear in `systemctl show --property=Environment`, which exposes only the file path — an
+earlier version of this docstring said otherwise.) Production moved to file delivery on
+2026-09-23; these tests pin the wiring so it cannot regress to the environment.
 
 Deliberately INERT: never contacts DocPlane, never needs the real credential.
 """
