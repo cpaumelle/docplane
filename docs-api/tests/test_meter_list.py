@@ -66,23 +66,33 @@ def test_reconciliation_wrapper_uses_the_shared_runtime_lock():
 
 
 def test_reconciliation_wrapper_excludes_concurrent_runs_and_releases_lock(tmp_path):
+    """A lock conflict is the lock WORKING: the contender must skip the reconciliation,
+    still publish status, and exit 0. Reporting it as a failure would fail the systemd unit
+    and raise the reconciliation-failed alert every time a scheduled tick overlapped an
+    operator's manual run."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_python = fake_bin / "python3"
+    # Record the arguments of every invocation, so the reconciliation pass and the read-only
+    # status pass can be told apart: only the latter carries --metrics-file.
     fake_python.write_text(
         "#!/usr/bin/env bash\n"
         "printf 'started\\n' >> \"$METER_WRAPPER_STARTED\"\n"
+        "printf '%s\\n' \"$*\" >> \"$METER_WRAPPER_ARGS\"\n"
         "sleep \"$METER_WRAPPER_HOLD_SECONDS\"\n",
         encoding="utf-8",
     )
     fake_python.chmod(0o755)
     started = tmp_path / "started"
+    args_log = tmp_path / "args"
     env = os.environ.copy()
     env.update(
         {
             "PATH": f"{fake_bin}:{env['PATH']}",
             "DOCPLANE_METER_LIST_LOCK_FILE": str(tmp_path / "meter-list.lock"),
+            "DOCPLANE_METER_LIST_METRICS_FILE": str(tmp_path / "meter-list.prom"),
             "METER_WRAPPER_STARTED": str(started),
+            "METER_WRAPPER_ARGS": str(args_log),
             "METER_WRAPPER_HOLD_SECONDS": "1",
         }
     )
@@ -100,18 +110,52 @@ def test_reconciliation_wrapper_excludes_concurrent_runs_and_releases_lock(tmp_p
         assert started.exists()
 
         contender = subprocess.run(["bash", str(wrapper)], env=env, capture_output=True, text=True)
-        assert contender.returncode == 1
-        assert started.read_text(encoding="utf-8").splitlines() == ["started"]
-        assert holder.wait(timeout=5) == 0
+        assert contender.returncode == 0
+        assert "SKIPPED" in contender.stderr
+        # The contender ran the status pass and ONLY the status pass: the lock excluded the
+        # reconciliation, and drift is still published while another run holds the lock.
+        contender_calls = args_log.read_text(encoding="utf-8").splitlines()
+        assert contender_calls[-1].count("--metrics-file") == 1
+        assert holder.wait(timeout=10) == 0
     finally:
         if holder.poll() is None:
             holder.terminate()
             holder.wait(timeout=5)
 
+    # The lock is released: a later run reconciles normally.
     env["METER_WRAPPER_HOLD_SECONDS"] = "0"
     subsequent = subprocess.run(["bash", str(wrapper)], env=env, capture_output=True, text=True)
     assert subsequent.returncode == 0
-    assert started.read_text(encoding="utf-8").splitlines() == ["started", "started"]
+    assert "SKIPPED" not in subsequent.stderr
+    calls = args_log.read_text(encoding="utf-8").splitlines()
+    assert any("--metrics-file" not in call for call in calls[-2:])
+
+
+def test_scheduler_wrapper_treats_a_lock_conflict_as_skipped_not_failed():
+    """Static mirror of the work-catalogue wrapper contract, so a revert is caught even if
+    the behavioural test above were removed. The lock lives outside /tmp because a unit with
+    PrivateTmp=true gets a private /tmp, which would exclude nothing from a manual run."""
+    script = (ROOT / "scripts" / "run_meter_list_reconciliation.sh").read_text(encoding="utf-8")
+    assert "FLOCK_CONFLICT_EXIT=75" in script
+    assert 'flock -n -E "$FLOCK_CONFLICT_EXIT"' in script
+    assert "reconcile_status=0" in script
+    assert "/run/lock/docplane-meter-list.lock" in script
+    assert "/tmp/docplane-meter-list.lock" not in script
+
+
+def test_scheduler_units_bound_meter_list_drift_and_use_the_single_writer():
+    service = (ROOT / "config" / "systemd" / "docplane-meter-list.service").read_text(encoding="utf-8")
+    timer = (ROOT / "config" / "systemd" / "docplane-meter-list.timer").read_text(encoding="utf-8")
+    # The unit runs the flocked wrapper, never the importer directly: one entrypoint for
+    # operators and the timer alike.
+    assert "scripts/run_meter_list_reconciliation.sh" in service
+    assert "ExecStart=/bin/bash /opt/docplane/scripts/meter_list.py" not in service
+    assert "EnvironmentFile=/etc/charliehub/docplane-meter-list.env" in service
+    # The rule files are the authoritative SOURCE; this generator is never their writer.
+    assert "ReadOnlyPaths=/opt/charliehub/monitoring/prometheus/rules" in service
+    assert "ReadWritePaths=/run/lock -/var/lib/node_exporter/textfile_collector" in service
+    assert "OnUnitInactiveSec=15min" in timer
+    assert "Persistent=true" in timer
 
 
 def test_parsing_is_deterministic_and_captures_the_meterable_fields(tmp_path):

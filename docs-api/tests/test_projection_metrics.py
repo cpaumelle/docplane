@@ -4,13 +4,14 @@ Every generated projection publishes the SAME three series, separated by the `ar
 so one set of alerts covers all of them and a new projection cannot quietly invent a metric
 name nobody reads. These tests pin the contract the alerts depend on.
 
-Inert: no DocPlane, no credentials, no network.
+Inert: no DocPlane, no credentials, no network. It lives here rather than in scripts/tests
+because schema_catalogue imports psycopg2, and that suite installs pytest alone.
 """
 import sys
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(SCRIPTS))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def _write(tmp_path, **kwargs):
