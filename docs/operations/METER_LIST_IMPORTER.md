@@ -14,7 +14,8 @@ discipline in `DOMAIN_MODEL.md`.
 
 ```text
 DOCPLANE_API=https://docplane.example.internal
-DOCPLANE_METER_LIST_TOKEN=<named AUTOMATION bearer>
+DOCPLANE_METER_LIST_TOKEN_FILE=/run/secrets/docplane-meter-list-token   # preferred (SECRETS-V3)
+DOCPLANE_METER_LIST_TOKEN=<named AUTOMATION bearer>   # transitional; the _FILE path wins when both are set
 METER_RULES_DIR=/srv/monitoring/prometheus/rules
 METER_SOURCE_KEY=hub2.prometheus   # required; production identity — never guess or substitute
 METER_SERVICE_MAP=/srv/docplane/config/meter-list-service-map.yml
@@ -23,6 +24,18 @@ DOCPLANE_COVERAGE_GAP_BATCH_LIMIT=10
 
 Never print the bearer. Use the routed DocPlane origin, not the direct API
 port.
+
+The bearer is resolved through the SECRETS-V3 `_FILE` contract
+(`scripts/secret_source.py`), the same as the work catalogue. This matters most for the
+scheduled unit: an `EnvironmentFile` bearer is visible in `/proc/<pid>/environ` and in
+`systemctl show --property=Environment` on every tick. Configuring `_FILE` switches delivery
+with no unit change; once it is set, an unreadable file is a hard failure and never falls
+back to the plaintext value.
+
+!!! warning "A revoked bearer fails as a permissions error"
+    A token the API has revoked returns `403 AUTH_PRINCIPAL_INACTIVE` — "principal or token
+    is inactive". That reads like a scope problem and is not: stop, and check which credential
+    the caller actually loaded before touching anything else.
 
 ## Service wiring
 
@@ -73,6 +86,49 @@ importer, not a second code path:
 ```bash
 scripts/run_meter_list_reconciliation.sh
 ```
+
+### The timer
+
+Production installs `config/systemd/docplane-meter-list.{service,timer}`, the same shape as
+the work catalogue's. The timer reconciles five minutes after boot and fifteen minutes after
+each completed run, with a small randomized delay. Fifteen minutes rather than the work
+catalogue's one: rule files change at deploy cadence, not continuously, and every tick costs
+a full parse of the rule set plus API reads. An unchanged rule set takes the `UNCHANGED`
+fingerprint fast path, so a quiet estate stays cheap.
+
+Install from the pull-only deployment checkout, with the named automation environment already
+in place at `/etc/charliehub/docplane-meter-list.env`:
+
+```bash
+install -o root -g root -m 0644 config/systemd/docplane-meter-list.service /etc/systemd/system/
+install -o root -g root -m 0644 config/systemd/docplane-meter-list.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now docplane-meter-list.timer
+systemctl start docplane-meter-list.service
+```
+
+The unit reads `/opt/charliehub/monitoring/prometheus/rules` read-only: the rule files are the
+authoritative source and this generator is never their writer.
+
+### What the schedule is worth, and how you know it ran
+
+Unscheduled, the generated pages lag the deployed rules by however long it takes someone to
+remember. On 2026-09-22 a rule file shipped at 20:55 UTC and its meter-list page did not
+exist until the importer was run by hand two hours later; the credential had also been
+revoked a month earlier, and nothing said so, because nothing was running.
+
+Each run publishes the shared projection metrics through the node_exporter textfile
+collector (`docplane_meter_list.prom`), so the loop's own liveness is observable:
+
+| Series (label `artifact="meter-list-<source-slug>"`) | Meaning |
+|---|---|
+| `docplane_generated_projection_drift` | the published pages no longer match the rule files |
+| `docplane_generated_projection_reconcile_success` | the last governed run succeeded |
+| `docplane_generated_projection_last_run_unixtime` | when the last status check completed |
+
+The drift metric is published **even when reconciliation fails**, and the alerts in
+`monitoring/prometheus/rules/docplane-generated-projection-alerts.yml` (charliehub-hub2)
+include an `absent()` guard: a timer that never runs is a firing alert, not silence.
 
 A production invocation runs under the root execution identity so it can read
 the protected meter-list environment. The wrapper's lock defaults to

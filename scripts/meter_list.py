@@ -32,6 +32,7 @@ Environment:
                              unlabelled rules (default config/meter-list-service-map.yml)
 
 Usage: meter_list.py [--dry-run] [--reconcile-gaps] [--suggest-services]
+                     [--status-json] [--metrics-file PATH]
 """
 from __future__ import annotations
 
@@ -55,6 +56,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from migration.redaction import redact  # noqa: E402
 from schema_catalogue import ApiError, Client  # noqa: E402  (shared API client)
+from secret_source import read_secret  # noqa: E402  (SECRETS-V3 `_FILE` contract)
 
 GENERATOR_NAME = "docplane-meter-list"
 GENERATOR_VERSION = "1.4.0"
@@ -615,6 +617,9 @@ def main(argv: list[str] | None = None) -> int:
         "--suggest-services", action="store_true",
         help="print a names-only service-map suggestion report and perform no writes",
     )
+    parser.add_argument("--status-json", action="store_true", help="print projection status as JSON; perform no writes")
+    parser.add_argument("--metrics-file", help="atomically write projection status in Prometheus textfile format")
+    parser.add_argument("--reconcile-success", choices=("0", "1"), default="1", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     rules_dir = Path(os.environ["METER_RULES_DIR"])
@@ -638,7 +643,7 @@ def main(argv: list[str] | None = None) -> int:
     unwired = sum(1 for _, _, rule in iter_rules(structure) if not rule.get("service"))
 
     if args.suggest_services:
-        client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_METER_LIST_TOKEN"])
+        client = Client(os.environ["DOCPLANE_API"], read_secret("DOCPLANE_METER_LIST_TOKEN"))
         listing = client.call("GET", "/api/v1/model/entities?entity_kind=SERVICE&limit=1000")
         if listing.get("truncated"):
             raise RuntimeError("service listing truncated — refusing to suggest from a partial model")
@@ -659,6 +664,40 @@ def main(argv: list[str] | None = None) -> int:
             print(f"DRY-RUN would publish {page['path']} ({len(page['content'])} bytes)")
         return 0
 
+    # The status/metrics probe is READ-ONLY and must run before any reconciliation: its job is
+    # to report whether the published artifact still matches the rule files, including on the
+    # tick after a reconciliation FAILED (--reconcile-success 0). Rendering already happened
+    # above; only the published fingerprint is still needed.
+    if args.status_json or args.metrics_file:
+        import schema_catalogue as sc
+
+        client = Client(os.environ["DOCPLANE_API"], read_secret("DOCPLANE_METER_LIST_TOKEN"))
+        artifact_key = f"meter-list-{_slug(source_key)}"
+        artifact = sc.current_artifact(client, artifact_key)
+        published = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
+        drift = (
+            artifact is None
+            or published != structure_hash
+            or artifact_needs_reconciliation(artifact, sorted(page["path"] for page in pages))
+        )
+        if args.metrics_file:
+            sc.write_projection_metrics(
+                args.metrics_file,
+                artifact=artifact_key,
+                drift=drift,
+                success=args.reconcile_success == "1",
+            )
+        if args.status_json:
+            print(json.dumps({
+                "artifact_key": artifact_key,
+                "artifact_id": artifact.get("artifact_id") if artifact else None,
+                "live_fingerprint": structure_hash,
+                "published_fingerprint": published,
+                "drift": drift,
+                "reconcile_success": args.reconcile_success == "1",
+            }, sort_keys=True))
+        return 0
+
     print(f"fingerprint {structure_hash}")
 
     # Reuse the proven Sprint 5 machinery via the shared client: the
@@ -667,7 +706,7 @@ def main(argv: list[str] | None = None) -> int:
     # against this generator's own section and keys.
     import schema_catalogue as sc
 
-    client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_METER_LIST_TOKEN"])
+    client = Client(os.environ["DOCPLANE_API"], read_secret("DOCPLANE_METER_LIST_TOKEN"))
     reconciled = reconcile_entities(
         client, source_key, structure, structure_hash,
         allow_mass_retirement=args.allow_mass_retirement,
@@ -683,7 +722,7 @@ def main(argv: list[str] | None = None) -> int:
         + ", ".join(f"{reconciled[key]} {key}" for key in ("created", "updated", "retired", "reactivated", "links_added", "links_updated", "links_removed"))
     )
 
-    artifact_key = f"meter-list-{_slug(source_key)}"
+    artifact_key = f"meter-list-{_slug(source_key)}"  # same key as the probe above
     artifact = sc.current_artifact(client, artifact_key)
     previous = sc.last_generation_fingerprint(client, artifact["artifact_id"]) if artifact else None
 
