@@ -5,6 +5,10 @@ name: corpus-link-tooling
 # Path-scoped to the link tooling surface so it runs only when the library, its
 # CLI, its tests, this workflow, or the tooling contract doc change.
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 on:
   pull_request:
     paths:
@@ -27,12 +31,10 @@ permissions:
 
 jobs:
   link-tooling:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, charliehub]
+    container: python:3.11-bookworm
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
       - name: Install pytest
         run: python -m pip install pytest==8.3.5
       - name: Compile library and CLI
