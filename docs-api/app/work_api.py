@@ -16,6 +16,7 @@ from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
 from app.model_contracts import secret_findings
+from migration.redaction import DocumentRefusedError, MalformedMarkerError, redact
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.work_models import (
     ActivityCreate,
@@ -357,8 +358,37 @@ def list_initiatives(
     return {"initiatives": values, "count": len(values)}
 
 
+def _redacted_activity_body(body: Any) -> tuple[str | None, bool]:
+    """Pass one stored body through the canonical redaction boundary.
+
+    Bodies written before the #171 receiver policy were never secret-refused at
+    write time. The work catalogue publishes them only after
+    `migration.redaction.redact`; this is the same transform applied per body,
+    so an agent read never shows more than a generated page did. A body the
+    transform refuses is withheld, never returned unredacted.
+    """
+    if not isinstance(body, str):
+        return None, True
+    try:
+        return redact(body, label="work-activity").sanitised, False
+    except (DocumentRefusedError, MalformedMarkerError):
+        return None, True
+
+
 @router.get("/api/v1/initiatives/{initiative_id}")
-def get_initiative(initiative_id: UUID, principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
+def get_initiative(
+    initiative_id: UUID,
+    activity_bodies: str = Query(default="raw", pattern="^(raw|redacted)$"),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """`activity_bodies=redacted` is the agent read of initiative history.
+
+    The default `raw` keeps the response unchanged for existing callers.
+    `redacted` passes every body through the canonical redaction transform,
+    drops free-form activity metadata (which predates receiver policy), and
+    stamps the response so a client can fail closed against a server that does
+    not know the parameter and silently returned raw bodies.
+    """
     with get_conn() as conn:
         value = _load(conn, initiative_id)
         cur = conn.cursor()
@@ -368,6 +398,12 @@ def get_initiative(initiative_id: UUID, principal: Principal = Depends(require_c
         links = [dict(zip(("relation", "resource_type", "resource_id", "created_by", "created_at"), row)) for row in cur.fetchall()]
         cur.execute("SELECT depends_on_initiative_id::text, dependency_kind FROM work.initiative_dependencies WHERE initiative_id = %s ORDER BY depends_on_initiative_id", (str(initiative_id),))
         dependencies = [{"initiative_id": row[0], "dependency_kind": row[1]} for row in cur.fetchall()]
+    if activity_bodies == "redacted":
+        for activity in activities:
+            activity["body"], activity["body_withheld"] = _redacted_activity_body(activity["body"])
+            activity.pop("metadata", None)
+        return {**value, "activities": activities, "links": links, "dependencies": dependencies,
+                "activity_bodies": "redacted"}
     return {**value, "activities": activities, "links": links, "dependencies": dependencies}
 
 
