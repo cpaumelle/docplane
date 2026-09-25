@@ -1,0 +1,22 @@
+[Unit]
+Description=Reconcile the DocPlane invariants register from the per-domain invariant sources in git
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/docplane
+# Non-secret configuration (DOCPLANE_API, INVARIANT_SOURCE_DIR) plus the named AUTOMATION
+# bearer delivered by file: DOCPLANE_INVARIANT_REGISTER_TOKEN_FILE (SECRETS-V3). The
+# generator resolves it through read_secret(); a plaintext bearer is never read.
+EnvironmentFile=/etc/charliehub/docplane-invariant-register.env
+ExecStart=/bin/bash /opt/docplane/scripts/run_invariant_register_reconciliation.sh
+TimeoutStartSec=10min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+# The invariant source files are the authoritative SOURCE and are only ever read.
+ReadOnlyPaths=/opt/charliehub/invariants
+ReadWritePaths=/run/lock -/var/lib/node_exporter/textfile_collector

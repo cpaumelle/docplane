@@ -1,0 +1,16 @@
+[Unit]
+Description=Keep the DocPlane invariants register aligned with the deployed invariant sources
+
+[Timer]
+# 15 minutes: invariant sources change at deploy cadence, not continuously, and each tick costs a
+# full parse of the invariant sources plus API reads. An unchanged source exits on the UNCHANGED
+# fast path, so a quiet estate stays cheap.
+OnBootSec=5min
+OnUnitInactiveSec=15min
+AccuracySec=1min
+RandomizedDelaySec=1min
+Persistent=true
+Unit=docplane-invariant-register.service
+
+[Install]
+WantedBy=timers.target
