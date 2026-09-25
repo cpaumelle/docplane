@@ -275,3 +275,29 @@ def test_validate_only_and_dry_run_need_no_api(tmp_path, monkeypatch, capsys):
     assert "VALID 3 invariants across 1 domains, 1 flagged for demotion" in capsys.readouterr().out
     assert ir.main(["--dry-run"]) == 0
     assert f"DRY-RUN would publish {REGISTER}" in capsys.readouterr().out
+
+
+def test_an_unresolved_owner_is_recorded_not_inherited(tmp_path):
+    gap = SOURCE.replace(
+        "    title: A doctrine nothing enforces yet\n",
+        "    title: A doctrine nothing enforces yet\n    owner_unresolved: source names no owner\n",
+    )
+    domains = _load(tmp_path, gap)
+    record = domains["example-observability"]["invariants"][2]
+    assert ir.ownership_gap(record)
+    body = ir.render_register(domains, ir.fingerprint(domains), REGISTER)["content"]
+    section = body.split("### I-PROBE-TRUST-1", 1)[1]
+    assert "| Owner | **Unresolved** — source names no owner |" in section
+    assert "**Ownership gap**" in section
+    assert "| Owner | example-observability |" not in section
+    assert "1 with an unresolved owner" in body
+
+
+def test_owner_and_owner_unresolved_are_mutually_exclusive(tmp_path):
+    both = SOURCE.replace(
+        "    title: A doctrine nothing enforces yet\n",
+        "    title: A doctrine nothing enforces yet\n    owner: someone\n    owner_unresolved: why\n",
+    )
+    with pytest.raises(ir.SourceError) as caught:
+        _load(tmp_path, both)
+    assert any("mutually exclusive" in item for item in caught.value.findings)

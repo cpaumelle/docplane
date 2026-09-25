@@ -83,7 +83,7 @@ CRITICALITY = ("NORMAL", "IMPORTANT", "OPERATIONAL_CRITICAL", "POLICY_REQUIRED")
 VERIFICATION = ("UNVERIFIED", "VERIFIED", "OUTDATED", "EXPIRED")
 
 REQUIRED = ("id", "title", "statement", "ratification", "enforcement", "criticality", "verification_state")
-OPTIONAL_STR = ("owner", "verified_at", "verified_against", "review_due_at", "rationale",
+OPTIONAL_STR = ("owner", "owner_unresolved", "verified_at", "verified_against", "review_due_at", "rationale",
                 "established_at", "established_by", "origin", "specializes")
 OPTIONAL_LIST = ("must_be_true", "supersedes", "aliases", "enforced_by", "enforcement_refs")
 ALLOWED = set(REQUIRED) | set(OPTIONAL_STR) | set(OPTIONAL_LIST)
@@ -108,6 +108,10 @@ def _is_str_list(value: Any) -> bool:
 
 def has_enforcement_pointer(record: dict[str, Any]) -> bool:
     return bool(record.get("enforced_by") or record.get("enforcement_refs"))
+
+
+def ownership_gap(record: dict[str, Any]) -> bool:
+    return bool(record.get("owner_unresolved"))
 
 
 def demotion_candidate(record: dict[str, Any]) -> bool:
@@ -175,6 +179,10 @@ def validate_document(document: Any, filename: str) -> list[str]:
                 findings.append(f"{label}: {key} must be an ISO date (YYYY-MM-DD)")
         if _is_str(record.get("established_by")) and not PAGE_PATH_RE.fullmatch(record["established_by"]):
             findings.append(f"{label}: established_by must be a DocPlane page path (e.g. operations/decisions/x.md)")
+        # An ownership gap is recorded, never papered over: owner_unresolved carries the
+        # reason and stops the record inheriting the file-level owner.
+        if "owner" in record and "owner_unresolved" in record:
+            findings.append(f"{label}: owner and owner_unresolved are mutually exclusive")
         if record.get("verification_state") == "VERIFIED":
             for key in ("verified_at", "verified_against"):
                 if not _is_str(record.get(key)):
@@ -265,7 +273,8 @@ def _record_section(record: dict[str, Any], document_owner: str, register_path: 
         ("Enforcement", record["enforcement"]),
         ("Criticality", record["criticality"]),
         ("Verification", verification),
-        ("Owner", record.get("owner") or document_owner),
+        ("Owner", f"**Unresolved** — {record['owner_unresolved'].strip()}" if ownership_gap(record)
+                  else (record.get("owner") or document_owner)),
     ]
     if record.get("established_by"):
         facts.append(("Established by", f"[{record['established_by']}]({_page_link(register_path, record['established_by'])})"))
@@ -281,6 +290,8 @@ def _record_section(record: dict[str, Any], document_owner: str, register_path: 
             facts.append((label, ", ".join(record[key])))
     lines += ["| | |", "|---|---|"]
     lines += [f"| {label} | {value if label in ('Established by', 'Specializes') else _cell(str(value))} |" for label, value in facts]
+    if ownership_gap(record):
+        lines += ["", "> **Ownership gap** — this invariant has no accountable owner yet.", ""]
     lines += ["", "**Statement.** " + _brace_safe(record["statement"].strip()), ""]
     if record.get("must_be_true"):
         lines += ["**Must be true.**", ""] + [f"- {_brace_safe(item.strip())}" for item in record["must_be_true"]] + [""]
@@ -302,9 +313,11 @@ def render_register(domains: dict[str, dict[str, Any]], source_hash: str, regist
     )
     records = list(iter_records(domains))
     flagged = sum(1 for _, record in records if demotion_candidate(record))
+    gaps = sum(1 for _, record in records if ownership_gap(record))
     body = [
         "# Invariants register", "", *LIFECYCLE_LINES, "", stamp, "",
-        f"{len(records)} invariants across {len(domains)} domains · {flagged} flagged for demotion. "
+        f"{len(records)} invariants across {len(domains)} domains · {flagged} flagged for demotion · "
+        f"{gaps} with an unresolved owner. "
         "Each invariant is anchored by its lower-cased id (for example `#i-obs-liveness-1`).",
         "",
         "| Invariant | Domain | Title | Ratification | Enforcement |",

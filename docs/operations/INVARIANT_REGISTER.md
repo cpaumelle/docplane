@@ -51,8 +51,8 @@ invariants:
     verification_state: UNVERIFIED  # UNVERIFIED | VERIFIED | OUTDATED | EXPIRED
     enforced_by: [SomeAlert]        # and/or enforcement_refs: [CI gate, script, code path]
     established_by: operations/decisions/example.md   # establishing ADR/decision page, when one exists
-    # Optional: owner, must_be_true[], verified_at, verified_against, review_due_at,
-    # rationale, established_at, origin, specializes, supersedes[], aliases[]
+    # Optional: owner, owner_unresolved, must_be_true[], verified_at, verified_against,
+    # review_due_at, rationale, established_at, origin, specializes, supersedes[], aliases[]
 ```
 
 Rules:
@@ -60,6 +60,7 @@ Rules:
 - `PARTIAL` or `ENFORCED` requires at least one enforcement pointer.
 - `DOCTRINE_ONLY`, or no pointer at all, renders as a **demotion candidate**. SUPERSEDED records are history, not candidates.
 - `established_by` must resolve to a real page, active or archived, before anything is published. The generator fails closed otherwise.
+- An ownership gap is recorded, never guessed. `owner_unresolved: <reason>` stops the record inheriting the file-level owner. It renders as "Owner: **Unresolved**" with an ownership-gap callout and is counted in the register header. It cannot be combined with `owner`.
 
 `--validate-only` checks the source with no API access. The source repository runs its own
 CI validator for the same contract, plus checks only it can make, such as whether a cited
