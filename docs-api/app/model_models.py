@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 EntityKind = Literal[
     "SYSTEM", "SERVICE", "NODE", "VM", "SITE", "NETWORK", "DATABASE",
     "SCHEMA", "API", "ROUTE", "DEVICE_MODEL", "INTERFACE", "ARTIFACT",
-    "MONITOR_RULE",
+    "MONITOR_RULE", "INVARIANT",
 ]
 
 EntityRelation = Literal[

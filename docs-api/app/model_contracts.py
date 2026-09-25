@@ -105,6 +105,26 @@ CARD_CONTRACTS: dict[str, dict[str, Any]] = {
             "runbook_url": _STR,
         },
     },
+    "INVARIANT": {
+        # One entity per governed invariant, imported from per-domain YAML in
+        # git by scripts/invariant_catalogue.py. Git is the authoring history
+        # and review trail; the entity carries current state only. Ratified
+        # from the start: every record is machine-imported from a validated
+        # source, so the checklist is the source schema's required set.
+        "ratified": True,
+        "required": {
+            "invariant_id": _STR, "domain": _STR, "owner": _STR,
+            "statement": _STR, "ratification": _STR, "enforcement": _STR,
+            "criticality": _STR, "verification_state": _STR,
+        },
+        "optional": {
+            "must_be_true": _STR_LIST, "verified_at": _STR, "verified_against": _STR,
+            "review_due_at": _STR, "source_file": _STR, "source_page_path": _STR,
+            "rationale": _STR, "established_at": _STR, "origin": _STR,
+            "specializes": _STR, "supersedes": _STR_LIST, "aliases": _STR_LIST,
+            "enforced_by": _STR_LIST, "enforcement_refs": _STR_LIST,
+        },
+    },
     "DEVICE_MODEL": {
         # Exactly at the three-instance threshold in the corpus harvest.
         "ratified": False,
