@@ -774,21 +774,15 @@ def test_removed_target_archives_inside_in_place_plan(tmp_path, monkeypatch):
     )
     assert archive["page_resource_id"] == f"resource-{stale_path}"
     assert not any(path.endswith("/retire") for _, path, _, _ in calls)
-    # 1.5.0: a retired generated path keeps resolving — redirected to the catalogue,
-    # unbound to any page revision, and only AFTER its archive (a redirect source may
-    # never be an active page).
+    # Corpus redirect policy: a retired generated path is archived with NO alias
+    # by default; aliases are added only on demonstrated need, never by the generator.
     operations = [body for method, path, body, _ in calls if method == "POST" and path.endswith("/operations")]
-    redirect_index = next(i for i, body in enumerate(operations) if body["operation_type"] == "ADD_REDIRECT")
-    archive_index = next(i for i, body in enumerate(operations) if body["operation_type"] == "ARCHIVE_PAGE")
-    assert archive_index < redirect_index
-    redirect = operations[redirect_index]
-    assert redirect["payload"] == {"from_path": stale_path, "to_path": "observe/meter-list/example-prometheus/index.md"}
-    assert "page_resource_id" not in redirect and "expected_revision" not in redirect
+    assert not any(body["operation_type"] == "ADD_REDIRECT" for body in operations)
 
 
-def test_per_file_layout_migrates_to_one_catalogue_with_redirects(tmp_path, monkeypatch):
+def test_per_file_layout_migrates_to_one_catalogue_without_aliases(tmp_path, monkeypatch):
     """The 1.4.0 -> 1.5.0 transition: every per-file page the artifact owned is
-    archived and redirected in the same governed change; only the catalogue stays."""
+    archived in the same governed change, with no alias; only the catalogue stays."""
     structure = meter_list.parse_rules(_rules_dir(tmp_path))
     legacy = ["observe/meter-list/example-prometheus/backup-alerts.md", "observe/meter-list/example-prometheus/index.md"]
     artifact = {
@@ -801,9 +795,10 @@ def test_per_file_layout_migrates_to_one_catalogue_with_redirects(tmp_path, monk
     change = next(body for method, path, body, _ in calls if method == "POST" and path == "/api/v1/changes")
     assert change["generated_ownership_plan"]["target_page_paths"] == ["observe/meter-list/example-prometheus/index.md"]
     operations = [body for method, path, body, _ in calls if method == "POST" and path.endswith("/operations")]
-    assert [(o["operation_type"], o["payload"].get("from_path")) for o in operations if o["operation_type"] == "ADD_REDIRECT"] == [
-        ("ADD_REDIRECT", "observe/meter-list/example-prometheus/backup-alerts.md"),
+    assert [o["page_resource_id"] for o in operations if o["operation_type"] == "ARCHIVE_PAGE"] == [
+        "resource-observe/meter-list/example-prometheus/backup-alerts.md",
     ]
+    assert not any(o["operation_type"] == "ADD_REDIRECT" for o in operations)
     assert any(o["operation_type"] == "REPLACE_DOCUMENT" and o["payload"]["path"].endswith("/index.md") for o in operations)
 
 

@@ -221,6 +221,7 @@ name. The site's own heading slug is therefore each record's stable anchor
 the catalogue page. Record cardinality grows with the rule set; page cardinality does not.
 
 Up to 1.4.0 the importer emitted one page per rule file. The first 1.5.0 run archives every
-per-file page the artifact owned and adds a redirect from each retired path to the catalogue,
-in the same governed change (archive first — a redirect source may never be an active page).
-Redirects are page-level, so an old per-file link lands at the top of the catalogue.
+per-file page the artifact owned, in the same governed change, **without aliases**. Corpus
+redirect policy: rewrite known inbound links to the catalogue anchors before the run, let
+validation surface any hidden dependency, and add a redirect by hand only where a continuing
+compatibility requirement is demonstrated. The generator never creates redirects.
