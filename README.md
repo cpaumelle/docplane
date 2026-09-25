@@ -120,7 +120,7 @@ curl -fsS -X POST \
 - `mcp/` — MCP tools using the same contributor API
 - `mkdocs/` — rendered-site configuration
 - `migration/` — corpus migration libraries: redaction/import transforms and `links.py` (link discovery, bounded link-only rewriting, route derivation)
-- `scripts/` — operator tooling: contributor bootstrap, meter-list importer, link repairs, knowledge-class suggest/apply
+- `scripts/` — operator tooling: contributor bootstrap, meter-list importer, invariant-register generator, link repairs, knowledge-class suggest/apply
 - `docs/architecture/` — ratified design documents; `docs/tutorials/` — the learning path above
 
 ## Going deeper
