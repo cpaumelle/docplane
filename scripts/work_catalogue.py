@@ -4,9 +4,12 @@ machinery (after the schema catalogue and the meter list).
 
 The work domain lives in ``work.*`` tables and is *acted on* in the dashboard;
 this generator gives it a browsable, read-only surface on the published site:
-a ``work/`` section whose pages are rendered from live initiative state so a
+one catalogue page, ``work/index.md``, rendered from live initiative state so a
 reader can survey the roadmap, check on soaks, or pick the next sprint
-candidate without opening the dashboard. The site never becomes a second
+candidate without opening the dashboard. Each open initiative is one anchored
+entry (``work/index.md#<initiative_key>``) with a bounded recent-activity
+preview; the complete history is the WORK record, read through the API or the
+MCP ``docplane_work_get`` tool, never a page per initiative. The site never becomes a second
 write path — every page links back to the dashboard for action.
 
 Contract, identical to the sibling generators:
@@ -40,6 +43,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -61,15 +65,19 @@ from schema_catalogue import Client  # noqa: E402  (shared API client)
 import schema_catalogue as sc  # noqa: E402
 
 GENERATOR_NAME = "work-catalogue"
-GENERATOR_VERSION = "1.0.1"
-PROJECTION_CONTRACT_VERSION = 1
+GENERATOR_VERSION = "2.0.0"
+# 2: one catalogue page (work/index.md) with an anchored entry per open
+# initiative and a bounded recent-activity tail, replacing page-per-initiative
+# and per-queue pages. Full history is read from WORK (docplane_work_get).
+PROJECTION_CONTRACT_VERSION = 2
 ARTIFACT_KEY = "work-catalogue"
 SOURCE_ENTITY_KIND = "SYSTEM"
 SOURCE_ENTITY_KEY = "docplane-work"
-SECTION = "work"
 
 _PRIORITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "NORMAL": 2, "LOW": 3}
 _QUEUE_STATES = ("ACTIVE", "BACKLOG", "BLOCKED", "SOAKING", "PARKED")
+# Queue sections of the one catalogue page. The slug is the section heading's
+# anchor (work/index.md#now) and, until contract 2, was the queue page name.
 _QUEUE_PAGES = {
     "ACTIVE": ("now", "Now", "Being worked right now. The WIP limit keeps this list honest."),
     "BACKLOG": ("roadmap", "Roadmap", "Decided but not started — ranked by priority. Sprint candidates come from here."),
@@ -78,6 +86,11 @@ _QUEUE_PAGES = {
     "PARKED": ("parked", "Parked", "Someday/maybe, each with a review date so parking is never forever."),
 }
 _COMPLETED_LIMIT = 20
+# The catalogue is a survey, not the history. Each entry shows the most recent
+# activities as one-line previews; the complete record stays in WORK.
+_ACTIVITY_TAIL = 3
+_ACTIVITY_PREVIEW_CHARS = 280
+PAGE_PATH = "work/index.md"
 
 
 def _key(fingerprint: str, verb: str, discriminator: str = "") -> str:
@@ -107,13 +120,49 @@ def fetch_state(client: Client) -> dict[str, Any]:
     }
 
 
+_MD_LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
+_FENCE = re.compile(r"`{3,}|~{3,}")
+_OLD_INITIATIVE_LINK = re.compile(
+    r"\]\((?:\.{0,2}/)*(?:work/)?initiatives/([a-z0-9][a-z0-9_-]{0,95})\.md(?:#[^)]*)?\)"
+)
+
+
+def _preview(body: Any) -> str:
+    """One line of plain text: links reduced to their text, fences dropped.
+
+    A preview must not carry recorded links forward: historical bodies cite
+    page paths (including the retired per-initiative pages) that are preserved
+    in WORK as written, not re-published as live links here.
+    """
+    text = _FENCE.sub(" ", _MD_LINK.sub(r"\1", str(body or "")))
+    text = " ".join(text.split())
+    if len(text) > _ACTIVITY_PREVIEW_CHARS:
+        text = text[:_ACTIVITY_PREVIEW_CHARS].rstrip() + "…"
+    return text
+
+
+def _prose(text: Any) -> str:
+    """Initiative free text placed inside an entry.
+
+    Leading '#' is escaped so an objective cannot open a heading that would
+    break the catalogue's anchor structure, and links to a retired
+    per-initiative page resolve to that initiative's entry instead.
+    """
+    lines = []
+    for line in str(text or "").strip().splitlines():
+        lines.append("\\" + line if line.lstrip().startswith("#") else line)
+    return _OLD_INITIATIVE_LINK.sub(r"](#\1)", "\n".join(lines))
+
+
 def _projection(state: dict[str, Any]) -> dict[str, Any]:
     """The exact facts that render — sorted, stripped of volatile identifiers
     that do not change page content."""
     rows = []
     for initiative in sorted(state["initiatives"], key=lambda item: str(item.get("initiative_key") or "")):
         detail = state["details"].get(initiative["initiative_id"], {})
+        activities = detail.get("activities", [])
         rows.append({
+            "id": initiative.get("initiative_id"),
             "key": initiative.get("initiative_key"),
             "title": initiative.get("title"),
             "state": initiative.get("work_state"),
@@ -138,10 +187,13 @@ def _projection(state: dict[str, Any]) -> dict[str, Any]:
                 "model": initiative.get("model_disposition"),
                 "observe": initiative.get("observe_disposition"),
             },
+            # Only what renders: the count and the previews of the newest few.
+            # Stored bodies are never altered; previews are derived here.
+            "activity_count": len(activities),
             "activities": [
-                {"type": activity.get("activity_type"), "body": activity.get("body"),
+                {"type": activity.get("activity_type"), "preview": _preview(activity.get("body")),
                  "at": str(activity.get("created_at") or "")}
-                for activity in detail.get("activities", [])
+                for activity in activities[-_ACTIVITY_TAIL:]
             ],
             "links": [
                 {"relation": link.get("relation"), "resource_type": link.get("resource_type"),
@@ -300,55 +352,88 @@ def _row_line(row: dict[str, Any]) -> str:
     if row.get("review_due_at"):
         extras.append(f"review {row['review_due_at'][:10]}")
     meta = f" · {' · '.join(extras)}" if extras else ""
-    objective = (row.get("objective") or "").strip().splitlines()[0] if row.get("objective") else ""
-    return (
-        f"| [{row['key']}](initiatives/{row['key']}.md) | {row['title']} | "
-        f"{row['priority']} | {objective}{meta} |"
-    )
+    objective = _prose(row.get("objective")).splitlines()[0] if row.get("objective") else ""
+    return f"| [{row['key']}](#{row['key']}) | {row['title']} | {row['priority']} | {objective}{meta} |"
 
 
-def _queue_page(projection: dict[str, Any], work_state: str, fp: str) -> dict[str, str]:
-    slug, label, blurb = _QUEUE_PAGES[work_state]
+def _entry(row: dict[str, Any]) -> list[str]:
+    """One open initiative. The heading is the bare key, so its anchor is the
+    key itself: work/index.md#<initiative_key> is the stable reference."""
+    lines = [
+        f"### {row['key']}",
+        "",
+        f"**{row['title']}** · {row['state']} · priority {row['priority']}",
+        "",
+        f"- ID: `{row['id']}`",
+    ]
+    if row.get("target_date"):
+        lines += [f"- Target: {row['target_date'][:10]}"]
+    if row.get("review_due_at"):
+        lines += [f"- Review due: {row['review_due_at'][:10]}"]
+    if row.get("blocker_summary"):
+        lines += [f"- Blocked on: {_prose(row['blocker_summary'])}"]
+    soak = row.get("soak") or {}
+    if row["state"] == "SOAKING":
+        if soak.get("soak_started_at"):
+            lines += [f"- Soaking since {soak['soak_started_at'][:10]}, review {str(soak.get('soak_review_at') or '')[:10]}"]
+        if soak.get("soak_monitoring_ref"):
+            lines += [f"- Watched by: `{soak['soak_monitoring_ref']}`"]
+        if soak.get("soak_success_criteria"):
+            lines += [f"- Success: {_prose(soak['soak_success_criteria'])}"]
+        if soak.get("soak_failure_conditions"):
+            lines += [f"- Failure: {_prose(soak['soak_failure_conditions'])}"]
+    if row["state"] == "PARKED":
+        parked = row["parked"]
+        when = "indefinitely" if parked.get("indefinitely") else f"review {str(parked.get('review_at') or '')[:10]}"
+        reason = _prose(parked.get("reason"))
+        lines += [f"- Parked ({when}){': ' + reason if reason else ''}"]
+    for link in row.get("links") or []:
+        lines += [f"- Linked: {link['relation']} → {link['resource_type']} `{link['resource_id']}`"]
+    if row.get("objective"):
+        lines += ["", _prose(row["objective"])]
+    count = row.get("activity_count", 0)
+    if count:
+        shown = len(row["activities"])
+        lines += ["", f"Activity: {count} recorded" + (f", latest {shown}:" if shown else ".")]
+        lines += [f"- {activity['at'][:10]} · {activity['type']}: {activity['preview']}"
+                  for activity in row["activities"]]
+    return lines + [""]
+
+
+def _queue_section(projection: dict[str, Any], work_state: str) -> list[str]:
+    _slug, label, blurb = _QUEUE_PAGES[work_state]
     rows = _by_state(projection, work_state)
-    lines = [f"# {label}", "", blurb, ""]
+    lines = [f"## {label}", "", blurb, ""]
     if work_state == "ACTIVE" and projection.get("wip_limit"):
         lines += [f"WIP limit: **{len(rows)}/{projection['wip_limit']}**.", ""]
-    if rows:
-        lines += ["| Initiative | Title | Priority | Objective |", "|---|---|---|---|"]
-        lines += [_row_line(row) for row in rows]
-    else:
-        lines += ["Nothing here right now."]
-    if work_state == "BLOCKED":
-        for row in rows:
-            if row.get("blocker_summary"):
-                lines += ["", f"**{row['key']}** is blocked on: {row['blocker_summary']}"]
-    if work_state == "SOAKING":
-        for row in rows:
-            soak = row["soak"]
-            lines += ["", f"## {row['key']}", ""]
-            if soak.get("soak_started_at"):
-                lines += [f"- Soaking since {soak['soak_started_at'][:10]}, review {str(soak.get('soak_review_at') or '')[:10]}"]
-            if soak.get("soak_monitoring_ref"):
-                lines += [f"- Watched by: `{soak['soak_monitoring_ref']}`"]
-            if soak.get("soak_success_criteria"):
-                lines += [f"- Success: {soak['soak_success_criteria']}"]
-            if soak.get("soak_failure_conditions"):
-                lines += [f"- Failure: {soak['soak_failure_conditions']}"]
-    if work_state == "PARKED":
-        for row in rows:
-            parked = row["parked"]
-            note = parked.get("reason") or ""
-            when = "indefinitely" if parked.get("indefinitely") else f"review {str(parked.get('review_at') or '')[:10]}"
-            lines += ["", f"**{row['key']}** — parked ({when}){': ' + note if note else ''}"]
-    return {
-        "path": f"{SECTION}/{slug}.md",
-        "title": label,
-        "nav_path": f"Work/{label}",
-        "content": "\n".join(lines + _footer(fp)),
-    }
+    if not rows:
+        return lines + ["Nothing here right now.", ""]
+    lines += ["| Initiative | Title | Priority | Objective |", "|---|---|---|---|"]
+    lines += [_row_line(row) for row in rows]
+    lines += [""]
+    for row in rows:
+        lines += _entry(row)
+    return lines
 
 
-def _index_page(projection: dict[str, Any], fp: str) -> dict[str, str]:
+def _completed_section(projection: dict[str, Any]) -> list[str]:
+    rows = sorted(
+        (row for row in projection["initiatives"] if row["state"] == "COMPLETE"),
+        key=lambda row: str(row.get("completed_at") or ""),
+        reverse=True,
+    )[:_COMPLETED_LIMIT]
+    lines = ["## Recently completed", ""]
+    if not rows:
+        return lines + ["Nothing completed yet.", ""]
+    lines += ["| Initiative | Title | Completed | know / model / observe |", "|---|---|---|---|"]
+    for row in rows:
+        dispositions = row["dispositions"]
+        gate = " / ".join(str(dispositions.get(domain) or "—") for domain in ("know", "model", "observe"))
+        lines += [f"| {row['key']} | {row['title']} | {str(row.get('completed_at') or '')[:10]} | {gate} |"]
+    return lines + ["", "The three-column gate shows each closure disposition — a `DEFERRED` is a visible gap, not a pass.", ""]
+
+
+def _catalogue_page(projection: dict[str, Any], fp: str) -> dict[str, str]:
     counts = {state: len(_by_state(projection, state)) for state in _QUEUE_STATES}
     completed = [row for row in projection["initiatives"] if row["state"] == "COMPLETE"]
     lines = [
@@ -359,92 +444,37 @@ def _index_page(projection: dict[str, Any], fp: str) -> dict[str, str]:
         "generated from live initiative state — to capture, triage or transition,",
         "use the [dashboard](/dashboard/#work).",
         "",
+        "Each open initiative has one entry below, anchored by its key",
+        "(`work/index.md#<initiative_key>`), showing its latest activity only. The",
+        "complete activity history is the WORK record: read it with the MCP tool",
+        "`docplane_work_get` using the entry's ID, or in the dashboard.",
+        "",
         "| Queue | Count |",
         "|---|---|",
-        f"| [Now](now.md) | {counts['ACTIVE']}" + (f" / WIP {projection['wip_limit']}" if projection.get("wip_limit") else "") + " |",
-        f"| [Roadmap](roadmap.md) | {counts['BACKLOG']} |",
-        f"| [Blocked](blocked.md) | {counts['BLOCKED']} |",
-        f"| [Soaking](soaking.md) | {counts['SOAKING']} |",
-        f"| [Parked](parked.md) | {counts['PARKED']} |",
-        f"| [Recently completed](recently-completed.md) | {min(len(completed), _COMPLETED_LIMIT)} |",
+        f"| [Now](#now) | {counts['ACTIVE']}" + (f" / WIP {projection['wip_limit']}" if projection.get("wip_limit") else "") + " |",
+        f"| [Roadmap](#roadmap) | {counts['BACKLOG']} |",
+        f"| [Blocked](#blocked) | {counts['BLOCKED']} |",
+        f"| [Soaking](#soaking) | {counts['SOAKING']} |",
+        f"| [Parked](#parked) | {counts['PARKED']} |",
+        f"| [Recently completed](#recently-completed) | {min(len(completed), _COMPLETED_LIMIT)} |",
         "",
         f"Inbox: **{projection['inbox_count']}** untriaged capture(s) — triage happens in the dashboard;",
         "pre-triage thoughts are deliberately not published here.",
+        "",
     ]
+    for work_state in _QUEUE_STATES:
+        lines += _queue_section(projection, work_state)
+    lines += _completed_section(projection)
     return {
-        "path": f"{SECTION}/index.md",
+        "path": PAGE_PATH,
         "title": "Work",
         "nav_path": "Work/Overview",
-        "content": "\n".join(lines + _footer(fp)),
-    }
-
-
-def _completed_page(projection: dict[str, Any], fp: str) -> dict[str, str]:
-    rows = sorted(
-        (row for row in projection["initiatives"] if row["state"] == "COMPLETE"),
-        key=lambda row: str(row.get("completed_at") or ""),
-        reverse=True,
-    )[:_COMPLETED_LIMIT]
-    lines = ["# Recently completed", ""]
-    if rows:
-        lines += ["| Initiative | Title | Completed | know / model / observe |", "|---|---|---|---|"]
-        for row in rows:
-            dispositions = row["dispositions"]
-            gate = " / ".join(str(dispositions.get(domain) or "—") for domain in ("know", "model", "observe"))
-            lines += [f"| {row['key']} | {row['title']} | {str(row.get('completed_at') or '')[:10]} | {gate} |"]
-        lines += ["", "The three-column gate shows each closure disposition — a `DEFERRED` is a visible gap, not a pass."]
-    else:
-        lines += ["Nothing completed yet."]
-    return {
-        "path": f"{SECTION}/recently-completed.md",
-        "title": "Recently completed",
-        "nav_path": "Work/Recently completed",
-        "content": "\n".join(lines + _footer(fp)),
-    }
-
-
-def _initiative_page(row: dict[str, Any], fp: str) -> dict[str, str]:
-    lines = [
-        f"# {row['title']}",
-        "",
-        f"**{row['key']}** · {row['state']} · priority {row['priority']}",
-        "",
-        row.get("objective") or "",
-    ]
-    if row.get("blocker_summary"):
-        lines += ["", f"**Blocked on:** {row['blocker_summary']}"]
-    soak = row.get("soak") or {}
-    if row["state"] == "SOAKING" and soak.get("soak_success_criteria"):
-        lines += ["", "## Soak", "", f"- Success: {soak['soak_success_criteria']}"]
-        if soak.get("soak_failure_conditions"):
-            lines += [f"- Failure: {soak['soak_failure_conditions']}"]
-        if soak.get("soak_monitoring_ref"):
-            lines += [f"- Watched by: `{soak['soak_monitoring_ref']}`"]
-    if row.get("activities"):
-        lines += ["", "## Activity", ""]
-        lines += [f"- {activity['at'][:10]} · {activity['type']}: {activity['body']}" for activity in row["activities"]]
-    if row.get("links"):
-        lines += ["", "## Linked", ""]
-        lines += [f"- {link['relation']} → {link['resource_type']} `{link['resource_id']}`" for link in row["links"]]
-    return {
-        "path": f"{SECTION}/initiatives/{row['key']}.md",
-        "title": row["title"],
-        "nav_path": f"Work/Initiatives/{row['title']}",
-        "content": "\n".join(lines + _footer(fp)),
+        "content": "\n".join(lines + _footer(fp)[1:]),
     }
 
 
 def _render_pages_unredacted(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
-    projection = _projection(state)
-    pages = [_index_page(projection, fp)]
-    pages += [_queue_page(projection, work_state, fp) for work_state in _QUEUE_STATES]
-    pages += [_completed_page(projection, fp)]
-    pages += [
-        _initiative_page(row, fp)
-        for row in projection["initiatives"]
-        if row["state"] in _QUEUE_STATES
-    ]
-    return pages
+    return [_catalogue_page(_projection(state), fp)]
 
 
 def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
@@ -458,20 +488,10 @@ def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
 def desired_page_paths(state: dict[str, Any]) -> list[str]:
     """Return the deterministic target set without rendering page content.
 
-    Status probes use this to detect generator-contract and target-set drift
-    without paying the cost of rendering every page on each timer tick.
+    Contract 2 owns exactly one page, independent of how many initiatives are
+    open: initiative creation never changes DocPlane page cardinality.
     """
-    paths = [
-        "work/index.md",
-        *(f"work/{slug}.md" for slug, _title, _description in _QUEUE_PAGES.values()),
-        "work/recently-completed.md",
-    ]
-    paths.extend(
-        f"work/initiatives/{initiative['initiative_key']}.md"
-        for initiative in state["initiatives"]
-        if initiative.get("work_state") in _QUEUE_STATES
-    )
-    return sorted(paths)
+    return [PAGE_PATH]
 
 
 def ensure_source_entity(client: Client, fp: str) -> str:
@@ -494,7 +514,7 @@ def ensure_source_entity(client: Client, fp: str) -> str:
 
 def work_catalogues_mappings(source_entity_id: str, page_ids: dict[str, str]) -> dict[str, list[str]]:
     """The work domain has one semantic catalogue root, independent of queue pages."""
-    return {source_entity_id: [page_ids[f"{SECTION}/index.md"]]}
+    return {source_entity_id: [page_ids[PAGE_PATH]]}
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -78,7 +78,13 @@ def test_inbox_captures_surface_as_count_only():
     )
 
 
-def test_queue_pages_render_all_states_and_roadmap_ranks_by_priority():
+def _page(state):
+    pages = work_catalogue.render_pages(state, work_catalogue.fingerprint(state))
+    assert [page["path"] for page in pages] == ["work/index.md"]
+    return pages[0]["content"]
+
+
+def test_one_catalogue_page_renders_every_queue_and_ranks_by_priority():
     rows = [
         _initiative(initiative_key="low", title="Low", priority="LOW"),
         _initiative(initiative_id="00000000-0000-0000-0000-000000000002",
@@ -91,48 +97,164 @@ def test_queue_pages_render_all_states_and_roadmap_ranks_by_priority():
         _initiative(initiative_id="00000000-0000-0000-0000-000000000004",
                     initiative_key="stuck", title="Stuck", work_state="BLOCKED",
                     blocker_summary="waiting on vendor firmware"),
+        _initiative(initiative_id="00000000-0000-0000-0000-000000000005",
+                    initiative_key="someday", title="Someday", work_state="PARKED",
+                    parked_reason="after the move", parked_indefinitely=True),
     ]
-    state = _state(rows)
-    fp = work_catalogue.fingerprint(state)
-    pages = {p["path"]: p for p in work_catalogue.render_pages(state, fp)}
-    for path in ("work/index.md", "work/now.md", "work/roadmap.md", "work/blocked.md",
-                 "work/soaking.md", "work/parked.md", "work/recently-completed.md"):
-        assert path in pages
-    roadmap = pages["work/roadmap.md"]["content"]
-    assert roadmap.index("crit") < roadmap.index("low")
-    assert "waiting on vendor firmware" in pages["work/blocked.md"]["content"]
-    soaking = pages["work/soaking.md"]["content"]
-    assert "No alert fires for 14 days" in soaking and "alert:ExampleServiceDown" in soaking
-    # Per-initiative pages exist for open states, under stable key-based paths.
-    assert "work/initiatives/crit.md" in pages and "work/initiatives/soaker.md" in pages
-    # Every page routes action back to the dashboard.
-    assert all("/dashboard/#work" in p["content"] for p in pages.values())
+    content = _page(_state(rows))
+    for heading in ("## Now", "## Roadmap", "## Blocked", "## Soaking", "## Parked", "## Recently completed"):
+        assert f"\n{heading}\n" in content
+    # queue anchors replace the retired queue pages
+    for anchor in ("#now", "#roadmap", "#blocked", "#soaking", "#parked", "#recently-completed"):
+        assert f"]({anchor})" in content
+    roadmap = content.split("## Roadmap", 1)[1].split("## Blocked", 1)[0]
+    assert roadmap.index("### crit") < roadmap.index("### low")
+    assert "Blocked on: waiting on vendor firmware" in content
+    assert "No alert fires for 14 days" in content and "alert:ExampleServiceDown" in content
+    assert "Parked (indefinitely): after the move" in content
+    # Every open initiative is one entry whose bare-key heading is its anchor,
+    # carrying the UUID that docplane_work_get takes.
+    for key, uuid in (("crit", "00000000-0000-0000-0000-000000000002"),
+                      ("stuck", "00000000-0000-0000-0000-000000000004")):
+        assert f"\n### {key}\n" in content
+        assert f"](#{key})" in content
+        assert f"- ID: `{uuid}`" in content
+    assert "initiatives/" not in content
+    assert "/dashboard/#work" in content
+    assert "docplane_work_get" in content
 
 
-def test_completed_page_shows_closure_gate_and_closed_initiatives_get_no_page():
+def test_page_cardinality_is_independent_of_initiative_count():
+    many = [
+        _initiative(initiative_id=f"00000000-0000-0000-0000-{n:012d}", initiative_key=f"i-{n}",
+                    title=f"I {n}", work_state=("ACTIVE", "BACKLOG", "BLOCKED", "SOAKING", "PARKED")[n % 5])
+        for n in range(60)
+    ]
+    assert work_catalogue.desired_page_paths(_state(many)) == ["work/index.md"]
+    assert work_catalogue.desired_page_paths(_state([])) == ["work/index.md"]
+    assert len(work_catalogue.render_pages(_state(many), "f" * 64)) == 1
+
+
+def test_entry_shows_count_and_a_bounded_preview_of_the_newest_activities_only():
+    initiative = _initiative(work_state="ACTIVE")
+    activities = [
+        {"activity_type": "NOTE", "body": f"body-{n} " + "x" * 400, "created_at": f"2026-09-{n + 1:02d}T00:00:00Z"}
+        for n in range(6)
+    ]
+    activities[-1]["body"] = (
+        "see [the old page](work/initiatives/other-thing.md) and\n```\ncode\n```\ndone"
+    )
+    state = _state([initiative], details={initiative["initiative_id"]: {"activities": activities, "links": []}})
+    content = _page(state)
+    assert "Activity: 6 recorded, latest 3:" in content
+    for older in ("body-0", "body-1", "body-2"):
+        assert older not in content
+    assert "body-3" in content and "body-4" in content
+    # previews are one line, cut, and never re-publish recorded links or fences
+    assert "x" * 300 not in content and "…" in content
+    assert "see the old page and code done" in content
+    assert "initiatives/other-thing.md" not in content and "```" not in content
+
+
+def test_projection_carries_only_what_renders():
+    initiative = _initiative(work_state="ACTIVE")
+    activities = [{"activity_type": "NOTE", "body": f"b{n}", "created_at": "2026-09-01T00:00:00Z"} for n in range(5)]
+    row = work_catalogue._projection(
+        _state([initiative], details={initiative["initiative_id"]: {"activities": activities}})
+    )["initiatives"][0]
+    assert row["id"] == initiative["initiative_id"]
+    assert row["activity_count"] == 5
+    assert [a["preview"] for a in row["activities"]] == ["b2", "b3", "b4"]
+
+
+def test_initiative_text_cannot_break_the_anchor_structure_and_old_links_resolve():
+    objective = "Intro\n## Not a catalogue section\nSee [peer](../work/initiatives/peer-1.md#x)."
+    content = _page(_state([_initiative(work_state="ACTIVE", objective=objective)]))
+    assert "\n## Not a catalogue section" not in content
+    assert "\\## Not a catalogue section" in content
+    assert "[peer](#peer-1)" in content
+
+
+def test_completed_initiatives_show_closure_gate_and_get_no_entry():
     done = _initiative(initiative_key="shipped", title="Shipped", work_state="COMPLETE",
                        completed_at="2026-07-30T12:00:00Z")
-    state = _state([done])
-    fp = work_catalogue.fingerprint(state)
-    pages = {p["path"]: p for p in work_catalogue.render_pages(state, fp)}
-    completed = pages["work/recently-completed.md"]["content"]
-    assert "UPDATED / NOT_REQUIRED / DEFERRED" in completed
-    assert "work/initiatives/shipped.md" not in pages
+    content = _page(_state([done]))
+    completed = content.split("## Recently completed", 1)[1]
+    assert "| shipped | Shipped | 2026-07-30 | UPDATED / NOT_REQUIRED / DEFERRED |" in completed
+    assert "### shipped" not in content
 
 
-def test_abandoned_transition_disappears_from_now_and_archives_its_page():
+def test_abandoned_initiative_leaves_the_catalogue_without_changing_the_page_set():
     active = _initiative(initiative_key="retired-plan", title="Retired plan", work_state="ACTIVE")
     before = _state([active])
-    before_pages = {page["path"]: page for page in work_catalogue.render_pages(before, work_catalogue.fingerprint(before))}
-    assert "retired-plan" in before_pages["work/now.md"]["content"]
-    assert "work/initiatives/retired-plan.md" in before_pages
+    assert "### retired-plan" in _page(before)
 
     abandoned = _initiative(initiative_key="retired-plan", title="Retired plan", work_state="ABANDONED")
     after = _state([abandoned])
-    after_pages = {page["path"]: page for page in work_catalogue.render_pages(after, work_catalogue.fingerprint(after))}
-    assert "retired-plan" not in after_pages["work/now.md"]["content"]
-    assert "work/initiatives/retired-plan.md" not in after_pages
+    assert "retired-plan" not in _page(after)
+    assert work_catalogue.desired_page_paths(before) == work_catalogue.desired_page_paths(after)
     assert work_catalogue.fingerprint(before) != work_catalogue.fingerprint(after)
+
+
+def test_contract_1_declaration_succeeds_to_one_page_and_archives_every_old_path(monkeypatch, capsys):
+    """The migration itself: the deployed page-per-initiative artifact
+    (contract 1) is succeeded by a contract-2 declaration owning only
+    work/index.md, and every page the old declaration owned is archived in the
+    same governed change."""
+    state = _state([_initiative(work_state="ACTIVE")])
+    old_paths = sorted([
+        "work/index.md", "work/now.md", "work/roadmap.md", "work/blocked.md", "work/soaking.md",
+        "work/parked.md", "work/recently-completed.md", "work/initiatives/example-upgrade.md",
+        "work/initiatives/closed-meanwhile.md",
+    ])
+    calls = []
+
+    class RecordingClient:
+        def __init__(self, *args):
+            pass
+
+        def call(self, method, path, body=None, key=None):
+            calls.append((method, path, body, key))
+            if method == "GET" and path.startswith("/api/v1/pages?path="):
+                requested = path.removeprefix("/api/v1/pages?path=").removesuffix("&status=all")
+                return {"pages": [{
+                    "resource_id": f"resource-{requested}", "path": requested,
+                    "revision": "revision-1", "status": "active",
+                }]}
+            if method == "POST" and path == "/api/v1/changes":
+                return {"change_id": "change-1"}
+            if method == "POST" and path.endswith("/publish"):
+                return {"publication_receipt": {"deployment": {"status": "COMPLETED"}}}
+            return {}
+
+    import schema_catalogue as sc
+
+    monkeypatch.setattr(work_catalogue, "Client", RecordingClient)
+    monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
+    monkeypatch.setattr(work_catalogue, "ensure_source_entity", lambda *_: "source-entity")
+    monkeypatch.setattr(sc, "current_artifact", lambda *a: {
+        "artifact_id": "artifact-v1", "generator_version": "1.0.1", "projection_contract_version": 1,
+        "source_entity_id": "source-entity", "redaction_policy": "canonical",
+        "target_page_paths": old_paths, "version": 4,
+    })
+    monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: "contract-1-fingerprint")
+    monkeypatch.setattr(sc, "reconcile_catalogues", lambda *_args, **_kwargs: [])
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_WORK_CATALOGUE_TOKEN", "not-printed")
+
+    assert work_catalogue.main([]) == 0
+    assert "archived 8 stale path(s)" in capsys.readouterr().out
+    change = next(body for method, path, body, _key in calls if method == "POST" and path == "/api/v1/changes")
+    plan = change["generated_ownership_plan"]
+    assert plan["mode"] == "SUCCESSOR" and plan["predecessor_id"] == "artifact-v1"
+    assert plan["target_page_paths"] == ["work/index.md"]
+    assert plan["successor"]["projection_contract_version"] == 2
+    operations = [body for method, path, body, _key in calls if method == "POST" and path.endswith("/operations")]
+    archived = sorted(op["page_resource_id"].removeprefix("resource-")
+                      for op in operations if op["operation_type"] == "ARCHIVE_PAGE")
+    assert archived == [path for path in old_paths if path != "work/index.md"]
+    replaced = [op for op in operations if op["operation_type"] == "REPLACE_DOCUMENT"]
+    assert [op["payload"]["path"] for op in replaced] == ["work/index.md"]
 
 
 def test_rendering_is_deterministic():
@@ -428,6 +550,7 @@ def test_probe_and_generation_emit_the_same_fingerprint_for_identical_work(monke
     monkeypatch.setattr(work_catalogue, "fetch_state", lambda client: state)
     monkeypatch.setattr(sc, "current_artifact", lambda *args: {
         "artifact_id": "artifact", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "projection_contract_version": work_catalogue.PROJECTION_CONTRACT_VERSION,
         "target_page_paths": paths, "version": 1,
     })
     monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *args: expected)
@@ -469,6 +592,7 @@ def test_unchanged_main_replays_observation_and_never_publishes(monkeypatch, cap
     monkeypatch.setattr(work_catalogue, "ensure_source_entity", lambda *_: "source-entity")
     monkeypatch.setattr(sc, "current_artifact", lambda *a: {
         "artifact_id": "artifact", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "projection_contract_version": work_catalogue.PROJECTION_CONTRACT_VERSION,
         "target_page_paths": paths, "version": 1,
     })
     monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: fp)
@@ -493,7 +617,11 @@ def test_membership_and_software_version_do_not_require_succession():
     assert work_catalogue.needs_succession(artifact) is False
     assert work_catalogue.needs_reconciliation(artifact, ["work/index.md", "work/now.md"]) is True
     assert work_catalogue.needs_reconciliation(artifact, ["work/index.md"]) is True
-    assert work_catalogue.needs_succession({**artifact, "projection_contract_version": 2}) is True
+    assert work_catalogue.needs_succession(
+        {**artifact, "projection_contract_version": work_catalogue.PROJECTION_CONTRACT_VERSION + 1}
+    ) is True
+    # The deployed page-per-initiative declaration is contract 1.
+    assert work_catalogue.needs_succession({**artifact, "projection_contract_version": 1}) is True
 
 
 def test_work_catalogues_mapping_is_exactly_the_system_index():
@@ -524,6 +652,7 @@ def test_unchanged_work_repairs_semantics_without_publication_before_generation(
     monkeypatch.setattr(work_catalogue, "ensure_source_entity", lambda *_: "system-1")
     monkeypatch.setattr(sc, "current_artifact", lambda *_: {
         "artifact_id": "artifact-1", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "projection_contract_version": work_catalogue.PROJECTION_CONTRACT_VERSION,
         "target_page_paths": paths, "version": 1,
     })
     monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *_: fp)
@@ -541,15 +670,15 @@ def test_unchanged_work_repairs_semantics_without_publication_before_generation(
     assert events == ["catalogues", "generation"]
 
 
-def test_reopened_initiative_restores_then_replaces_archived_page(monkeypatch, capsys):
-    """A closed initiative's path remains unique while archived.  Reopening
-    must restore that resource, not try to create a duplicate page, and the
+def test_archived_catalogue_page_is_restored_then_replaced(monkeypatch, capsys):
+    """A generated path remains unique while archived.  Regeneration must
+    restore that resource, not try to create a duplicate page, and the
     restore/replace operations need distinct idempotency identities."""
     state = _state([_initiative(work_state="ACTIVE")])
     fp = work_catalogue.fingerprint(state)
     pages = work_catalogue.render_pages(state, fp)
     desired_paths = sorted(page["path"] for page in pages)
-    reopened_path = "work/initiatives/example-upgrade.md"
+    reopened_path = "work/index.md"
     calls = []
 
     class RecordingClient:
@@ -584,6 +713,7 @@ def test_reopened_initiative_restores_then_replaces_archived_page(monkeypatch, c
     monkeypatch.setattr(work_catalogue, "ensure_source_entity", lambda *_: "source-entity")
     monkeypatch.setattr(sc, "current_artifact", lambda *a: {
         "artifact_id": "artifact", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "projection_contract_version": work_catalogue.PROJECTION_CONTRACT_VERSION,
         "target_page_paths": desired_paths, "version": 1,
     })
     monkeypatch.setattr(sc, "last_generation_fingerprint", lambda *a: "stale")
