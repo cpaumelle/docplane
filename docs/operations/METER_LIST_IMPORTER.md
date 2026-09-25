@@ -210,3 +210,18 @@ python3 scripts/meter_list.py
 
 The closing run must print literal `UNCHANGED`; its fingerprint and corpus
 counts must match the preceding run, and it must make no Work-domain writes.
+
+## Page layout (1.5.0)
+
+One generated catalogue page per monitoring source —
+`observe/meter-list/<source-slug>/index.md` — holds every rule as a record: rule files are
+`##` sections headed by their path-safe stem, rules are `###` headings holding the bare rule
+name. The site's own heading slug is therefore each record's stable anchor
+(`#backupstale`, `#backup-alerts`); `source_page_path` on every `MONITOR_RULE` entity names
+the catalogue page. Record cardinality grows with the rule set; page cardinality does not.
+
+Up to 1.4.0 the importer emitted one page per rule file. The first 1.5.0 run archives every
+per-file page the artifact owned, in the same governed change, **without aliases**. Corpus
+redirect policy: rewrite known inbound links to the catalogue anchors before the run, let
+validation surface any hidden dependency, and add a redirect by hand only where a continuing
+compatibility requirement is demonstrated. The generator never creates redirects.
