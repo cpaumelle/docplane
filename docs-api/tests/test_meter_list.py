@@ -9,6 +9,7 @@ Sprint 5 canary taught, applied before first fabric contact).
 from __future__ import annotations
 
 import json
+import re
 import os
 import subprocess
 import sys
@@ -185,12 +186,12 @@ def test_rendering_is_deterministic_stamped_and_flags_description_gaps(tmp_path)
     fp = meter_list.fingerprint(structure)
     pages = meter_list.render_pages("example.prometheus", structure, fp)
     assert pages == meter_list.render_pages("example.prometheus", structure, fp)
-    assert [page["path"] for page in pages] == [
-        "observe/meter-list/example-prometheus/index.md",
-        "observe/meter-list/example-prometheus/backup-alerts.md",
-    ]
-    body = pages[1]["content"]
+    # One catalogue page per source: rules are records inside it, not pages.
+    assert [page["path"] for page in pages] == ["observe/meter-list/example-prometheus/index.md"]
+    body = pages[0]["content"]
     assert fp[:16] in body
+    assert "\n## backup-alerts\n" in body and "\n### `BackupStale`\n" in body
+    assert "group `backup_tier1`" in body
     assert "```promql" in body
     # Gaps, never stubs: a rule without a description says so explicitly.
     assert "surfaced as a coverage gap" in body
@@ -221,7 +222,7 @@ def test_unbalanced_brace_prose_survives_the_redaction_invariant(tmp_path):
     (tmp_path / "backup-alerts.yml").write_text(poisoned, encoding="utf-8")
     structure = meter_list.parse_rules(tmp_path)
     pages = meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))
-    body = pages[1]["content"]
+    body = pages[0]["content"]
     assert "ceph_tuning_drift&#123;" in body
     assert "grep 'ceph_tuning_drift{'" not in body
     # PromQL fences keep their braces verbatim.
@@ -237,9 +238,8 @@ def test_navigation_is_collision_free_under_the_deployed_validator(tmp_path):
     for page in [meter_list.presence_page(), *meter_list.render_pages("example.prometheus", structure, fp)]:
         _insert(tree, page["nav_path"].split(" / "), page["path"])
     # Nav keeps the true dotted identity for humans; paths carry the slug.
-    source_node = tree["Observe"]["Meter list"]["example.prometheus"]
-    assert isinstance(source_node, dict)
-    assert source_node["Overview"] == "observe/meter-list/example-prometheus/index.md"
+    # One catalogue per source: the source is a leaf beside the presence page.
+    assert tree["Observe"]["Meter list"]["example.prometheus"] == "observe/meter-list/example-prometheus/index.md"
     assert tree["Observe"]["Meter list"]["Overview"] == "observe/meter-list/index.md"
 
 
@@ -260,27 +260,19 @@ def test_every_rendered_path_satisfies_the_deployed_path_contract(tmp_path):
         assert _PATH_RE.fullmatch(page["path"]), page["path"]
     # The dotted identities survive where they belong: entity keys and nav.
     assert meter_list._slug("example.prometheus") == "example.prometheus"
-    assert {page["path"] for page in pages} == {
-        "observe/meter-list/example-prometheus/index.md",
-        "observe/meter-list/example-prometheus/backup-alerts.md",
-        "observe/meter-list/example-prometheus/ceph-rules.md",
-    }
-    # Index links are siblings. The index is emitted INSIDE the source dir, so a
-    # `example-prometheus/` prefix resolves to
-    # observe/meter-list/example-prometheus/example-prometheus/ceph-rules and lands
-    # nowhere. This assertion previously required the prefixed form and so pinned
-    # the defect in place.
+    assert {page["path"] for page in pages} == {"observe/meter-list/example-prometheus/index.md"}
+    # A dotted file stem keeps its true identity as the section heading, while
+    # its anchor link uses the path-safe slug.
     index = pages[0]["content"]
-    assert "(ceph-rules.md)" in index
-    assert "(example-prometheus/ceph-rules.md)" not in index
-    assert "`ceph.rules`" in index
+    assert "(#ceph-rules)" in index
+    assert "\n## ceph-rules\n" in index and "`ceph.rules.yml`" in index
 
 
 def test_colliding_file_stem_slugs_are_refused(tmp_path):
     (tmp_path / "foo.rules.yml").write_text(RULES_YML, encoding="utf-8")
     (tmp_path / "foo-rules.yml").write_text(RULES_YML, encoding="utf-8")
     structure = meter_list.parse_rules(tmp_path)
-    with pytest.raises(RuntimeError, match="both slug to page path segment"):
+    with pytest.raises(RuntimeError, match="both slug to anchor"):
         meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))
 
 
@@ -335,7 +327,7 @@ def test_rule_attributes_default_to_production_monitoring_source_identity():
 
     attributes = meter_list.rule_attributes("backup-alerts", "backup", rule)
 
-    assert attributes["source_page_path"] == "observe/meter-list/hub2-prometheus/backup-alerts.md"
+    assert attributes["source_page_path"] == "observe/meter-list/hub2-prometheus/index.md"
 
 
 def test_idempotency_keys_are_versioned_and_fingerprint_bound():
@@ -368,7 +360,7 @@ def test_runbook_url_is_harvested_and_rendered(tmp_path):
     stale = structure["backup-alerts"]["backup_tier1"][1]
     assert stale["runbook_url"] == "https://docs.example/runbooks/backup"
     assert meter_list.rule_attributes("backup-alerts", "backup_tier1", stale)["runbook_url"] == "https://docs.example/runbooks/backup"
-    body = meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))[1]["content"]
+    body = meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))[0]["content"]
     assert "**Runbook**: <https://docs.example/runbooks/backup>" in body
 
 
@@ -782,6 +774,32 @@ def test_removed_target_archives_inside_in_place_plan(tmp_path, monkeypatch):
     )
     assert archive["page_resource_id"] == f"resource-{stale_path}"
     assert not any(path.endswith("/retire") for _, path, _, _ in calls)
+    # Corpus redirect policy: a retired generated path is archived with NO alias
+    # by default; aliases are added only on demonstrated need, never by the generator.
+    operations = [body for method, path, body, _ in calls if method == "POST" and path.endswith("/operations")]
+    assert not any(body["operation_type"] == "ADD_REDIRECT" for body in operations)
+
+
+def test_per_file_layout_migrates_to_one_catalogue_without_aliases(tmp_path, monkeypatch):
+    """The 1.4.0 -> 1.5.0 transition: every per-file page the artifact owned is
+    archived in the same governed change, with no alias; only the catalogue stays."""
+    structure = meter_list.parse_rules(_rules_dir(tmp_path))
+    legacy = ["observe/meter-list/example-prometheus/backup-alerts.md", "observe/meter-list/example-prometheus/index.md"]
+    artifact = {
+        "artifact_id": "artifact-1", "artifact_key": "meter-list-example.prometheus",
+        "source_entity_id": "source", "version": 3, "generator_version": "1.4.0",
+        "projection_contract_version": meter_list.PROJECTION_CONTRACT_VERSION,
+        "redaction_policy": "canonical", "target_page_paths": legacy,
+    }
+    _, _, calls = _run_changed_main(tmp_path, monkeypatch, artifact=artifact)
+    change = next(body for method, path, body, _ in calls if method == "POST" and path == "/api/v1/changes")
+    assert change["generated_ownership_plan"]["target_page_paths"] == ["observe/meter-list/example-prometheus/index.md"]
+    operations = [body for method, path, body, _ in calls if method == "POST" and path.endswith("/operations")]
+    assert [o["page_resource_id"] for o in operations if o["operation_type"] == "ARCHIVE_PAGE"] == [
+        "resource-observe/meter-list/example-prometheus/backup-alerts.md",
+    ]
+    assert not any(o["operation_type"] == "ADD_REDIRECT" for o in operations)
+    assert any(o["operation_type"] == "REPLACE_DOCUMENT" and o["payload"]["path"].endswith("/index.md") for o in operations)
 
 
 def test_archived_target_is_restored_and_atomically_readopted(tmp_path, monkeypatch):
@@ -898,29 +916,24 @@ def test_unchanged_main_replays_nominal_observation_but_never_writes_work(tmp_pa
     assert all("/work" not in path for _, path, _, _ in calls)
 
 
-def test_index_links_resolve_to_pages_the_generator_actually_emits(tmp_path):
-    """Every index link must resolve to a page in the same run.
+def test_index_links_resolve_to_anchors_the_catalogue_actually_emits(tmp_path):
+    """Every index link must land on a heading the same page emits.
 
-    Checked with the observatory's own resolver rather than a string match, so the
-    generator is held to the same contract as the link-integrity signal that
-    surfaced this defect: 35 dead links on the live hub2.prometheus index, every
-    one of them a doubled source slug.
+    1.4.0 linked sibling pages (and once shipped 35 dead links by doubling the
+    source slug). 1.5.0 links same-page anchors, so hold it to the renderer's own
+    slug: each `#anchor` must equal the python-markdown `toc` slug of a `##` file
+    heading, which is how the site derives ids.
     """
-    from app.corpus_structure import _LINK_RE, resolve_link
-
     (tmp_path / "ceph.rules.yml").write_text(RULES_YML, encoding="utf-8")
     structure = meter_list.parse_rules(_rules_dir(tmp_path))
-    pages = meter_list.render_pages(
-        "example.prometheus", structure, meter_list.fingerprint(structure)
-    )
-    index = next(page for page in pages if page["path"].endswith("/index.md"))
-    page_ids = {page["path"][:-3] for page in pages}
+    page = meter_list.render_pages("example.prometheus", structure, meter_list.fingerprint(structure))[0]
+    anchors = re.findall(r"\]\(#([^)]+)\)", page["content"])
+    assert anchors, "index emitted no links — the fixture should produce at least one"
 
-    links = [match.group(1) for match in _LINK_RE.finditer(index["content"])]
-    assert links, "index emitted no links — the fixture should produce at least one"
-    for raw in links:
-        resolved = resolve_link(index["path"], raw)
-        assert resolved in page_ids, (
-            f"index link {raw!r} resolved to {resolved!r}, which this run does not emit; "
-            f"emitted: {sorted(page_ids)}"
-        )
+    def toc_slug(text: str) -> str:  # python-markdown toc.slugify, default separator
+        text = re.sub(r"[^\w\s-]", "", text).strip().lower()
+        return re.sub(r"[-\s]+", "-", text)
+
+    heading_ids = {toc_slug(line[3:]) for line in page["content"].splitlines() if line.startswith("## ")}
+    for anchor in anchors:
+        assert anchor in heading_ids, f"index anchor #{anchor} has no matching section heading; have {sorted(heading_ids)}"
