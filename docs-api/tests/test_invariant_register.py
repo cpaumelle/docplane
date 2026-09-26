@@ -301,3 +301,53 @@ def test_owner_and_owner_unresolved_are_mutually_exclusive(tmp_path):
     with pytest.raises(ir.SourceError) as caught:
         _load(tmp_path, both)
     assert any("mutually exclusive" in item for item in caught.value.findings)
+
+
+_UNRATIFIED = SOURCE.replace(
+    "    title: A doctrine nothing enforces yet\n    statement: Probes MUST share the trust assumptions of the plane they validate.\n    ratification: RATIFIED\n",
+    "    title: A doctrine nothing enforces yet\n    statement: Probes MUST share the trust assumptions of the plane they validate.\n"
+    "    ratification: UNRESOLVED\n    ratification_unresolved: the source page never states a ratification\n",
+)
+
+
+def test_an_unresolved_ratification_is_recorded_with_its_reason(tmp_path):
+    assert _UNRATIFIED != SOURCE
+    domains = _load(tmp_path, _UNRATIFIED)
+    record = domains["example-observability"]["invariants"][2]
+    assert ir.ratification_gap(record)
+    body = ir.render_register(domains, ir.fingerprint(domains), REGISTER)["content"]
+    section = body.split("### I-PROBE-TRUST-1", 1)[1]
+    assert "| Ratification | **Unresolved** — the source page never states a ratification |" in section
+    assert "**Ratification gap**" in section
+    assert "1 with unresolved ratification" in body
+    assert "| UNRESOLVED |" in body.split("### ", 1)[0]
+    # evidence preservation, not an exemption: the enforcement rules still apply
+    assert ir.demotion_candidate(record)
+
+
+def test_an_unresolved_ratification_requires_its_reason(tmp_path):
+    bare = _UNRATIFIED.replace("    ratification_unresolved: the source page never states a ratification\n", "")
+    with pytest.raises(ir.SourceError) as caught:
+        _load(tmp_path, bare)
+    assert any("ratification UNRESOLVED requires ratification_unresolved" in item for item in caught.value.findings)
+
+
+def test_a_ratification_reason_without_the_unresolved_state_is_refused(tmp_path):
+    stray = SOURCE.replace(
+        "    title: A doctrine nothing enforces yet\n",
+        "    title: A doctrine nothing enforces yet\n    ratification_unresolved: why\n",
+    )
+    with pytest.raises(ir.SourceError) as caught:
+        _load(tmp_path, stray)
+    assert any("only valid with ratification UNRESOLVED" in item for item in caught.value.findings)
+
+
+def test_unresolved_ratification_does_not_relax_the_enforcement_rule(tmp_path):
+    claimed = _UNRATIFIED.replace(
+        "    ratification: UNRESOLVED\n    ratification_unresolved: the source page never states a ratification\n    enforcement: DOCTRINE_ONLY\n",
+        "    ratification: UNRESOLVED\n    ratification_unresolved: the source page never states a ratification\n    enforcement: PARTIAL\n",
+    )
+    assert claimed != _UNRATIFIED
+    with pytest.raises(ir.SourceError) as caught:
+        _load(tmp_path, claimed)
+    assert any("enforcement PARTIAL requires enforced_by or enforcement_refs" in item for item in caught.value.findings)
