@@ -36,10 +36,22 @@ initiative never changes DocPlane page cardinality.
   cited when written. Links in objective, blocker and soak text that point at
   a retired `initiatives/<key>.md` page render as the entry anchor.
 
-The contract 1 → 2 transition is an ordinary succession: the first contract-2
-run declares a successor owning only `work/index.md` and archives every page
-the contract-1 declaration owned, in the same governed change. There are no
-redirects; authored links into `work/*` are repointed to the anchors first.
+The contract 1 → 2 transition runs in three phases so no path breaks mid-cutover:
+
+- **A — establish.** Generator 2.0.0 ships with `LEGACY_COEXISTENCE = True`. Its
+  first run is an ordinary succession: the contract-2 declaration takes over the
+  exact contract-1 page set, replaces `work/index.md` with the catalogue, and
+  keeps rendering the board and per-initiative pages unchanged and current.
+  Nothing is archived beyond what contract 1 would itself have archived.
+- **B — move callers.** Authored links into `work/*` are repointed to
+  `work/index.md#…` anchors, which now exist, and re-swept.
+- **C — retire.** A follow-up release deletes `LEGACY_COEXISTENCE` and the
+  `_legacy_*` renderers and bumps the generator version. Its first run shrinks
+  the same declaration in place to `work/index.md` and archives every legacy
+  page in one governed change. There are no redirects.
+
+Coexistence is a code constant, not configuration: after phase C, normal
+operation is exactly one generated page.
 
 ## Required environment
 
