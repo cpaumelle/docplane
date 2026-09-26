@@ -1,0 +1,24 @@
+[Unit]
+Description=Reconcile the DocPlane schema catalogue for database %i
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# One instance per catalogued database (instance = CATALOGUE_DB_KEY), e.g.
+# docplane-schema-catalogue@charliehub_domains. Scheduled, fingerprint-gated
+# generation (initiative e004787b decision D2). Each database is its own
+# exclusion domain, shared only with that database's observer instance.
+Type=oneshot
+User=root
+WorkingDirectory=/opt/docplane
+Environment=DOCPLANE_SCHEMA_CATALOGUE_ENV_FILE=/etc/docplane/schema-catalogue.d/%i.env
+Environment=DOCPLANE_SCHEMA_CATALOGUE_LOCK_FILE=/run/lock/docplane-schema-catalogue-%i.lock
+ExecStart=/bin/bash /opt/docplane/scripts/run_schema_catalogue_reconciliation.sh
+# 75 = another schema-catalogue run holds this database's lock: a benign skip.
+SuccessExitStatus=75
+TimeoutStartSec=5min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/lock

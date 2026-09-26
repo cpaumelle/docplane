@@ -166,7 +166,12 @@ card until it has siblings.
 **Depth stops at the schema.** Databases and schemas are entities;
 tables and columns live inside the generated catalogue, not as entities —
 per-column cards would explode row counts and create a sync problem with
-every product migration.
+every product migration. Since initiative e004787b (decision D1,
+2026-09-26) the generated catalogue has two faces from one introspection: the
+human catalogue pages and a machine-readable **structured projection** stored
+against the generated artifact (`model.artifact_projections`), which agents
+query at table and column granularity through `/api/v1/model/structure`. It is
+replaced wholesale by its generator and is never a set of MODEL entities.
 
 **Typed links** carry the structure, each with a closed vocabulary:
 

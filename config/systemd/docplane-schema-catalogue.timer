@@ -1,0 +1,17 @@
+[Unit]
+Description=Reconcile the DocPlane schema catalogue for DocPlane's own database every 30 minutes
+
+[Timer]
+# Installation does not activate this timer; a later explicit gate owns enablement.
+# Generation is fingerprint-gated: an unchanged source, configuration and stored
+# projection is a zero-write no-op, so this schedule bounds staleness, not churn.
+# Offset from the observer's cadence so the shared exclusion rarely contends.
+OnActiveSec=17min
+OnUnitInactiveSec=30min
+AccuracySec=1min
+RandomizedDelaySec=2min
+Persistent=false
+Unit=docplane-schema-catalogue.service
+
+[Install]
+WantedBy=timers.target

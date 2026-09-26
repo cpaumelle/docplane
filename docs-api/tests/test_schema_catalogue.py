@@ -23,21 +23,97 @@ import schema_catalogue  # noqa: E402
 from migration.redaction import DocumentRefusedError  # noqa: E402
 
 
+def _column(name, type_="text", udt=None, nullable=False, default=None, **extra):
+    return {
+        "name": name, "type": type_, "udt": udt or type_, "array": False, "enum": None,
+        "nullable": nullable, "default": default, "identity": None, "generated": None,
+        "comment": None, **extra,
+    }
+
+
+def _table(columns, *, comment=None, primary_key=None, foreign_keys=(), unique=(), checks=(), indexes=()):
+    return {
+        "kind": "table", "comment": comment, "columns": list(columns),
+        "primary_key": primary_key, "foreign_keys": list(foreign_keys), "unique": list(unique),
+        "checks": list(checks), "exclusions": [], "indexes": list(indexes),
+    }
+
+
+# Source projection contract 2: schema -> {comment, tables, views, enums}.
 STRUCTURE = {
     "docplane": {
-        "principals": {
-            "comment": "Named identities",
-            "columns": [
-                {"name": "principal_id", "type": "uuid", "nullable": False, "default": "gen_random_uuid()"},
-                {"name": "display_name", "type": "text", "nullable": False, "default": None},
-            ],
-            "constraints": [
-                {"kind": "p", "name": "principals_pkey", "definition": "PRIMARY KEY (principal_id)"},
-            ],
-            "indexes": [{"name": "principals_pkey", "definition": "CREATE UNIQUE INDEX ..."}],
+        "comment": None,
+        "tables": {
+            "principals": _table(
+                [
+                    _column("principal_id", "uuid", default="gen_random_uuid()"),
+                    _column("display_name"),
+                ],
+                comment="Named identities",
+                primary_key={"name": "principals_pkey", "columns": ["principal_id"]},
+                indexes=[{
+                    "name": "principals_pkey", "unique": True, "primary": True, "method": "btree",
+                    "columns": ["principal_id"], "include": [], "predicate": None,
+                    "definition": "CREATE UNIQUE INDEX principals_pkey ON docplane.principals USING btree (principal_id)",
+                }],
+            ),
         },
+        "views": {},
+        "enums": {},
     },
 }
+
+
+def _static_provenance():
+    return {"environment": "unspecified", "source_identity": "unspecified"}
+
+
+def _stored_projection(fp, db_key="docplane"):
+    """What DocPlane returns for a projection that corresponds to this run."""
+    config = schema_catalogue.projection.load_config(schema_catalogue.config_path(db_key))
+    return {
+        "source_fingerprint": fp,
+        "config_hash": schema_catalogue.projection.config_hash(config, _static_provenance()),
+        "projection_contract_version": schema_catalogue.PROJECTION_CONTRACT_VERSION,
+    }
+
+
+def _patch_runtime(monkeypatch, *, artifact, previous, stored, events=None):
+    """Isolate main() from PostgreSQL and HTTP for flow-ordering tests."""
+
+    class Source:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
+    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    monkeypatch.setattr(schema_catalogue, "source_metadata", lambda *_: {
+        "database_name": "docs", "server_version": "16.0",
+    })
+    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
+        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
+        "stale_schema_ids": [],
+    })
+    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
+    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: previous)
+    monkeypatch.setattr(schema_catalogue, "last_generation_observation_id", lambda *_: "generation-obs-1")
+    monkeypatch.setattr(schema_catalogue, "current_projection", lambda *_: stored)
+    if events is not None:
+        monkeypatch.setattr(
+            schema_catalogue, "publish_projection",
+            lambda *_a, **_k: events.append("projection"),
+        )
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "not-used")
+    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
+    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
+    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
+    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
+    monkeypatch.delenv("CATALOGUE_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("CATALOGUE_SOURCE_IDENTITY", raising=False)
+    monkeypatch.delenv("CATALOGUE_CONFIG", raising=False)
 
 
 def _wrapper_fixture(tmp_path: Path, *, docker_mode: str = "valid", hold: str = "0"):
@@ -134,14 +210,25 @@ def test_runtime_wrapper_contract_is_bounded_and_contains_no_secrets_or_schedule
     assert "DOCPLANE_SCHEMA_CATALOGUE_TOKEN=" not in wrapper
     assert "CATALOGUE_SOURCE_PASSWORD=" not in wrapper
     assert "172." not in wrapper
-    # Observation units may be shipped inert. Generation remains attended and
-    # must not acquire a service/timer path implicitly.
-    assert not any(
-        path.name.endswith((".service", ".timer"))
-        and "schema-catalogue" in path.name
-        and "observer" not in path.name
-        for path in ROOT.rglob("*")
-    )
+    # Decision D2 (e004787b): generation is SCHEDULED and fingerprint-gated.
+    # Its units ship inert and run only the canonical wrapper, sharing the
+    # observer's exclusion domain for the canary database.
+    systemd = ROOT / "config" / "systemd"
+    service = (systemd / "docplane-schema-catalogue.service").read_text(encoding="utf-8")
+    timer = (systemd / "docplane-schema-catalogue.timer").read_text(encoding="utf-8")
+    assert "scripts/run_schema_catalogue_reconciliation.sh" in service
+    assert "SuccessExitStatus=75" in service
+    assert "EnvironmentFile=" not in service
+    assert "Persistent=false" in timer and "OnUnitInactiveSec=30min" in timer
+    assert "a later explicit gate owns enablement" in timer
+    template = (systemd / "docplane-schema-catalogue@.service").read_text(encoding="utf-8")
+    observer_template = (systemd / "docplane-schema-catalogue-observer@.service").read_text(encoding="utf-8")
+    for unit in (template, observer_template):
+        # Per-database exclusion domain, shared by that database's two units.
+        assert "DOCPLANE_SCHEMA_CATALOGUE_LOCK_FILE=/run/lock/docplane-schema-catalogue-%i.lock" in unit
+    assert "/etc/docplane/schema-catalogue.d/%i.env" in template
+    assert "/etc/docplane/schema-catalogue-observer.d/%i.env" in observer_template
+    assert "schema_catalogue_observer" not in template
 
 
 def test_runtime_wrapper_discovers_endpoint_and_passes_only_transient_dsn(tmp_path):
@@ -272,7 +359,7 @@ def test_fingerprint_is_deterministic_and_structure_sensitive():
     first = schema_catalogue.fingerprint(STRUCTURE)
     assert first == schema_catalogue.fingerprint(STRUCTURE)
     assert len(first) == 64
-    mutated = {"docplane": {**STRUCTURE["docplane"], "extra": {}}}
+    mutated = {"docplane": {**STRUCTURE["docplane"], "enums": {"extra": ["a"]}}}
     assert schema_catalogue.fingerprint(mutated) != first
 
 
@@ -298,20 +385,15 @@ def test_rendering_is_deterministic_stamped_and_structure_only():
 def test_rendering_is_redaction_gated_fail_closed():
     poisoned = {
         "docplane": {
-            "tokens": {
-                "comment": None,
-                "columns": [
-                    {
-                        "name": "token",
-                        "type": "text",
-                        "nullable": False,
-                        # A secret-shaped default must abort the run, never
-                        # publish partially redacted content silently.
-                        "default": "'AKIAIOSFODNN7REALKEY'",
-                    }
-                ],
-                "constraints": [],
-                "indexes": [],
+            "comment": None,
+            "views": {},
+            "enums": {},
+            "tables": {
+                "tokens": _table([
+                    # A secret-shaped default must abort the run, never
+                    # publish partially redacted content silently.
+                    _column("token", default="'AKIAIOSFODNN7REALKEY'"),
+                ]),
             },
         },
     }
@@ -323,6 +405,13 @@ def test_rendering_is_redaction_gated_fail_closed():
     # aborts the run). Either way the secret must never survive rendering.
     assert "AKIAIOSFODNN7REALKEY" not in rendered
     assert DocumentRefusedError is not None  # the refusal path stays imported and wired
+    # The structured projection is never sanitised in place: the same value
+    # refuses the whole run before anything is published.
+    document = schema_catalogue.projection.build_document(
+        "docplane", "DocPlane PostgreSQL", poisoned, fp, "cd" * 32, 2,
+    )
+    with pytest.raises((schema_catalogue.ProjectionRefusedError, DocumentRefusedError)):
+        schema_catalogue.guard_projection(document, {"environment": "test"})
 
 
 def test_presence_page_is_permanent_and_never_an_artifact_target():
@@ -572,7 +661,7 @@ def test_source_membership_and_software_version_reconcile_in_place():
         _artifact(paths, generator_version="older-build"), paths
     )
     assert schema_catalogue.needs_succession(
-        _artifact(paths, projection_contract_version=2)
+        _artifact(paths, projection_contract_version=1)
     )
 
 
@@ -649,14 +738,14 @@ def test_projection_contract_change_uses_atomic_successor_plan():
     fp = schema_catalogue.fingerprint(STRUCTURE)
     pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
     paths = sorted(page["path"] for page in pages)
-    artifact = _artifact(paths, projection_contract_version=2)
+    artifact = _artifact(paths, projection_contract_version=1)
     _, _, calls, _ = _publish_fixture(artifact=artifact)
     plan = next(body for _, path, body, _ in calls if path == "/api/v1/changes")[
         "generated_ownership_plan"
     ]
     assert plan["mode"] == "SUCCESSOR"
     assert plan["predecessor_id"] == "artifact-1"
-    assert plan["successor"]["projection_contract_version"] == 1
+    assert plan["successor"]["projection_contract_version"] == schema_catalogue.PROJECTION_CONTRACT_VERSION == 2
     assert not any(path.endswith("/retire") for _, path, _, _ in calls)
 
 
@@ -675,25 +764,8 @@ def test_generation_evidence_is_emitted_only_after_atomic_publication(monkeypatc
         "docplane", "DocPlane PostgreSQL", STRUCTURE, fp
     )
     artifact = _artifact(sorted(page["path"] for page in pages))
-
-    class Source:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
-    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    _patch_runtime(monkeypatch, artifact=artifact, previous="old-fingerprint", stored=None, events=events)
     monkeypatch.setattr(schema_catalogue, "render_pages", lambda *_: pages)
-    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
-        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
-        "stale_schema_ids": [],
-    })
-    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
-    monkeypatch.setattr(
-        schema_catalogue, "last_generation_fingerprint", lambda *_: "old-fingerprint"
-    )
 
     def publish(*args, **kwargs):
         events.append("publication+ownership")
@@ -710,14 +782,11 @@ def test_generation_evidence_is_emitted_only_after_atomic_publication(monkeypatc
         "emit_generation",
         lambda *_args, **_kwargs: events.append("generation"),
     )
-    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "not-used")
-    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
-    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
-    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
-    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     assert schema_catalogue.main([]) == 0
-    assert events == ["publication+ownership", "catalogues", "generation"]
+    # The structured projection lands after KNOW publication and CATALOGUES
+    # and before GENERATION, which remains the last evidence written.
+    assert events == ["publication+ownership", "catalogues", "projection", "generation"]
 
 
 def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
@@ -726,27 +795,17 @@ def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
         "docplane", "DocPlane PostgreSQL", STRUCTURE, fp
     )
     artifact = _artifact(sorted(page["path"] for page in pages))
-
-    class Source:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
-    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
+    _patch_runtime(monkeypatch, artifact=artifact, previous=fp, stored=_stored_projection(fp))
     monkeypatch.setattr(schema_catalogue, "render_pages", lambda *_: pages)
-    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
-        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
-        "stale_schema_ids": [],
-    })
-    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
-    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: fp)
     monkeypatch.setattr(
         schema_catalogue,
         "publish_pages",
         lambda *_args, **_kwargs: pytest.fail("unchanged run published"),
+    )
+    monkeypatch.setattr(
+        schema_catalogue,
+        "publish_projection",
+        lambda *_args, **_kwargs: pytest.fail("unchanged run rewrote the projection"),
     )
     monkeypatch.setattr(
         schema_catalogue,
@@ -759,13 +818,59 @@ def test_unchanged_source_and_exact_targets_perform_no_publication(monkeypatch):
         "emit_generation",
         lambda *_args, **_kwargs: pytest.fail("unchanged run emitted evidence"),
     )
-    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "not-used")
-    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
-    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
-    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
-    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     assert schema_catalogue.main([]) == 0
+
+
+def test_missing_projection_is_repaired_without_publication_or_generation(monkeypatch):
+    """Pages and GENERATION current but the projection write never landed
+    (e.g. a crash between CATALOGUES and projection): repair only the
+    projection; never republish or replay generation evidence."""
+    events = []
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    artifact = _artifact(sorted(page["path"] for page in pages))
+    stale = {**_stored_projection(fp), "projection_contract_version": 1}
+    _patch_runtime(monkeypatch, artifact=artifact, previous=fp, stored=stale, events=events)
+    monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: pytest.fail("republished"))
+    monkeypatch.setattr(schema_catalogue, "page_ids_for_paths", lambda _client, paths: {
+        path: f"id-{index}" for index, path in enumerate(paths)
+    })
+    monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", lambda *_a, **_k: events.append("catalogues") or [])
+    monkeypatch.setattr(schema_catalogue, "emit_generation", lambda *_a, **_k: pytest.fail("generation replayed"))
+
+    assert schema_catalogue.main([]) == 0
+    assert events == ["catalogues", "projection"]
+
+
+def test_changed_presentation_config_regenerates_even_with_unchanged_structure(monkeypatch):
+    events = []
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    artifact = _artifact(sorted(page["path"] for page in pages))
+    stored = {**_stored_projection(fp), "config_hash": "0" * 64}
+    _patch_runtime(monkeypatch, artifact=artifact, previous=fp, stored=stored, events=events)
+    monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: (
+        events.append("publication+ownership") or
+        (artifact, {page["path"]: f"id-{index}" for index, page in enumerate(pages)})
+    ))
+    monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", lambda *_a, **_k: events.append("catalogues"))
+    monkeypatch.setattr(schema_catalogue, "emit_generation", lambda *_a, **_k: events.append("generation"))
+
+    assert schema_catalogue.main([]) == 0
+    assert events == ["publication+ownership", "catalogues", "projection", "generation"]
+
+
+def test_transition_keys_never_repeat_when_a_structure_returns():
+    """A -> B -> A (a migration rollback) must not reuse A's first receipts,
+    while a retry of one unfinished transition must replay them exactly."""
+    artifact = {"artifact_id": "artifact-1"}
+    first_a = schema_catalogue.transition_identity(None, None, "a" * 64)
+    a_to_b = schema_catalogue.transition_identity(artifact, "generation-1", "b" * 64)
+    b_to_a = schema_catalogue.transition_identity(artifact, "generation-2", "a" * 64)
+    assert len({first_a, a_to_b, b_to_a}) == 3
+    assert b_to_a == schema_catalogue.transition_identity(artifact, "generation-2", "a" * 64)
+    assert schema_catalogue._key(b_to_a, "change") != schema_catalogue._key(first_a, "change")
 
 
 def test_catalogues_exact_state_is_zero_write_and_unrelated_relations_are_ignored():
@@ -867,23 +972,12 @@ def test_unchanged_schema_link_repair_does_not_publish_or_reemit_generation(monk
     fp = schema_catalogue.fingerprint(STRUCTURE)
     pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
     artifact = _artifact(sorted(page["path"] for page in pages))
-
-    class Source:
-        def __enter__(self): return self
-        def __exit__(self, *args): return False
-
-    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
-    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
-    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
-        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
-        "stale_schema_ids": [],
-    })
-    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
-    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: fp)
+    _patch_runtime(monkeypatch, artifact=artifact, previous=fp, stored=_stored_projection(fp))
     monkeypatch.setattr(schema_catalogue, "page_ids_for_paths", lambda _client, paths: {
         path: f"id-{index}" for index, path in enumerate(paths)
     })
     monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: pytest.fail("republished"))
+    monkeypatch.setattr(schema_catalogue, "publish_projection", lambda *_a, **_k: pytest.fail("projection rewritten"))
     monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", lambda *_a, **_k: events.append("catalogues") or [{"changed": True}])
     monkeypatch.setattr(
         schema_catalogue,
@@ -892,11 +986,6 @@ def test_unchanged_schema_link_repair_does_not_publish_or_reemit_generation(monk
             "semantic repair attempted the production-conflicting observation POST"
         ),
     )
-    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "unused")
-    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
-    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
-    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
-    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     assert schema_catalogue.main([]) == 0
     assert events == ["catalogues"]
@@ -908,10 +997,6 @@ def test_attribution_only_repair_does_not_publish_or_reemit_generation(monkeypat
     pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
     paths = sorted(page["path"] for page in pages)
     artifact = _artifact(paths, generator_version="older-build")
-
-    class Source:
-        def __enter__(self): return self
-        def __exit__(self, *args): return False
 
     class Client:
         def __init__(self, *_args): pass
@@ -925,15 +1010,8 @@ def test_attribution_only_repair_does_not_publish_or_reemit_generation(monkeypat
                 return {"artifact": {**artifact, "generator_version": schema_catalogue.GENERATOR_VERSION}}
             raise AssertionError((method, path, body, key))
 
-    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
-    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
-    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
-        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
-        "stale_schema_ids": [],
-    })
+    _patch_runtime(monkeypatch, artifact=artifact, previous=fp, stored=_stored_projection(fp))
     monkeypatch.setattr(schema_catalogue, "Client", Client)
-    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
-    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: fp)
     monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: pytest.fail("republished"))
     monkeypatch.setattr(
         schema_catalogue,
@@ -947,11 +1025,6 @@ def test_attribution_only_repair_does_not_publish_or_reemit_generation(monkeypat
             "attribution repair reused existing generation evidence"
         ),
     )
-    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "unused")
-    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
-    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
-    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
-    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     assert schema_catalogue.main([]) == 0
     assert events == ["attribution", "catalogues"]
@@ -962,19 +1035,7 @@ def test_catalogues_failure_after_publication_suppresses_generation(monkeypatch)
     fp = schema_catalogue.fingerprint(STRUCTURE)
     pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
     artifact = _artifact(sorted(page["path"] for page in pages))
-
-    class Source:
-        def __enter__(self): return self
-        def __exit__(self, *args): return False
-
-    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
-    monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
-    monkeypatch.setattr(schema_catalogue, "ensure_entities", lambda *_: {
-        "database_id": "database-1", "schema_ids": {"docplane": "schema-1"},
-        "stale_schema_ids": [],
-    })
-    monkeypatch.setattr(schema_catalogue, "current_artifact", lambda *_: artifact)
-    monkeypatch.setattr(schema_catalogue, "last_generation_fingerprint", lambda *_: "older")
+    _patch_runtime(monkeypatch, artifact=artifact, previous="older", stored=None, events=events)
     monkeypatch.setattr(schema_catalogue, "publish_pages", lambda *_a, **_k: (
         events.append("publication+ownership") or
         (artifact, {page["path"]: f"id-{index}" for index, page in enumerate(pages)})
@@ -986,14 +1047,10 @@ def test_catalogues_failure_after_publication_suppresses_generation(monkeypatch)
 
     monkeypatch.setattr(schema_catalogue, "reconcile_catalogues", refuse)
     monkeypatch.setattr(schema_catalogue, "emit_generation", lambda *_a, **_k: events.append("generation"))
-    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "unused")
-    monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
-    monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
-    monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
-    monkeypatch.setenv("DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "not-printed")
 
     with pytest.raises(RuntimeError, match="semantic reconciliation failed"):
         schema_catalogue.main([])
+    # Neither the projection nor GENERATION may follow a failed semantic stage.
     assert events == ["publication+ownership", "catalogues-failed"]
 
 
@@ -1012,9 +1069,9 @@ def test_introspection_of_the_canary_is_deterministic_and_rowless():
         second = schema_catalogue.introspect(conn, ["docplane", "docs"])
     assert first == second
     assert schema_catalogue.fingerprint(first) == schema_catalogue.fingerprint(second)
-    assert "schema_migrations" in first["docplane"]
-    assert "pages" in first["docs"]
-    ledger = first["docplane"]["schema_migrations"]
+    assert "schema_migrations" in first["docplane"]["tables"]
+    assert "pages" in first["docs"]["tables"]
+    ledger = first["docplane"]["tables"]["schema_migrations"]
     assert {column["name"] for column in ledger["columns"]} >= {"ordinal", "filename", "checksum", "applied_at"}
     # Structure only: nothing in the model may carry row data. The checksum
     # CHECK constraint is structure; an actual checksum value would be data.

@@ -1,0 +1,51 @@
+# Presentation configuration for the charliehub_domains schema catalogue.
+#
+# Authority: this file shapes the generated human pages and the stated
+# canonical-schema availability only. It can never add, remove or alter
+# structure — every table, column, key and index comes from introspection of
+# the deployed database. Viewpoints naming tables that do not exist are
+# rendered as "configured but absent", never invented.
+#
+# Canonical status vocabulary:
+#   AVAILABLE         a canonical build from migrations is compared (phase 2)
+#   NOT_YET_COMPARED  a migration source exists; comparison not built yet
+#   NOT_AVAILABLE     no migration source can reproduce this schema; the
+#                     catalogue is deployed introspection only and must never
+#                     be treated as, or used to infer, a canonical schema
+
+schemas:
+  ccm:
+    description: >-
+      CCM-Edge desired and realization state for managed edges. Single writer:
+      the Domain Manager CCM-Edge API (/api/ccm/edge/*); see services/ccm-edge.md
+      and control-plane/data-models/ccm.md for authority and semantics.
+    canonical:
+      status: NOT_AVAILABLE
+      reason: >-
+        ccm.* was hand-applied and has no genesis migrations (Schema Migrations
+        runbook, Known gaps). Only later domain-manager migrations (047 onward)
+        alter it, so no clean migration build can reproduce it. This page shows
+        the deployed structure only.
+  transit:
+    description: >-
+      Transit Manager desired state: WireGuard topology, edge nodes, execution
+      paths, GEO, routing intent, guest VPN tenancy and contractor mediated
+      access. Single writer: the Transit Manager API; see services/transit-manager.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: >-
+        charliehub-hub2 transit-manager/migrations applied by
+        scripts/migrate_schema.py (A12 ledger and clean-apply method)
+      reason: >-
+        A12 established that a clean migration apply reproduces production; the
+        automated canonical-versus-deployed comparison is phase 2.
+    viewpoints:
+      - name: Fabric topology and routing intent
+        description: Sites, WireGuard interfaces and peers, and the routing and NAT intent rendered from them.
+        tables: [sites, site_subnets, interfaces, peers, pools, geos, main_routes, nat_rules, policy_rules, routing_overrides]
+      - name: Edge nodes, deployment and execution
+        description: Managed edge identity, links, trust, deploy evidence and GEO execution placement.
+        tables: [sites, geos, edge_nodes, edge_links, edge_node_status, deploy_log, edge_node_source_prefixes, edge_destination_prefixes, edge_ingress_vlans, edge_trust, edge_wan_ssh_allowlist, edge_admin_keys, execution_paths, geo_executors]
+      - name: Identity and mediated access
+        description: Guest VPN tenancy (10.88) and contractor mediated access (10.90) through gateways, declared services and grants.
+        tables: [peers, vpn_users, vpn_peer_ownership, vpn_invites, vpn_sites, vpn_peer_traffic_accumulator, share_tokens, gateway_peer_bindings, access_gateways, declared_services, service_endpoints, access_grants, contractor_identities, contractor_identity_events]

@@ -6,16 +6,22 @@ document through the canonical redaction transform (fail-closed), and drives
 the DocPlane API as a named AUTOMATION principal:
 
   model    DATABASE + SCHEMA entities, STORES_IN wires
-  know     catalogue pages behind a permanent presence page,
-           published atomically with exact GENERATED ownership membership
-           through change -> validate -> publish
+  know     one overview page per database and one page per schema (table
+           sections, Mermaid ER diagrams, configured viewpoints) behind a
+           permanent presence page, published atomically with exact GENERATED
+           ownership membership through change -> validate -> publish
   model    exact DATABASE/SCHEMA CATALOGUES links after safe publication
-  observe  a GENERATION observation carrying the structural fingerprint
+  model    the structured schema projection (tables, columns, keys, indexes,
+           relations, provenance) stored against the artifact — the surface
+           agents query at table/column granularity (e004787b decision D1)
+  observe  a GENERATION observation carrying the structural fingerprint, last
 
 Regeneration is fingerprint-bound: when the source structure hash equals the
-artifact's last GENERATION fingerprint the run exits without mutating
-anything. Idempotency keys are derived from the fingerprint, so a retried
-run replays receipts instead of duplicating work.
+artifact's last GENERATION fingerprint, the render configuration is unchanged
+and the stored projection corresponds, the run exits without mutating anything
+(decision D2: scheduled generation produces no churn for an unchanged schema).
+Idempotency keys are derived from the render identity, so a retried run
+replays receipts instead of duplicating work.
 
 Environment:
   DOCPLANE_API                     routed front, e.g. https://docplane.internal
@@ -25,14 +31,21 @@ Environment:
   CATALOGUE_DB_KEY                 entity key for the database, e.g. docplane
   CATALOGUE_DB_DISPLAY             display name, e.g. "DocPlane PostgreSQL"
   CATALOGUE_SCHEMAS                comma-separated schema names to catalogue
+  CATALOGUE_ENVIRONMENT            provenance: environment label, e.g. production
+  CATALOGUE_SOURCE_IDENTITY        provenance: non-secret source label, e.g.
+                                   hub2/charliehub-postgres
+  CATALOGUE_CONFIG                 optional presentation config; defaults to
+                                   config/schema-catalogue/<db_key>.yml
 
-Usage: schema_catalogue.py [--dry-run]
+Usage: schema_catalogue.py [--dry-run] [--emit-projection PATH] [--emit-pages DIR]
   --dry-run introspects, fingerprints, renders and redacts, then prints the
-  plan without calling the DocPlane API.
+  plan without calling the DocPlane API. --emit-projection / --emit-pages write
+  the redacted projection and pages locally for review (dry-run only).
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -40,6 +53,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -54,17 +68,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from migration.redaction import redact  # noqa: E402
 
 # The authoritative source projection (structure introspection + fingerprint)
-# lives in a pure, side-effect-free module so a future SCHEDULED schema observer
-# can import the same seam without importing this mutation-capable generator.
+# lives in a pure, side-effect-free module so the SCHEDULED schema observer
+# imports the same seam without importing this mutation-capable generator.
 # This is the sole implementation of introspect()/fingerprint(); re-exporting
-# the names keeps `schema_catalogue.introspect` / `.fingerprint` working for the
-# generator body and its existing tests.
+# the names keeps `schema_catalogue.introspect` / `.fingerprint` working.
 from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
+import schema_catalogue_projection as projection  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
-GENERATOR_VERSION = "1.1.0"
-PROJECTION_CONTRACT_VERSION = 1
+GENERATOR_VERSION = "2.0.0"
+# Contract 2: enriched source structure (FK column pairs, CHECK, index columns,
+# udt/enum/array, views; pg_catalog-only with a pinned search_path) plus the
+# stored structured projection. A contract change is the one change that
+# requires successor handoff of the artifact.
+PROJECTION_CONTRACT_VERSION = 2
 SECTION = "model/schema-catalogue"
+CONFIG_DIR = ROOT / "config" / "schema-catalogue"
 
 # Generated catalogue pages are REFERENCE: they describe what exists now.
 # Without a marker every generated page lands in the observatory's
@@ -77,107 +96,115 @@ LIFECYCLE_LINES = (f"**Lifecycle:** {LIFECYCLE}", f"<!-- lifecycle: {LIFECYCLE} 
 
 PRESENCE_PATH = f"{SECTION}/index.md"
 
+GENERATOR = {
+    "name": GENERATOR_NAME,
+    "version": GENERATOR_VERSION,
+    "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+}
 
-# Source projection (introspect + fingerprint) is imported from
-# schema_catalogue_source above — this generator holds no second copy.
+
+class ProjectionRefusedError(RuntimeError):
+    """The structured projection would not survive canonical redaction intact."""
 
 
 # ── Rendering: deterministic markdown, redaction-gated at the boundary ──────
-
-def _table_section(name: str, table: dict[str, Any]) -> list[str]:
-    lines = [f"### `{name}`", ""]
-    if table["comment"]:
-        lines += [table["comment"], ""]
-    lines += ["| Column | Type | Nullable | Default |", "| --- | --- | --- | --- |"]
-    for column in table["columns"]:
-        default = f"`{column['default']}`" if column["default"] else ""
-        lines.append(
-            f"| `{column['name']}` | {column['type']} | "
-            f"{'yes' if column['nullable'] else 'no'} | {default} |"
-        )
-    lines.append("")
-    if table["constraints"]:
-        lines.append("Constraints:")
-        lines += [
-            f"- `{item['name']}` — `{item['definition']}`"
-            for item in table["constraints"]
-        ]
-        lines.append("")
-    if table["indexes"]:
-        lines.append("Indexes:")
-        lines += [f"- `{item['name']}`" for item in table["indexes"]]
-        lines.append("")
-    return lines
-
 
 def render_pages(
     db_key: str,
     db_display: str,
     structure: dict[str, Any],
     structure_hash: str,
+    config: dict[str, Any] | None = None,
+    static_provenance: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Catalogue pages for one database. Deterministic for a given structure.
+    """Catalogue pages for one database. Deterministic for a given structure,
+    configuration and static provenance.
 
     Every document is passed through the canonical redaction transform before
     it leaves this function — a refusal aborts the run rather than publishing
     partially redacted content.
     """
-    stamp = (
-        f"> Generated by `{GENERATOR_NAME}` {GENERATOR_VERSION} · "
-        f"source fingerprint `{structure_hash[:16]}` · structure only, no row data. "
-        "Edit through the generator, never by hand."
-    )
-    pages: list[dict[str, str]] = []
-    schema_lines = []
-    for schema in sorted(structure):
-        tables = structure[schema]
-        # Sibling link, not `{db_key}/…`: this index is emitted at
-        # SECTION/<db_key>/index.md and the schema pages are its siblings in the
-        # same directory. Prefixing the db key again resolves into a nonexistent
-        # SECTION/<db_key>/<db_key>/<schema> path.
-        schema_lines.append(
-            f"- [`{schema}`]({schema}.md) — {len(tables)} tables"
-        )
-        body = [f"# {db_display} — `{schema}`", "", *LIFECYCLE_LINES, "", stamp, ""]
-        for table_name in sorted(tables):
-            body += _table_section(table_name, tables[table_name])
-        pages.append(
-            {
-                "path": f"{SECTION}/{db_key}/{schema}.md",
-                "title": f"{db_display} — {schema}",
-                "nav_path": f"Model / Schema catalogue / {db_display} / {schema}",
-                "content": "\n".join(body).rstrip() + "\n",
-            }
-        )
-    overview = [
-        f"# {db_display} schema catalogue",
-        "",
-        *LIFECYCLE_LINES,
-        "",
-        stamp,
-        "",
-        f"{len(structure)} schemas catalogued:",
-        "",
-        *schema_lines,
-        "",
-    ]
-    # The corpus nav model is strict: a node is a page OR a section, never
-    # both. The database node is a section (it parents the schema pages), so
-    # its landing page takes the corpus's explicit "Overview" leaf idiom.
-    pages.insert(
-        0,
-        {
-            "path": f"{SECTION}/{db_key}/index.md",
-            "title": f"{db_display} schema catalogue",
-            "nav_path": f"Model / Schema catalogue / {db_display} / Overview",
-            "content": "\n".join(overview),
-        },
+    pages = projection.render_pages(
+        section=SECTION,
+        lifecycle_lines=LIFECYCLE_LINES,
+        db_key=db_key,
+        db_display=db_display,
+        structure=structure,
+        structure_hash=structure_hash,
+        config=config or {"schemas": {}},
+        static_provenance=static_provenance or {},
+        generator=GENERATOR,
     )
     for page in pages:
         # Fail-closed boundary: DocumentRefusedError from the canonical
         # transform aborts the run before anything leaves the source side.
         page["content"] = redact(page["content"], label="schema-catalogue").sanitised
     return pages
+
+
+def guard_projection(document: dict[str, Any], provenance: dict[str, Any]) -> None:
+    """The structured projection is published verbatim or not at all.
+
+    Pages may be sanitised in place; a machine-readable projection may not,
+    because a silently altered value would be a different structure from the
+    one its fingerprint names. Any change the canonical transform would make
+    refuses the run (DocumentRefusedError propagates the same way).
+    """
+    # Scanned per string leaf (mapping keys included), not as one serialised
+    # blob: JSON punctuation adjacent to ordinary prose -- e.g. a column comment
+    # ending "...are redacted." followed by `"}` -- otherwise forms a false
+    # malformed-marker token. Every value an agent can read is still scanned.
+    # The two SHA-256 digests the generator itself computes are shape-validated
+    # instead: 64 hex characters is precisely what the HEX_SECRET rule exists
+    # to catch, and these are identities, not credentials.
+    digests = {key: document[key] for key in ("source_fingerprint", "config_hash")}
+    for key, value in digests.items():
+        if not (isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)):
+            raise ProjectionRefusedError(f"{key} is not a SHA-256 hex digest")
+    scanned = {key: value for key, value in document.items() if key not in digests}
+    for label, value in (("projection", scanned), ("provenance", provenance)):
+        for text in _string_leaves(value):
+            result = redact(text, label=f"schema-catalogue-{label}")
+            if result.changed:
+                raise ProjectionRefusedError(
+                    f"canonical redaction would alter the {label}; refusing to publish "
+                    f"(classes: {sorted(set(result.findings))})"
+                )
+
+
+def _string_leaves(value: Any):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield str(key)
+            yield from _string_leaves(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _string_leaves(item)
+    elif isinstance(value, str):
+        yield value
+
+
+def render_identity(structure_hash: str, render_config_hash: str) -> str:
+    """Identity of one rendered projection: structure plus presentation."""
+    return hashlib.sha256(f"{structure_hash}:{render_config_hash}".encode("utf-8")).hexdigest()
+
+
+def config_path(db_key: str) -> Path:
+    override = os.environ.get("CATALOGUE_CONFIG", "").strip()
+    return Path(override) if override else CONFIG_DIR / f"{db_key}.yml"
+
+
+def source_metadata(conn) -> dict[str, Any]:
+    """Volatile, non-structural source facts for provenance only.
+
+    Never fingerprinted and never rendered into pages, so an engine patch
+    release cannot cause publication churn.
+    """
+    cur = conn.cursor()
+    cur.execute("SELECT current_database(), current_setting('server_version')")
+    database_name, server_version = cur.fetchone()
+    conn.rollback()
+    return {"database_name": database_name, "server_version": server_version}
 
 
 def presence_page() -> dict[str, str]:
@@ -239,12 +266,13 @@ class Client:
             raise ApiError(error.code, body) from error
 
 
-def _key(structure_hash: str, verb: str, discriminator: str = "") -> str:
-    """Fingerprint-bound AND generator-versioned: a fixed generator must never
-    replay receipts persisted by a buggy predecessor for the same structure
-    (the stale-DRAFT-change lesson from the first canary run)."""
+def _key(identity: str, verb: str, discriminator: str = "") -> str:
+    """Render-identity-bound AND generator-versioned: a fixed generator must
+    never replay receipts persisted by a buggy predecessor for the same
+    structure (the stale-DRAFT-change lesson from the first canary run), and a
+    presentation-only change must not replay the previous render's receipts."""
     return (
-        f"schema-catalogue-{GENERATOR_VERSION}-{structure_hash[:16]}-{verb}"
+        f"schema-catalogue-{GENERATOR_VERSION}-{identity[:16]}-{verb}"
         f"{'-' + discriminator if discriminator else ''}"
     )[:256]
 
@@ -256,7 +284,7 @@ def ensure_entities(
     db_key: str,
     db_display: str,
     schemas: list[str],
-    structure_hash: str,
+    identity: str,
 ) -> dict[str, Any]:
     """Reconcile source MODEL identity and return structured catalogue mapping state.
 
@@ -275,7 +303,7 @@ def ensure_entities(
         database_id = client.call(
             "POST", "/api/v1/model/entities",
             {"entity_kind": "DATABASE", "entity_key": db_key, "display_name": db_display},
-            _key(structure_hash, "entity", db_key),
+            _key(identity, "entity", db_key),
         )["entity_id"]
     schema_entities = {
         entity["entity_key"]: entity
@@ -292,7 +320,7 @@ def ensure_entities(
             schema_id = client.call(
                 "POST", "/api/v1/model/entities",
                 {"entity_kind": "SCHEMA", "entity_key": schema_key, "display_name": f"{db_display} {schema}"},
-                _key(structure_hash, "entity", schema_key),
+                _key(identity, "entity", schema_key),
             )["entity_id"]
         schema_ids[schema] = schema_id
         # Always wire the link, even for a pre-existing entity: a resumed run
@@ -301,7 +329,7 @@ def ensure_entities(
         client.call(
             "POST", f"/api/v1/model/entities/{schema_id}/links",
             {"relation": "STORES_IN", "to_entity_id": database_id},
-            _key(structure_hash, "link", schema_key),
+            _key(identity, "link", schema_key),
         )
     prefix = f"{db_key}."
     stale_schema_ids = sorted(
@@ -430,6 +458,32 @@ def last_generation_fingerprint(client: Client, artifact_id: str) -> str | None:
     return None
 
 
+def last_generation_observation_id(client: Client, artifact_id: str) -> str | None:
+    status = client.call("GET", f"/api/v1/model/artifacts/{artifact_id}/status")
+    for row in status.get("current_status") or []:
+        if row.get("observation_kind") == "GENERATION":
+            return row.get("observation_id")
+    return None
+
+
+def transition_identity(
+    artifact: dict[str, Any] | None, base_generation_id: str | None, identity: str
+) -> str:
+    """Idempotency identity of one publication *transition*.
+
+    Keys bound only to the target render identity are reused whenever a
+    structure returns to an earlier shape (A -> B -> A: a migration rollback),
+    and DocPlane then correctly refuses the different request data as
+    IDEMPOTENCY_KEY_REUSED -- permanently wedging a scheduled generator.
+    Binding to the artifact and its last GENERATION evidence (the "from"
+    state) keeps a retried, partially completed transition replay-safe
+    (the base is unchanged until GENERATION is emitted last) while every new
+    transition gets fresh keys.
+    """
+    base = f"{(artifact or {}).get('artifact_id', 'none')}:{base_generation_id or 'genesis'}"
+    return hashlib.sha256(f"{base}->{identity}".encode("utf-8")).hexdigest()
+
+
 def needs_succession(artifact: dict[str, Any]) -> bool:
     """Only projection-contract identity, never source membership/build version."""
     return (
@@ -451,7 +505,7 @@ def needs_reconciliation(
 def publish_pages(
     client: Client,
     pages: list[dict[str, str]],
-    structure_hash: str,
+    identity: str,
     include_presence: bool,
     artifact: dict[str, Any] | None,
     artifact_key: str,
@@ -516,7 +570,7 @@ def publish_pages(
                 "target_page_resource_ids": [],
                 "target_page_paths": [],
             },
-            _key(structure_hash, "artifact-empty"),
+            _key(identity, "artifact-empty"),
         )
 
     target_ids = [page_ids[path] for path in desired_paths]
@@ -553,15 +607,16 @@ def publish_pages(
     change = client.call(
         "POST", "/api/v1/changes",
         {
-            "title": f"Schema catalogue regeneration {structure_hash[:16]}",
+            "title": f"Schema catalogue regeneration {identity[:16]}",
             "purpose": (
                 "Fingerprint-bound regeneration by the schema-catalogue "
-                f"generator; source structural fingerprint {structure_hash}."
+                f"generator; render identity {identity} (source structure "
+                "fingerprint plus presentation configuration)."
             ),
             "workspace_key": "reference",
             "generated_ownership_plan": ownership_plan,
         },
-        _key(structure_hash, "change"),
+        _key(identity, "change"),
     )
     change_id = change["change_id"]
     for operation_type, resource_id, revision, page in operations:
@@ -573,17 +628,20 @@ def publish_pages(
                 "nav_path": page["nav_path"],
                 "content": page["content"],
             }
-            if operation_type == "CREATE_PAGE":
+            # Generated pages carry a pre-assigned identity that publication
+            # adopts into GENERATED custody; the authored presence page does
+            # not, and must not be given one (it is never an artifact target).
+            if operation_type == "CREATE_PAGE" and "resource_id" in page:
                 request["payload"]["resource_id"] = page["resource_id"]
         if resource_id:
             request["page_resource_id"] = resource_id
             request["expected_revision"] = revision
         client.call(
             "POST", f"/api/v1/changes/{change_id}/operations", request,
-            _key(structure_hash, "operation", f"{operation_type}:{page['path']}"),
+            _key(identity, "operation", f"{operation_type}:{page['path']}"),
         )
-    client.call("POST", f"/api/v1/changes/{change_id}/validate", {}, _key(structure_hash, "validate"))
-    receipt = client.call("POST", f"/api/v1/changes/{change_id}/publish", {}, _key(structure_hash, "publish"))
+    client.call("POST", f"/api/v1/changes/{change_id}/validate", {}, _key(identity, "validate"))
+    receipt = client.call("POST", f"/api/v1/changes/{change_id}/publish", {}, _key(identity, "publish"))
     deployment = (receipt.get("publication_receipt") or receipt).get("deployment", {})
     if deployment.get("status") not in {"COMPLETED", None}:
         raise RuntimeError(f"publication deployment reported {deployment.get('status')}")
@@ -593,7 +651,11 @@ def publish_pages(
     return active, page_ids
 
 
-def emit_generation(client: Client, artifact_id: str, structure_hash: str, summary: str) -> None:
+def emit_generation(
+    client: Client, artifact_id: str, structure_hash: str, identity: str, summary: str
+) -> None:
+    """GENERATION evidence, last: the source fingerprint it consumed, keyed by
+    the render identity so a presentation-only regeneration is recorded too."""
     client.call(
         "POST", "/api/v1/observations",
         {
@@ -604,50 +666,149 @@ def emit_generation(client: Client, artifact_id: str, structure_hash: str, summa
                     "outcome": "NOMINAL",
                     "source_fingerprint": structure_hash,
                     "summary": summary,
-                    "idempotency_key": _key(structure_hash, "generation"),
+                    "idempotency_key": _key(identity, "generation"),
                 }
             ]
         },
-        _key(structure_hash, "observation-batch"),
+        _key(identity, "observation-batch"),
+    )
+
+
+def current_projection(client: Client, artifact_id: str) -> dict[str, Any] | None:
+    try:
+        return client.call("GET", f"/api/v1/model/artifacts/{artifact_id}/projection")
+    except ApiError as error:
+        if error.status == 404:
+            return None
+        raise
+
+
+def projection_current(
+    stored: dict[str, Any] | None, structure_hash: str, render_config_hash: str
+) -> bool:
+    return (
+        stored is not None
+        and stored.get("source_fingerprint") == structure_hash
+        and stored.get("config_hash") == render_config_hash
+        and stored.get("projection_contract_version") == PROJECTION_CONTRACT_VERSION
+    )
+
+
+def publish_projection(
+    client: Client,
+    artifact_id: str,
+    document: dict[str, Any],
+    provenance: dict[str, Any],
+    identity: str,
+) -> dict[str, Any]:
+    """Store the structured projection; DocPlane re-derives its fingerprint."""
+    return client.call(
+        "PUT",
+        f"/api/v1/model/artifacts/{artifact_id}/projection",
+        {
+            "projection_kind": projection.PROJECTION_KIND,
+            "projection_contract_version": PROJECTION_CONTRACT_VERSION,
+            "source_fingerprint": document["source_fingerprint"],
+            "config_hash": document["config_hash"],
+            "document": document,
+            "provenance": provenance,
+        },
+        _key(identity, "projection"),
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--emit-projection", type=Path)
+    parser.add_argument("--emit-pages", type=Path)
     args = parser.parse_args(argv)
+    if (args.emit_projection or args.emit_pages) and not args.dry_run:
+        parser.error("--emit-projection/--emit-pages are review aids and require --dry-run")
 
     dsn = os.environ["CATALOGUE_SOURCE_DSN"]
     db_key = os.environ["CATALOGUE_DB_KEY"]
     db_display = os.environ.get("CATALOGUE_DB_DISPLAY", db_key)
     schemas = [name.strip() for name in os.environ["CATALOGUE_SCHEMAS"].split(",") if name.strip()]
+    static_provenance = {
+        "environment": os.environ.get("CATALOGUE_ENVIRONMENT", "unspecified").strip() or "unspecified",
+        "source_identity": os.environ.get("CATALOGUE_SOURCE_IDENTITY", "unspecified").strip() or "unspecified",
+    }
+    config = projection.load_config(config_path(db_key))
 
     with psycopg2.connect(dsn) as source:
         structure = introspect(source, schemas)
+    with psycopg2.connect(dsn) as source:
+        metadata = source_metadata(source)
     structure_hash = fingerprint(structure)
-    pages = render_pages(db_key, db_display, structure, structure_hash)
+    render_config_hash = projection.config_hash(config, static_provenance)
+    identity = render_identity(structure_hash, render_config_hash)
+    pages = render_pages(db_key, db_display, structure, structure_hash, config, static_provenance)
+    document = projection.build_document(
+        db_key, db_display, structure, structure_hash, render_config_hash,
+        PROJECTION_CONTRACT_VERSION,
+    )
+    provenance = projection.build_provenance(
+        config=config,
+        structure=structure,
+        static_provenance=static_provenance,
+        source_metadata=metadata,
+        extracted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        generator=GENERATOR,
+    )
+    guard_projection(document, provenance)
     print(f"fingerprint {structure_hash}")
+    print(f"config {render_config_hash[:16]} render identity {identity[:16]}")
     print(f"rendered {len(pages)} catalogue pages for {len(schemas)} schemas")
 
     if args.dry_run:
         for page in pages:
             print(f"DRY-RUN would publish {page['path']} ({len(page['content'])} bytes)")
+        size = len(json.dumps(document, sort_keys=True))
+        print(
+            f"DRY-RUN would store projection: {sum(len(s['tables']) for s in structure.values())} tables, "
+            f"{len(document['relations'])} relations, {size} bytes"
+        )
+        if args.emit_projection:
+            args.emit_projection.write_text(
+                json.dumps({"document": document, "provenance": provenance}, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+        if args.emit_pages:
+            for page in pages:
+                target = args.emit_pages / page["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(page["content"], encoding="utf-8")
         return 0
 
     client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_SCHEMA_CATALOGUE_TOKEN"])
-    entities = ensure_entities(client, db_key, db_display, schemas, structure_hash)
+    entities = ensure_entities(client, db_key, db_display, schemas, identity)
     artifact_key = f"schema-catalogue-{db_key}"
     artifact = current_artifact(client, artifact_key)
     desired_paths = sorted(page["path"] for page in pages)
+    base_generation = (
+        last_generation_observation_id(client, artifact["artifact_id"]) if artifact else None
+    )
+    transition = transition_identity(artifact, base_generation, identity)
     if artifact is not None:
         previous = last_generation_fingerprint(client, artifact["artifact_id"])
-        if previous == structure_hash and not needs_reconciliation(artifact, desired_paths):
+        stored = current_projection(client, artifact["artifact_id"])
+        if (
+            previous == structure_hash
+            and not needs_reconciliation(artifact, desired_paths)
+            and stored is not None
+            and stored.get("config_hash") == render_config_hash
+        ):
             page_ids = page_ids_for_paths(client, desired_paths)
             reconcile_catalogues(
                 client,
                 schema_catalogues_mappings(entities, page_ids, db_key),
-                key_prefix=_key(structure_hash, "semantic"),
+                key_prefix=_key(transition, "semantic"),
             )
+            if not projection_current(stored, structure_hash, render_config_hash):
+                publish_projection(client, artifact["artifact_id"], document, provenance, transition)
+                print(f"UNCHANGED {structure_hash[:16]} — repaired the structured projection only")
+                return 0
             # `previous == structure_hash` proves that this projection already
             # has successful GENERATION evidence. Semantic maintenance is
             # durably evidenced by its MODEL receipt/event and must not reuse
@@ -660,6 +821,7 @@ def main(argv: list[str] | None = None) -> int:
             and sorted(artifact.get("target_page_paths") or []) == desired_paths
             and not needs_succession(artifact)
             and artifact.get("generator_version") != GENERATOR_VERSION
+            and projection_current(stored, structure_hash, render_config_hash)
         ):
             page_ids = {
                 page["path"]: client.call(
@@ -676,13 +838,13 @@ def main(argv: list[str] | None = None) -> int:
                     "target_page_paths": desired_paths,
                     "generator_version": GENERATOR_VERSION,
                 },
-                _key(structure_hash, "artifact-attribution"),
+                _key(transition, "artifact-attribution"),
             )
             artifact = updated["artifact"]
             reconcile_catalogues(
                 client,
                 schema_catalogues_mappings(entities, page_ids, db_key),
-                key_prefix=_key(structure_hash, "semantic"),
+                key_prefix=_key(transition, "semantic"),
             )
             # Attribution and semantic receipts are the maintenance evidence;
             # the source fingerprint already has a successful generation.
@@ -692,7 +854,7 @@ def main(argv: list[str] | None = None) -> int:
     artifact, page_ids = publish_pages(
         client,
         pages,
-        structure_hash,
+        transition,
         include_presence=True,
         artifact=artifact,
         artifact_key=artifact_key,
@@ -701,15 +863,17 @@ def main(argv: list[str] | None = None) -> int:
     reconcile_catalogues(
         client,
         schema_catalogues_mappings(entities, page_ids, db_key),
-        key_prefix=_key(structure_hash, "semantic"),
+        key_prefix=_key(transition, "semantic"),
     )
+    publish_projection(client, artifact["artifact_id"], document, provenance, transition)
     emit_generation(
-        client, artifact["artifact_id"], structure_hash,
-        f"Regenerated {len(pages)} catalogue pages for {db_key} ({len(schemas)} schemas)",
+        client, artifact["artifact_id"], structure_hash, transition,
+        f"Regenerated {len(pages)} catalogue pages and the structured projection for "
+        f"{db_key} ({len(schemas)} schemas)",
     )
     print(
-        f"PUBLISHED {len(page_ids)} pages, artifact {artifact['artifact_id']}, "
-        f"fingerprint {structure_hash[:16]}"
+        f"PUBLISHED {len(page_ids)} pages and the structured projection, artifact "
+        f"{artifact['artifact_id']}, fingerprint {structure_hash[:16]}"
     )
     return 0
 

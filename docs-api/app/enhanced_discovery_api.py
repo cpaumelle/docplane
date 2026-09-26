@@ -41,6 +41,12 @@ def discovery() -> dict[str, Any]:
         "page_trust": "/api/v1/pages/{resource_id}/trust",
         "corpus_structure": "/api/v1/dashboard/structure",
         "observatory_export": "/api/v1/dashboard/observatory/export",
+        # Structured schema projection (e004787b D1): database -> schema ->
+        # table -> column, FK relations and provenance, served from the
+        # generator-owned projection rather than parsed from catalogue pages.
+        "schema_structure": "/api/v1/model/structure/{db_key}/{schema}/{table}/{column}",
+        "schema_columns": "/api/v1/model/structure-columns?name=<column>",
+        "schema_relations": "/api/v1/model/structure-relations/{db_key}/{schema}/{table}",
     })
 
     authentication = document.setdefault("authentication", {})
