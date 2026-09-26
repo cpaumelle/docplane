@@ -45,17 +45,27 @@ groups:
 """
 
 
+# Schema-catalogue source projection contract 2 (e004787b):
+# schema -> {comment, tables, views, enums}.
 SCHEMA_STRUCTURE = {
     "docplane": {
-        "principals": {
-            "comment": "Named identities",
-            "columns": [
-                {"name": "principal_id", "type": "uuid", "nullable": False, "default": None},
-            ],
-            "constraints": [
-                {"kind": "p", "name": "principals_pkey", "definition": "PRIMARY KEY (principal_id)"},
-            ],
-            "indexes": [{"name": "principals_pkey", "definition": "CREATE UNIQUE INDEX ..."}],
+        "comment": None,
+        "views": {},
+        "enums": {},
+        "tables": {
+            "principals": {
+                "kind": "table",
+                "comment": "Named identities",
+                "columns": [
+                    {"name": "principal_id", "type": "uuid", "udt": "uuid", "array": False, "enum": None,
+                     "nullable": False, "default": None, "identity": None, "generated": None, "comment": None},
+                ],
+                "primary_key": {"name": "principals_pkey", "columns": ["principal_id"]},
+                "foreign_keys": [], "unique": [], "checks": [], "exclusions": [],
+                "indexes": [{"name": "principals_pkey", "unique": True, "primary": True, "method": "btree",
+                             "columns": ["principal_id"], "include": [], "predicate": None,
+                             "definition": "CREATE UNIQUE INDEX ..."}],
+            },
         },
     },
 }

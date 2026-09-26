@@ -15,12 +15,16 @@ def test_index_links_resolve_to_pages_emitted_in_the_same_run():
     """Every internal index link must resolve against this render's page set."""
     structure = {
         schema: {
-            "t1": {
-                "comment": None,
-                "columns": [],
-                "constraints": [],
-                "indexes": [],
-            }
+            "comment": None,
+            "views": {},
+            "enums": {},
+            "tables": {
+                "t1": {
+                    "kind": "table", "comment": None, "columns": [], "primary_key": None,
+                    "foreign_keys": [], "unique": [], "checks": [], "exclusions": [],
+                    "indexes": [],
+                },
+            },
         }
         for schema in ("docs", "model", "observe")
     }

@@ -1,0 +1,14 @@
+[Unit]
+Description=Observe the schema-catalogue source for database %i every 30 minutes
+
+[Timer]
+# Installation does not activate this timer; a later explicit gate owns enablement.
+OnActiveSec=2min
+OnUnitInactiveSec=30min
+AccuracySec=1min
+RandomizedDelaySec=1min
+Persistent=false
+Unit=docplane-schema-catalogue-observer@%i.service
+
+[Install]
+WantedBy=timers.target

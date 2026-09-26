@@ -15,6 +15,7 @@ from app.verification_api import router as verification_router
 from app.operation_contract_api import install_operation_contract, router as operation_contract_router
 from app.operation_request_openapi import install_discriminated_operation_requests
 from app.reorganisation_api import router as reorganisation_router
+from app.structure_api import router as structure_router
 from app.system_api import router as system_router
 from app.trust_api import router as trust_router
 from app.work_api import router as work_router
@@ -46,6 +47,7 @@ app.include_router(work_router)
 app.include_router(work_conditions_router)
 app.include_router(model_router)
 app.include_router(model_page_links_router)
+app.include_router(structure_router)
 app.include_router(observe_router)
 app.include_router(verification_router)
 app.include_router(trust_router)

@@ -1,0 +1,22 @@
+[Unit]
+Description=Observe the schema-catalogue source for database %i
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# Source-only observation for one catalogued database (instance = CATALOGUE_DB_KEY).
+# Emits at most one FRESHNESS_CHECK; never generates. Shares the per-database
+# exclusion domain with docplane-schema-catalogue@%i.service.
+Type=oneshot
+User=root
+WorkingDirectory=/opt/docplane
+Environment=DOCPLANE_SCHEMA_OBSERVER_ENV_FILE=/etc/docplane/schema-catalogue-observer.d/%i.env
+Environment=DOCPLANE_SCHEMA_CATALOGUE_LOCK_FILE=/run/lock/docplane-schema-catalogue-%i.lock
+ExecStart=/bin/bash /opt/docplane/scripts/run_schema_catalogue_source_observer.sh
+SuccessExitStatus=75
+TimeoutStartSec=2min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/lock

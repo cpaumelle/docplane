@@ -1,0 +1,21 @@
+# Presentation configuration for DocPlane's own schema catalogue (the canary).
+# Shapes generated pages and stated canonical availability only; structure is
+# always introspected. Vocabulary: see charliehub_domains.yml.
+
+schemas:
+  docplane:
+    canonical: &docplane_canonical
+      status: NOT_YET_COMPARED
+      source: docplane db/migrations applied by docs-api/migrate.py (fresh-instance CI)
+      reason: >-
+        Every DocPlane table is created by a numbered migration and CI builds a
+        clean instance from them; the automated canonical-versus-deployed
+        comparison is phase 2.
+  docs:
+    canonical: *docplane_canonical
+  model:
+    canonical: *docplane_canonical
+  observe:
+    canonical: *docplane_canonical
+  work:
+    canonical: *docplane_canonical

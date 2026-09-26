@@ -1,0 +1,22 @@
+[Unit]
+Description=Reconcile the DocPlane schema catalogue for DocPlane's own database
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+# Scheduled, fingerprint-gated generation (initiative e004787b decision D2).
+# The legacy (un-suffixed) environment and lock are kept for the canary
+# database so generation shares its exclusion domain with the already-running
+# docplane-schema-catalogue-observer.service.
+Type=oneshot
+User=root
+WorkingDirectory=/opt/docplane
+ExecStart=/bin/bash /opt/docplane/scripts/run_schema_catalogue_reconciliation.sh
+# 75 = another schema-catalogue run holds the shared lock: a benign skip.
+SuccessExitStatus=75
+TimeoutStartSec=5min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/lock

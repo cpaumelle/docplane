@@ -218,7 +218,7 @@ def test_disposable_least_privilege_role_preserves_projection_without_row_access
             actual = schema_catalogue_source.introspect(observer_read, schemas)
         assert actual == expected
         assert schema_catalogue_source.fingerprint(actual) == schema_catalogue_source.fingerprint(expected)
-        assert len(actual["docs"][probe_table]["columns"]) == 2
+        assert len(actual["docs"]["tables"][probe_table]["columns"]) == 2
 
         with psycopg2.connect(observer_dsn) as restricted:
             with restricted.cursor() as cur:

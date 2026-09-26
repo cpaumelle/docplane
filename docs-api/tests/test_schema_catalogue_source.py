@@ -5,7 +5,15 @@
 the authoritative source projection — ``introspect`` and
 ``fingerprint`` — without importing the mutation-capable generator.
 
-These tests exist to prove the extraction changed *nothing* observable:
+Source projection contract 2 (e004787b D1, 2026-09-26) deliberately changed
+the STRUCTURE the seam produces (pg_catalog-only, pinned search_path, FK column
+pairs, CHECK/exclusion constraints, index columns, udt/enum/array, views). The
+fingerprint ALGORITHM did not change, so the frozen fingerprint oracles below
+still pin it exactly; the v1 render oracle is retired and replaced by a
+contract-2 byte-stability pin, and the disposable-PostgreSQL test asserts the
+contract-2 facets against independently authored expectations.
+
+These tests originally proved the extraction changed *nothing* observable:
 
   * the pure module reproduces a fingerprint captured from PRISTINE main
     (frozen in ``fixtures/schema_catalogue_source_oracle.json``), so "expected"
@@ -104,6 +112,9 @@ def test_schema_allowlist_order_is_irrelevant():
         def fetchall(self):
             return []
 
+        def fetchone(self):
+            return None
+
     class Conn:
         def __init__(self):
             self._cur = RecordingCursor()
@@ -141,10 +152,42 @@ def test_mapping_insertion_order_does_not_change_canonical_fingerprint():
     assert schema_catalogue_source.fingerprint(ordered) == ORACLE["production_shape_fingerprint"]
 
 
-# 6. Rendering the same extracted structure is byte-identical to pre-extraction.
-def test_rendered_output_matches_the_frozen_render_oracle():
-    assert _render_sha(STRUCTURE) == ORACLE["structure_render_sha256"]
-    assert _render_sha(PRODUCTION_SHAPE) == ORACLE["production_shape_render_sha256"]
+# 6. Rendering a contract-2 structure is byte-stable. (The v1 render oracle
+#    was retired with the v1 structure shape on 2026-09-26; this pin moves only
+#    with a deliberate projection-contract or presentation change.)
+V2_STRUCTURE = {
+    "docplane": {
+        "comment": None,
+        "views": {},
+        "enums": {"status": ["ACTIVE", "RETIRED"]},
+        "tables": {
+            "principals": {
+                "kind": "table", "comment": "Named identities",
+                "columns": [
+                    {"name": "principal_id", "type": "uuid", "udt": "uuid", "array": False, "enum": None,
+                     "nullable": False, "default": "gen_random_uuid()", "identity": None, "generated": None, "comment": None},
+                    {"name": "status", "type": "docplane.status", "udt": "docplane.status", "array": False,
+                     "enum": "docplane.status", "nullable": False, "default": None, "identity": None,
+                     "generated": None, "comment": None},
+                ],
+                "primary_key": {"name": "principals_pkey", "columns": ["principal_id"]},
+                "foreign_keys": [], "unique": [], "checks": [], "exclusions": [],
+                "indexes": [{"name": "principals_pkey", "unique": True, "primary": True, "method": "btree",
+                             "columns": ["principal_id"], "include": [], "predicate": None,
+                             "definition": "CREATE UNIQUE INDEX principals_pkey ON docplane.principals USING btree (principal_id)"}],
+            },
+        },
+    },
+}
+
+
+def test_contract2_rendering_is_byte_stable_and_redaction_clean():
+    first = _render_sha(V2_STRUCTURE)
+    assert first == _render_sha(V2_STRUCTURE)
+    fp = schema_catalogue_source.fingerprint(V2_STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", V2_STRUCTURE, fp)
+    assert all("<REDACTED" not in page["content"] for page in pages)
+    assert "enum `docplane.status`" in pages[1]["content"]
 
 
 # 7. A production-shaped fixture retains the exact expected fingerprint.
@@ -175,8 +218,8 @@ def test_all_structural_facets_are_represented_exactly():
     # represented would move production_shape_fingerprint.
 
 
-# 3. Disposable PostgreSQL introspection matches pre-extraction semantics EXACTLY,
-#    compared against an independently authored expected structure.
+# 3. Disposable PostgreSQL introspection matches contract-2 semantics EXACTLY,
+#    compared against independently authored expectations.
 @pytest.mark.skipif(not os.environ.get("DB_HOST"), reason="requires a PostgreSQL database")
 def test_disposable_postgres_introspection_matches_expected_semantics():
     import psycopg2
@@ -188,22 +231,36 @@ def test_disposable_postgres_introspection_matches_expected_semantics():
     )
     ddl = """
     DROP SCHEMA IF EXISTS seam_probe CASCADE;
+    DROP SCHEMA IF EXISTS structure_probe CASCADE;
     CREATE SCHEMA seam_probe;
+    CREATE SCHEMA structure_probe;
+    COMMENT ON SCHEMA seam_probe IS 'seam probe schema';
+    CREATE TYPE seam_probe.mood AS ENUM ('calm', 'busy');
+    CREATE TABLE structure_probe.site (id integer PRIMARY KEY);
     CREATE TABLE seam_probe.parent (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         label text NOT NULL
     );
     COMMENT ON TABLE seam_probe.parent IS 'seam probe parent';
     CREATE TABLE seam_probe.child (
-        id integer PRIMARY KEY,
-        parent_id uuid NOT NULL REFERENCES seam_probe.parent(id),
+        id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        parent_id uuid NOT NULL REFERENCES seam_probe.parent(id) ON DELETE CASCADE,
+        site_id integer REFERENCES structure_probe.site(id),
         code text NOT NULL,
         note text,
+        tags text[] NOT NULL DEFAULT '{}',
+        mood seam_probe.mood NOT NULL DEFAULT 'calm',
+        moods seam_probe.mood[],
         active boolean NOT NULL DEFAULT false,
-        UNIQUE (code)
+        code_upper text GENERATED ALWAYS AS (upper(code)) STORED,
+        CONSTRAINT child_code_key UNIQUE (code),
+        CONSTRAINT child_code_shape CHECK (code ~ '^[a-z]+$')
     );
+    COMMENT ON COLUMN seam_probe.child.note IS 'free text';
+    CREATE INDEX child_active_idx ON seam_probe.child (parent_id) INCLUDE (code) WHERE active;
+    CREATE INDEX child_lower_idx ON seam_probe.child (lower(code));
+    CREATE VIEW seam_probe.active_children AS SELECT id, code FROM seam_probe.child WHERE active;
     """
-    # DDL in autocommit; introspection then reads through the source seam.
     setup = psycopg2.connect(dsn)
     try:
         setup.autocommit = True
@@ -215,52 +272,82 @@ def test_disposable_postgres_introspection_matches_expected_semantics():
     try:
         with psycopg2.connect(dsn) as conn:
             structure = schema_catalogue_source.introspect(conn, ["seam_probe"])
-        # Deterministic + rowless across two independent connections.
+        # Role/session search_path must not change a single byte (#174 finding).
         with psycopg2.connect(dsn) as conn2:
+            with conn2.cursor() as cur:
+                cur.execute("SET search_path TO seam_probe, structure_probe, public")
+            conn2.commit()
             again = schema_catalogue_source.introspect(conn2, ["seam_probe"])
         assert structure == again
-        assert (
-            schema_catalogue_source.fingerprint(structure)
-            == schema_catalogue_source.fingerprint(again)
-        )
+        assert schema_catalogue_source.fingerprint(structure) == schema_catalogue_source.fingerprint(again)
 
-        tables = structure["seam_probe"]
-        assert set(tables) == {"child", "parent"}
+        schema = structure["seam_probe"]
+        assert schema["comment"] == "seam probe schema"
+        assert set(schema["tables"]) == {"child", "parent"}
+        assert schema["enums"] == {"mood": ["calm", "busy"]}
 
-        # Independently authored expectations — NOT derived from the code under test.
-        assert tables["parent"]["comment"] == "seam probe parent"
-        assert tables["child"]["comment"] is None
+        parent = schema["tables"]["parent"]
+        assert parent["kind"] == "table"
+        assert parent["comment"] == "seam probe parent"
+        assert parent["primary_key"] == {"name": "parent_pkey", "columns": ["id"]}
+        assert parent["columns"][0] == {
+            "name": "id", "type": "uuid", "udt": "uuid", "array": False, "enum": None,
+            "nullable": False, "default": "gen_random_uuid()", "identity": None,
+            "generated": None, "comment": None,
+        }
 
-        assert tables["parent"]["columns"] == [
-            {"name": "id", "type": "uuid", "nullable": False, "default": "gen_random_uuid()"},
-            {"name": "label", "type": "text", "nullable": False, "default": None},
+        child = schema["tables"]["child"]
+        columns = {column["name"]: column for column in child["columns"]}
+        assert [column["name"] for column in child["columns"]] == [
+            "id", "parent_id", "site_id", "code", "note", "tags", "mood", "moods", "active", "code_upper",
         ]
-        assert tables["child"]["columns"] == [
-            {"name": "id", "type": "integer", "nullable": False, "default": None},
-            {"name": "parent_id", "type": "uuid", "nullable": False, "default": None},
-            {"name": "code", "type": "text", "nullable": False, "default": None},
-            {"name": "note", "type": "text", "nullable": True, "default": None},
-            {"name": "active", "type": "boolean", "nullable": False, "default": "false"},
-        ]
+        assert columns["id"]["identity"] == "ALWAYS" and columns["id"]["default"] is None
+        assert columns["note"]["comment"] == "free text" and columns["note"]["nullable"] is True
+        assert columns["tags"]["array"] is True and columns["tags"]["type"] == "text[]"
+        assert columns["tags"]["default"] == "'{}'::text[]"
+        # Schema-qualified regardless of the session search_path above.
+        assert columns["mood"]["type"] == "seam_probe.mood"
+        assert columns["mood"]["enum"] == "seam_probe.mood"
+        assert columns["mood"]["default"] == "'calm'::seam_probe.mood"
+        assert columns["moods"]["array"] is True and columns["moods"]["enum"] == "seam_probe.mood"
+        assert columns["code_upper"]["generated"] == "upper(code)"
+        assert columns["code_upper"]["default"] is None
 
-        # Constraints: kinds present, ordered by name (as the SQL pins).
-        child_constraints = tables["child"]["constraints"]
-        assert [c["name"] for c in child_constraints] == sorted(c["name"] for c in child_constraints)
-        assert {c["kind"] for c in child_constraints} == {"p", "f", "u"}
-        fk = next(c for c in child_constraints if c["kind"] == "f")
-        assert "FOREIGN KEY (parent_id) REFERENCES seam_probe.parent(id)" in fk["definition"]
+        fks = {fk["name"]: fk for fk in child["foreign_keys"]}
+        assert fks["child_parent_id_fkey"]["columns"] == ["parent_id"]
+        assert fks["child_parent_id_fkey"]["references"] == {
+            "schema": "seam_probe", "table": "parent", "columns": ["id"],
+        }
+        assert fks["child_parent_id_fkey"]["on_delete"] == "CASCADE"
+        assert fks["child_parent_id_fkey"]["on_update"] == "NO ACTION"
+        # A cross-schema reference is captured even though that schema is not catalogued.
+        assert fks["child_site_id_fkey"]["references"] == {
+            "schema": "structure_probe", "table": "site", "columns": ["id"],
+        }
+        assert "REFERENCES seam_probe.parent(id)" in fks["child_parent_id_fkey"]["definition"]
+        assert child["unique"] == [{"name": "child_code_key", "columns": ["code"], "definition": "UNIQUE (code)"}]
+        assert [check["name"] for check in child["checks"]] == ["child_code_shape"]
+        assert child["checks"][0]["columns"] == ["code"]
 
-        # Indexes: names only (definition text is PG-stable but we assert names,
-        # ordered), proving indexes are represented, structure-only.
-        idx_names = [i["name"] for i in tables["child"]["indexes"]]
-        assert idx_names == sorted(idx_names)
-        assert "child_pkey" in idx_names
+        indexes = {index["name"]: index for index in child["indexes"]}
+        assert indexes["child_active_idx"]["columns"] == ["parent_id"]
+        assert indexes["child_active_idx"]["include"] == ["code"]
+        assert indexes["child_active_idx"]["predicate"] == "active"
+        assert indexes["child_lower_idx"]["columns"] == ["lower(code)"]
+        assert indexes["child_code_key"]["unique"] is True
+        assert indexes["child_pkey"]["primary"] is True
+        assert [index["name"] for index in child["indexes"]] == sorted(indexes)
+
+        view = schema["views"]["active_children"]
+        assert view["kind"] == "view"
+        assert [column["name"] for column in view["columns"]] == ["id", "code"]
+        assert "WHERE" in view["definition"] and "active" in view["definition"]
     finally:
         cleanup = psycopg2.connect(dsn)
         try:
             cleanup.autocommit = True
             with cleanup.cursor() as cur:
-                cur.execute("DROP SCHEMA IF EXISTS seam_probe CASCADE;")
+                cur.execute("DROP SCHEMA IF EXISTS seam_probe CASCADE; DROP SCHEMA IF EXISTS structure_probe CASCADE;")
         finally:
             cleanup.close()
 
