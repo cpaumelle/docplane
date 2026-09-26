@@ -1,5 +1,9 @@
 name: fresh-instance
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 on:
   pull_request:
   push:
@@ -10,7 +14,7 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, charliehub]
     services:
       postgres:
         image: postgres:16-alpine
@@ -19,7 +23,7 @@ jobs:
           POSTGRES_USER: docs
           POSTGRES_PASSWORD: docs-test
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U docs -d docs"
           --health-interval 5s
@@ -27,7 +31,6 @@ jobs:
           --health-retries 20
     env:
       DB_HOST: localhost
-      DB_PORT: 5432
       DB_NAME: docs
       DB_USER: docs
       DB_PASS: docs-test
@@ -35,6 +38,8 @@ jobs:
       DOCPLANE_EVENT_CURSOR_SECRET: test-event-cursor-secret-123456789
     steps:
       - uses: actions/checkout@v4
+      - name: Bind PostgreSQL service port
+        run: echo "DB_PORT=${{ job.services.postgres.ports['5432'] }}" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -58,7 +63,7 @@ jobs:
         run: python docs-api/migrate.py apply --dir db/migrations
       - name: Assert clean schema
         run: |
-          psql "postgresql://docs:docs-test@localhost:5432/docs" -v ON_ERROR_STOP=1 <<'SQL'
+          docker exec -i "${{ job.services.postgres.id }}" psql -U docs -d docs -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           BEGIN
             IF to_regclass('docplane.workspace_memberships') IS NOT NULL THEN
@@ -78,7 +83,7 @@ jobs:
           SQL
       - name: Prove token-aware search uses trigram indexes
         run: |
-          PLAN=$(psql "postgresql://docs:docs-test@localhost:5432/docs" -v ON_ERROR_STOP=1 <<'SQL'
+          PLAN=$(docker exec -i "${{ job.services.postgres.id }}" psql -U docs -d docs -v ON_ERROR_STOP=1 <<'SQL'
           BEGIN;
           INSERT INTO docs.pages (path, title, nav_path, content, workspace_id, updated_by)
           SELECT
