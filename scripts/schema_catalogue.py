@@ -56,7 +56,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import psycopg2
 import psycopg2.extras
@@ -535,7 +535,11 @@ def publish_pages(
                 ("REPLACE_DOCUMENT", current["resource_id"], current["revision"], page)
             )
         else:
-            resource_id = str(uuid4())
+            # Deterministic per (transition, path): a retry of a partially
+            # completed transition must send a byte-identical change request,
+            # or its replayed idempotency key is refused and the scheduled
+            # generator wedges. A new transition yields a fresh identity.
+            resource_id = str(uuid5(NAMESPACE_URL, f"docplane-schema-catalogue:{identity}:{page['path']}"))
             page_ids[page["path"]] = resource_id
             operations.append(
                 ("CREATE_PAGE", None, None, {**page, "resource_id": resource_id})

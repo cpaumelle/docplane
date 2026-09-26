@@ -690,6 +690,19 @@ def test_schema_addition_preallocates_page_and_uses_in_place_exact_set():
     assert not any(path.endswith("/retire") or path.endswith("/handoff") for _, path, _, _ in calls)
 
 
+def test_retried_transition_sends_identical_create_requests():
+    """A crash after the change was created must not wedge the retry: the
+    pre-assigned identity of a new page is a function of the transition."""
+    fp = schema_catalogue.fingerprint(STRUCTURE)
+    pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
+    paths = sorted(page["path"] for page in pages)
+    status = {paths[-1]: "missing"}
+    _, _, first, _ = _publish_fixture(artifact=_artifact(paths[:-1]), page_status=status)
+    _, _, second, _ = _publish_fixture(artifact=_artifact(paths[:-1]), page_status=status)
+    requests = lambda calls: [(path, body, key) for method, path, body, key in calls if method == "POST"]
+    assert requests(first) == requests(second)
+
+
 def test_schema_removal_archives_inside_same_in_place_publication():
     fp = schema_catalogue.fingerprint(STRUCTURE)
     pages = schema_catalogue.render_pages("docplane", "DocPlane PostgreSQL", STRUCTURE, fp)
