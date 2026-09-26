@@ -1,18 +1,57 @@
 # Work-catalogue generator operator guide
 
-`scripts/work_catalogue.py` renders the published `work/` section — a
-browsable, read-only surface over live initiative state (queue board,
-Now/Roadmap/Blocked/Soaking/Parked pages, recently-completed with closure
-gates, one page per open initiative). It is the third instance of the
+`scripts/work_catalogue.py` renders one published page, `work/index.md` — a
+browsable, read-only catalogue over live initiative state: queue counts,
+Now/Roadmap/Blocked/Soaking/Parked sections, one anchored entry per open
+initiative, and recently-completed with closure gates. It is the third instance of the
 generated-artifact pattern, alongside the schema catalogue and the meter
 list, and follows the same contract: deterministic rendering, a source
 fingerprint over the rendered projection, UNCHANGED runs publish nothing
 and replay one NOMINAL `GENERATION` observation, changed runs publish one
 governed change and keep the artifact declaration in succession.
 
-The site is never a second write path: every generated page links back to
+The site is never a second write path: the generated page links back to
 the dashboard, and inbox captures appear as a **count only** — pre-triage
 thoughts are not documentation.
+
+## Many records, one page (projection contract 2)
+
+WORK records are the authority; the catalogue is a survey of them, not their
+history. Contract 2 (generator 2.0.0) replaced the page-per-initiative and
+per-queue pages of contract 1 with the single catalogue page, so creating an
+initiative never changes DocPlane page cardinality.
+
+- **Stable reference:** `work/index.md#<initiative_key>`. Each entry's heading
+  is the bare key, so the key is the anchor; queue sections are
+  `#now`, `#roadmap`, `#blocked`, `#soaking`, `#parked`, `#recently-completed`.
+- **Entry:** title, state, priority, the initiative UUID, target/review dates,
+  blocker, soak or park details, links, the objective, the activity count and
+  a one-line preview of the newest three activities.
+- **History:** read from WORK, never from a page — MCP `docplane_work_get`
+  with the entry's UUID (redacted bodies, paged with `activity_offset`), the
+  REST `GET /api/v1/initiatives/{id}?activity_bodies=redacted`, or the
+  dashboard.
+- **Previews** reduce recorded links to their text and drop code fences.
+  Stored activity bodies are never rewritten; they keep whatever paths they
+  cited when written. Links in objective, blocker and soak text that point at
+  a retired `initiatives/<key>.md` page render as the entry anchor.
+
+The contract 1 → 2 transition runs in three phases so no path breaks mid-cutover:
+
+- **A — establish.** Generator 2.0.0 ships with `LEGACY_COEXISTENCE = True`. Its
+  first run is an ordinary succession: the contract-2 declaration takes over the
+  exact contract-1 page set, replaces `work/index.md` with the catalogue, and
+  keeps rendering the board and per-initiative pages unchanged and current.
+  Nothing is archived beyond what contract 1 would itself have archived.
+- **B — move callers.** Authored links into `work/*` are repointed to
+  `work/index.md#…` anchors, which now exist, and re-swept.
+- **C — retire.** A follow-up release deletes `LEGACY_COEXISTENCE` and the
+  `_legacy_*` renderers and bumps the generator version. Its first run shrinks
+  the same declaration in place to `work/index.md` and archives every legacy
+  page in one governed change. There are no redirects.
+
+Coexistence is a code constant, not configuration: after phase C, normal
+operation is exactly one generated page.
 
 ## Required environment
 
@@ -39,9 +78,9 @@ Production installs `config/systemd/docplane-work-catalogue.{service,timer}`.
 The timer reconciles one minute after boot and one minute after each completed
 run, with a small randomized delay. This bounds normal generated-view lag
 without making the Work API a second writer for generated pages; steady-state
-ticks are cheap no-ops by fingerprint. Initiative
-pages for closed initiatives are archived automatically in the same change
-that stops rendering them.
+ticks are cheap no-ops by fingerprint. A closed
+initiative's entry leaves the catalogue in the next regeneration; the page set
+itself does not change.
 
 Install the units from the pull-only deployment checkout, after placing the
 named automation environment in `/etc/docplane/work-catalogue.env`:
@@ -77,11 +116,12 @@ the failure alert.
 
 ## What it owns
 
-- Pages under `work/` (`knowledge_class=REFERENCE`; the section lands in the
-  site's WORK nav group by path).
+- Exactly one page, `work/index.md` (`knowledge_class=REFERENCE`; it lands
+  in the site's WORK nav group by path).
 - One `SYSTEM` model card `docplane-work` as the artifact's source entity.
 - One artifact declaration `work-catalogue`, retired and redeclared under
-  the same key whenever the target page set or generator version moves.
+  the same key whenever the projection contract version moves; generator
+  version and target set are reconciled in place.
 
 ## Failure behaviour
 
