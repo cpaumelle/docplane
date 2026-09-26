@@ -245,3 +245,79 @@ def test_blank_key_is_not_treated_as_a_filter(monkeypatch):
     sql, params = cur.calls[0]
     assert "i.initiative_key = %s" not in sql
     assert "NOT IN ('COMPLETE', 'ABANDONED')" in sql
+
+
+# --- agent history read: activity_bodies=redacted ------------------------------
+
+# Synthetic secret-SHAPED value (non-secret example shape, as in
+# migration/tests/test_redaction.py).
+_TOKEN_SHAPED = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+_INITIATIVE = "9f3c1d52-4a7b-4c1e-9d88-2b6f0a1c7e34"
+
+
+class SequencedCursor:
+    """Returns one prepared result set per fetchall, in query order."""
+
+    def __init__(self, results: list[list[tuple]]):
+        self.results = list(results)
+        self.calls: list[tuple[str, list | tuple]] = []
+
+    def execute(self, query, params=None):
+        self.calls.append((" ".join(str(query).split()), params))
+
+    def fetchall(self):
+        return self.results.pop(0)
+
+
+def _get(monkeypatch, bodies: list, **kwargs):
+    activities = [
+        (f"a-{n}", "p-1", "NOTE", body, {"title": "free-form"}, f"2026-09-2{n}T00:00:00Z")
+        for n, body in enumerate(bodies)
+    ]
+    cur = SequencedCursor([activities, [], []])
+    monkeypatch.setattr(work_api, "get_conn", lambda: RecordingConnection(cur))
+    monkeypatch.setattr(work_api, "_load", lambda _conn, _id: {"initiative_id": _INITIATIVE})
+    from uuid import UUID
+    return work_api.get_initiative(UUID(_INITIATIVE), principal=None, **kwargs)
+
+
+def test_default_initiative_read_is_unchanged(monkeypatch):
+    out = _get(monkeypatch, [f"token {_TOKEN_SHAPED}"], activity_bodies="raw")
+    assert "activity_bodies" not in out
+    assert out["activities"][0]["body"] == f"token {_TOKEN_SHAPED}"
+    assert out["activities"][0]["metadata"] == {"title": "free-form"}
+    assert "body_withheld" not in out["activities"][0]
+
+
+def test_redacted_read_passes_every_body_through_canonical_redaction(monkeypatch):
+    out = _get(monkeypatch, ["plain history", f"token {_TOKEN_SHAPED}"], activity_bodies="redacted")
+    assert out["activity_bodies"] == "redacted"
+    first, second = out["activities"]
+    assert first["body"] == "plain history" and first["body_withheld"] is False
+    assert _TOKEN_SHAPED not in repr(out)
+    assert "<REDACTED:" in second["body"] and second["body_withheld"] is False
+    # free-form metadata predates receiver policy and is not part of this read
+    assert all("metadata" not in activity for activity in out["activities"])
+    # order and identity are preserved
+    assert [a["activity_id"] for a in out["activities"]] == ["a-0", "a-1"]
+
+
+def test_redacted_read_withholds_a_body_the_transform_refuses(monkeypatch):
+    def refuse(_source, **_kwargs):
+        raise work_api.DocumentRefusedError(())
+
+    monkeypatch.setattr(work_api, "redact", refuse)
+    out = _get(monkeypatch, [f"```\n{_TOKEN_SHAPED}\n```"], activity_bodies="redacted")
+    assert out["activities"][0]["body"] is None
+    assert out["activities"][0]["body_withheld"] is True
+    assert _TOKEN_SHAPED not in repr(out)
+
+
+def test_activity_bodies_parameter_is_closed_to_unknown_values():
+    from fastapi.testclient import TestClient
+    from app.agent_auth import require_contributor
+
+    app = _app()
+    app.dependency_overrides[require_contributor] = lambda: None
+    response = TestClient(app).get(f"/api/v1/initiatives/{_INITIATIVE}?activity_bodies=everything")
+    assert response.status_code == 422

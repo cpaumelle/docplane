@@ -55,7 +55,7 @@ from schema_catalogue import Client  # noqa: E402  (shared API client)
 from secret_source import read_secret  # noqa: E402  (SECRETS-V3 `_FILE` contract)
 
 GENERATOR_NAME = "docplane-invariant-register"
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"
 PROJECTION_CONTRACT_VERSION = 1
 SOURCE_SCHEMA_VERSION = 1
 DEFAULT_REGISTER_PATH = "control-plane/invariants/register.md"
@@ -77,13 +77,17 @@ ID_RE = re.compile(r"^I-[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+$")
 DOMAIN_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 PAGE_PATH_RE = re.compile(r"^[a-z0-9/_-]+\.md$")  # the deployed publication path contract
-RATIFICATION = ("PROPOSED", "RATIFIED", "SUPERSEDED")
+# UNRESOLVED is an evidence-preservation state, not a fourth ratification outcome:
+# the source does not establish whether the record is PROPOSED, RATIFIED or
+# SUPERSEDED. It requires `ratification_unresolved` (the reason) and renders as a
+# visible ratification gap, following the unresolved-owner pattern.
+RATIFICATION = ("PROPOSED", "RATIFIED", "SUPERSEDED", "UNRESOLVED")
 ENFORCEMENT = ("DOCTRINE_ONLY", "PARTIAL", "ENFORCED")
 CRITICALITY = ("NORMAL", "IMPORTANT", "OPERATIONAL_CRITICAL", "POLICY_REQUIRED")
 VERIFICATION = ("UNVERIFIED", "VERIFIED", "OUTDATED", "EXPIRED")
 
 REQUIRED = ("id", "title", "statement", "ratification", "enforcement", "criticality", "verification_state")
-OPTIONAL_STR = ("owner", "owner_unresolved", "verified_at", "verified_against", "review_due_at", "rationale",
+OPTIONAL_STR = ("owner", "owner_unresolved", "ratification_unresolved", "verified_at", "verified_against", "review_due_at", "rationale",
                 "established_at", "established_by", "origin", "specializes")
 OPTIONAL_LIST = ("must_be_true", "supersedes", "aliases", "enforced_by", "enforcement_refs")
 ALLOWED = set(REQUIRED) | set(OPTIONAL_STR) | set(OPTIONAL_LIST)
@@ -112,6 +116,10 @@ def has_enforcement_pointer(record: dict[str, Any]) -> bool:
 
 def ownership_gap(record: dict[str, Any]) -> bool:
     return bool(record.get("owner_unresolved"))
+
+
+def ratification_gap(record: dict[str, Any]) -> bool:
+    return record.get("ratification") == "UNRESOLVED"
 
 
 def demotion_candidate(record: dict[str, Any]) -> bool:
@@ -183,6 +191,11 @@ def validate_document(document: Any, filename: str) -> list[str]:
         # reason and stops the record inheriting the file-level owner.
         if "owner" in record and "owner_unresolved" in record:
             findings.append(f"{label}: owner and owner_unresolved are mutually exclusive")
+        # A ratification gap is recorded with its reason, never coerced into an outcome.
+        if record.get("ratification") == "UNRESOLVED" and not _is_str(record.get("ratification_unresolved")):
+            findings.append(f"{label}: ratification UNRESOLVED requires ratification_unresolved (the reason)")
+        if "ratification_unresolved" in record and record.get("ratification") != "UNRESOLVED":
+            findings.append(f"{label}: ratification_unresolved is only valid with ratification UNRESOLVED")
         if record.get("verification_state") == "VERIFIED":
             for key in ("verified_at", "verified_against"):
                 if not _is_str(record.get(key)):
@@ -269,7 +282,8 @@ def _record_section(record: dict[str, Any], document_owner: str, register_path: 
     if record.get("verified_against"):
         verification += f" · against {record['verified_against']}"
     facts = [
-        ("Ratification", record["ratification"]),
+        ("Ratification", f"**Unresolved** — {record['ratification_unresolved'].strip()}" if ratification_gap(record)
+                         else record["ratification"]),
         ("Enforcement", record["enforcement"]),
         ("Criticality", record["criticality"]),
         ("Verification", verification),
@@ -290,6 +304,9 @@ def _record_section(record: dict[str, Any], document_owner: str, register_path: 
             facts.append((label, ", ".join(record[key])))
     lines += ["| | |", "|---|---|"]
     lines += [f"| {label} | {value if label in ('Established by', 'Specializes') else _cell(str(value))} |" for label, value in facts]
+    if ratification_gap(record):
+        lines += ["", "> **Ratification gap** — the source does not establish whether this invariant is "
+                  "proposed, ratified or superseded. Do not cite it as a settled rule.", ""]
     if ownership_gap(record):
         lines += ["", "> **Ownership gap** — this invariant has no accountable owner yet.", ""]
     lines += ["", "**Statement.** " + _brace_safe(record["statement"].strip()), ""]
@@ -314,10 +331,11 @@ def render_register(domains: dict[str, dict[str, Any]], source_hash: str, regist
     records = list(iter_records(domains))
     flagged = sum(1 for _, record in records if demotion_candidate(record))
     gaps = sum(1 for _, record in records if ownership_gap(record))
+    unratified = sum(1 for _, record in records if ratification_gap(record))
     body = [
         "# Invariants register", "", *LIFECYCLE_LINES, "", stamp, "",
         f"{len(records)} invariants across {len(domains)} domains · {flagged} flagged for demotion · "
-        f"{gaps} with an unresolved owner. "
+        f"{gaps} with an unresolved owner · {unratified} with unresolved ratification. "
         "Each invariant is anchored by its lower-cased id (for example `#i-obs-liveness-1`).",
         "",
         "| Invariant | Domain | Title | Ratification | Enforcement |",
