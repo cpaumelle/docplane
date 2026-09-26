@@ -45,7 +45,7 @@ invariants:
   - id: I-EXAMPLE-1                 # i-<topic>-<n> convention; unique across ALL domain files
     title: One-line name
     statement: The normative statement.
-    ratification: RATIFIED          # PROPOSED | RATIFIED | SUPERSEDED
+    ratification: RATIFIED          # PROPOSED | RATIFIED | SUPERSEDED | UNRESOLVED (+ ratification_unresolved)
     enforcement: PARTIAL            # DOCTRINE_ONLY | PARTIAL | ENFORCED
     criticality: NORMAL             # NORMAL | IMPORTANT | OPERATIONAL_CRITICAL | POLICY_REQUIRED
     verification_state: UNVERIFIED  # UNVERIFIED | VERIFIED | OUTDATED | EXPIRED
@@ -60,6 +60,13 @@ Rules:
 - `PARTIAL` or `ENFORCED` requires at least one enforcement pointer.
 - `DOCTRINE_ONLY`, or no pointer at all, renders as a **demotion candidate**. SUPERSEDED records are history, not candidates.
 - `established_by` must resolve to a real page, active or archived, before anything is published. The generator fails closed otherwise.
+- A ratification gap is recorded, never guessed. `ratification: UNRESOLVED` means the source does
+  not establish whether the record is PROPOSED, RATIFIED or SUPERSEDED. It is an
+  evidence-preservation state, not a fourth outcome. It requires
+  `ratification_unresolved: <reason>`, renders as "Ratification: **Unresolved** — <reason>" with
+  a ratification-gap callout, and is counted in the register header. `ratification_unresolved`
+  is refused on any other ratification. It relaxes nothing else: `PARTIAL`/`ENFORCED` still
+  require an enforcement pointer.
 - An ownership gap is recorded, never guessed. `owner_unresolved: <reason>` stops the record inheriting the file-level owner. It renders as "Owner: **Unresolved**" with an ownership-gap callout and is counted in the register header. It cannot be combined with `owner`.
 
 `--validate-only` checks the source with no API access. The source repository runs its own
