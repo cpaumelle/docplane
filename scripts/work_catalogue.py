@@ -65,7 +65,7 @@ from schema_catalogue import Client  # noqa: E402  (shared API client)
 import schema_catalogue as sc  # noqa: E402
 
 GENERATOR_NAME = "work-catalogue"
-GENERATOR_VERSION = "2.0.0"
+GENERATOR_VERSION = "2.1.0"
 # 2: one catalogue page (work/index.md) with an anchored entry per open
 # initiative and a bounded recent-activity tail, replacing page-per-initiative
 # and per-queue pages. Full history is read from WORK (docplane_work_get).
@@ -91,15 +91,6 @@ _COMPLETED_LIMIT = 20
 _ACTIVITY_TAIL = 3
 _ACTIVITY_PREVIEW_CHARS = 280
 PAGE_PATH = "work/index.md"
-# MIGRATION COEXISTENCE (phase A of the contract 1 -> 2 cutover). While True, the
-# contract-2 declaration also renders and owns the contract-1 board and
-# per-initiative pages, unchanged and current, so every existing path keeps
-# working while authored callers are repointed to work/index.md anchors (phase
-# B). Phase C is the follow-up release that deletes this constant and the
-# _legacy_* renderers: the target set shrinks to PAGE_PATH and the ordinary
-# stale-path archive retires the legacy pages in one governed change. Not a
-# configuration switch: normal operation is exactly one generated page.
-LEGACY_COEXISTENCE = True
 
 
 def _key(fingerprint: str, verb: str, discriminator: str = "") -> str:
@@ -210,12 +201,7 @@ def _projection(state: dict[str, Any]) -> dict[str, Any]:
                 for link in detail.get("links", [])
             ],
         })
-        if LEGACY_COEXISTENCE:
-            rows[-1]["legacy_activities"] = [
-                {"type": activity.get("activity_type"), "body": activity.get("body"),
-                 "at": str(activity.get("created_at") or "")}
-                for activity in activities
-            ]
+
     return {"wip_limit": state["wip_limit"], "inbox_count": state["inbox_count"], "initiatives": rows}
 
 
@@ -488,138 +474,8 @@ def _catalogue_page(projection: dict[str, Any], fp: str) -> dict[str, str]:
     }
 
 
-# --- contract-1 pages, rendered only during migration coexistence ------------
-# Verbatim from generator 1.0.1 (full activity bodies). Deleted in phase C.
-
-def _legacy_row_line(row: dict[str, Any]) -> str:
-    extras = []
-    if row.get("target_date"):
-        extras.append(f"target {row['target_date'][:10]}")
-    if row.get("review_due_at"):
-        extras.append(f"review {row['review_due_at'][:10]}")
-    meta = f" · {' · '.join(extras)}" if extras else ""
-    objective = (row.get("objective") or "").strip().splitlines()[0] if row.get("objective") else ""
-    return (
-        f"| [{row['key']}](initiatives/{row['key']}.md) | {row['title']} | "
-        f"{row['priority']} | {objective}{meta} |"
-    )
-
-
-def _legacy_queue_page(projection: dict[str, Any], work_state: str, fp: str) -> dict[str, str]:
-    slug, label, blurb = _QUEUE_PAGES[work_state]
-    rows = _by_state(projection, work_state)
-    lines = [f"# {label}", "", blurb, ""]
-    if work_state == "ACTIVE" and projection.get("wip_limit"):
-        lines += [f"WIP limit: **{len(rows)}/{projection['wip_limit']}**.", ""]
-    if rows:
-        lines += ["| Initiative | Title | Priority | Objective |", "|---|---|---|---|"]
-        lines += [_legacy_row_line(row) for row in rows]
-    else:
-        lines += ["Nothing here right now."]
-    if work_state == "BLOCKED":
-        for row in rows:
-            if row.get("blocker_summary"):
-                lines += ["", f"**{row['key']}** is blocked on: {row['blocker_summary']}"]
-    if work_state == "SOAKING":
-        for row in rows:
-            soak = row["soak"]
-            lines += ["", f"## {row['key']}", ""]
-            if soak.get("soak_started_at"):
-                lines += [f"- Soaking since {soak['soak_started_at'][:10]}, review {str(soak.get('soak_review_at') or '')[:10]}"]
-            if soak.get("soak_monitoring_ref"):
-                lines += [f"- Watched by: `{soak['soak_monitoring_ref']}`"]
-            if soak.get("soak_success_criteria"):
-                lines += [f"- Success: {soak['soak_success_criteria']}"]
-            if soak.get("soak_failure_conditions"):
-                lines += [f"- Failure: {soak['soak_failure_conditions']}"]
-    if work_state == "PARKED":
-        for row in rows:
-            parked = row["parked"]
-            note = parked.get("reason") or ""
-            when = "indefinitely" if parked.get("indefinitely") else f"review {str(parked.get('review_at') or '')[:10]}"
-            lines += ["", f"**{row['key']}** — parked ({when}){': ' + note if note else ''}"]
-    return {
-        "path": f"work/{slug}.md",
-        "title": label,
-        "nav_path": f"Work/{label}",
-        "content": "\n".join(lines + _footer(fp)),
-    }
-
-
-def _legacy_completed_page(projection: dict[str, Any], fp: str) -> dict[str, str]:
-    rows = sorted(
-        (row for row in projection["initiatives"] if row["state"] == "COMPLETE"),
-        key=lambda row: str(row.get("completed_at") or ""),
-        reverse=True,
-    )[:_COMPLETED_LIMIT]
-    lines = ["# Recently completed", ""]
-    if rows:
-        lines += ["| Initiative | Title | Completed | know / model / observe |", "|---|---|---|---|"]
-        for row in rows:
-            dispositions = row["dispositions"]
-            gate = " / ".join(str(dispositions.get(domain) or "—") for domain in ("know", "model", "observe"))
-            lines += [f"| {row['key']} | {row['title']} | {str(row.get('completed_at') or '')[:10]} | {gate} |"]
-        lines += ["", "The three-column gate shows each closure disposition — a `DEFERRED` is a visible gap, not a pass."]
-    else:
-        lines += ["Nothing completed yet."]
-    return {
-        "path": f"work/recently-completed.md",
-        "title": "Recently completed",
-        "nav_path": "Work/Recently completed",
-        "content": "\n".join(lines + _footer(fp)),
-    }
-
-
-def _legacy_initiative_page(row: dict[str, Any], fp: str) -> dict[str, str]:
-    lines = [
-        f"# {row['title']}",
-        "",
-        f"**{row['key']}** · {row['state']} · priority {row['priority']}",
-        "",
-        row.get("objective") or "",
-    ]
-    if row.get("blocker_summary"):
-        lines += ["", f"**Blocked on:** {row['blocker_summary']}"]
-    soak = row.get("soak") or {}
-    if row["state"] == "SOAKING" and soak.get("soak_success_criteria"):
-        lines += ["", "## Soak", "", f"- Success: {soak['soak_success_criteria']}"]
-        if soak.get("soak_failure_conditions"):
-            lines += [f"- Failure: {soak['soak_failure_conditions']}"]
-        if soak.get("soak_monitoring_ref"):
-            lines += [f"- Watched by: `{soak['soak_monitoring_ref']}`"]
-    if row.get("legacy_activities"):
-        lines += ["", "## Activity", ""]
-        lines += [f"- {activity['at'][:10]} · {activity['type']}: {activity['body']}" for activity in row["legacy_activities"]]
-    if row.get("links"):
-        lines += ["", "## Linked", ""]
-        lines += [f"- {link['relation']} → {link['resource_type']} `{link['resource_id']}`" for link in row["links"]]
-    return {
-        "path": f"work/initiatives/{row['key']}.md",
-        "title": row["title"],
-        "nav_path": f"Work/Initiatives/{row['title']}",
-        "content": "\n".join(lines + _footer(fp)),
-    }
-
-
-def _legacy_paths(state: dict[str, Any]) -> list[str]:
-    return [
-        *(f"work/{slug}.md" for slug, _title, _description in _QUEUE_PAGES.values()),
-        "work/recently-completed.md",
-        *(f"work/initiatives/{initiative['initiative_key']}.md"
-          for initiative in state["initiatives"]
-          if initiative.get("work_state") in _QUEUE_STATES),
-    ]
-
-
 def _render_pages_unredacted(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
-    projection = _projection(state)
-    pages = [_catalogue_page(projection, fp)]
-    if LEGACY_COEXISTENCE:
-        pages += [_legacy_queue_page(projection, work_state, fp) for work_state in _QUEUE_STATES]
-        pages += [_legacy_completed_page(projection, fp)]
-        pages += [_legacy_initiative_page(row, fp) for row in projection["initiatives"]
-                  if row["state"] in _QUEUE_STATES]
-    return pages
+    return [_catalogue_page(_projection(state), fp)]
 
 
 def render_pages(state: dict[str, Any], fp: str) -> list[dict[str, str]]:
@@ -634,11 +490,8 @@ def desired_page_paths(state: dict[str, Any]) -> list[str]:
     """Return the deterministic target set without rendering page content.
 
     Contract 2 owns exactly one page, independent of how many initiatives are
-    open: initiative creation never changes DocPlane page cardinality. During
-    migration coexistence it also owns the contract-1 paths.
+    open: initiative creation never changes DocPlane page cardinality.
     """
-    if LEGACY_COEXISTENCE:
-        return sorted([PAGE_PATH, *_legacy_paths(state)])
     return [PAGE_PATH]
 
 

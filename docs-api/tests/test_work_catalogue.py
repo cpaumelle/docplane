@@ -78,12 +78,6 @@ def test_inbox_captures_surface_as_count_only():
     )
 
 
-@pytest.fixture
-def steady_state(monkeypatch):
-    """Contract 2 after phase C: no migration coexistence."""
-    monkeypatch.setattr(work_catalogue, "LEGACY_COEXISTENCE", False)
-
-
 def _page(state):
     pages = {page["path"]: page for page in work_catalogue.render_pages(state, work_catalogue.fingerprint(state))}
     return pages["work/index.md"]["content"]
@@ -129,7 +123,7 @@ def test_one_catalogue_page_renders_every_queue_and_ranks_by_priority():
     assert "docplane_work_get" in content
 
 
-def test_page_cardinality_is_independent_of_initiative_count(steady_state):
+def test_page_cardinality_is_independent_of_initiative_count():
     many = [
         _initiative(initiative_id=f"00000000-0000-0000-0000-{n:012d}", initiative_key=f"i-{n}",
                     title=f"I {n}", work_state=("ACTIVE", "BACKLOG", "BLOCKED", "SOAKING", "PARKED")[n % 5])
@@ -189,7 +183,7 @@ def test_completed_initiatives_show_closure_gate_and_get_no_entry():
     assert "### shipped" not in content
 
 
-def test_abandoned_initiative_leaves_the_catalogue_without_changing_the_page_set(steady_state):
+def test_abandoned_initiative_leaves_the_catalogue_without_changing_the_page_set():
     active = _initiative(initiative_key="retired-plan", title="Retired plan", work_state="ACTIVE")
     before = _state([active])
     assert "### retired-plan" in _page(before)
@@ -248,49 +242,14 @@ def _run_publication(monkeypatch, state, artifact):
     return change["generated_ownership_plan"], archived, replaced
 
 
-def test_phase_a_succeeds_contract_1_and_keeps_every_legacy_path_live(monkeypatch, capsys):
-    """Phase A: the contract-2 declaration takes over the contract-1 page set
-    and keeps rendering it, so no existing path breaks while callers move.
-    Only a page contract 1 would itself have archived (a closed initiative)
-    is archived."""
-    assert work_catalogue.LEGACY_COEXISTENCE is True
-    state = _state([_initiative(work_state="ACTIVE")])
-    plan, archived, replaced = _run_publication(monkeypatch, state, {
-        "artifact_id": "artifact-v1", "generator_version": "1.0.1", "projection_contract_version": 1,
-        "source_entity_id": "source-entity", "redaction_policy": "canonical",
-        "target_page_paths": _CONTRACT_1_PATHS, "version": 4,
-    })
-    live = [path for path in _CONTRACT_1_PATHS if path != "work/initiatives/closed-meanwhile.md"]
-    assert plan["mode"] == "SUCCESSOR" and plan["predecessor_id"] == "artifact-v1"
-    assert plan["successor"]["projection_contract_version"] == 2
-    assert plan["target_page_paths"] == live
-    assert archived == ["work/initiatives/closed-meanwhile.md"]
-    assert replaced == live
-    assert "archived 1 stale path(s)" in capsys.readouterr().out
-
-
-def test_legacy_pages_during_coexistence_are_the_contract_1_rendering():
-    initiative = _initiative(work_state="ACTIVE")
-    activities = [{"activity_type": "NOTE", "body": f"full body {n}", "created_at": "2026-09-01T00:00:00Z"}
-                  for n in range(5)]
-    state = _state([initiative], details={initiative["initiative_id"]: {"activities": activities, "links": []}})
-    pages = {p["path"]: p["content"] for p in work_catalogue.render_pages(state, work_catalogue.fingerprint(state))}
-    legacy = pages["work/initiatives/example-upgrade.md"]
-    # the full history, as contract 1 rendered it — nothing a reader relied on disappears early
-    assert all(f"full body {n}" in legacy for n in range(5))
-    assert "(initiatives/example-upgrade.md)" in pages["work/now.md"]
-    # while the catalogue carries only the bounded preview
-    assert "full body 0" not in pages["work/index.md"] and "full body 4" in pages["work/index.md"]
-
-
 def test_phase_c_retires_every_legacy_page_in_one_change(monkeypatch, capsys):
-    """Phase C (coexistence removed): the same contract-2 declaration shrinks
-    to work/index.md in place and archives every legacy page it owned."""
-    monkeypatch.setattr(work_catalogue, "LEGACY_COEXISTENCE", False)
+    """Phase C: the contract-2 declaration that owned the coexistence set
+    (index + legacy pages) shrinks in place to work/index.md and archives every
+    legacy page in one change."""
     state = _state([_initiative(work_state="ACTIVE")])
     coexisting = [path for path in _CONTRACT_1_PATHS if path != "work/initiatives/closed-meanwhile.md"]
     plan, archived, replaced = _run_publication(monkeypatch, state, {
-        "artifact_id": "artifact-v2", "generator_version": work_catalogue.GENERATOR_VERSION,
+        "artifact_id": "artifact-v2", "generator_version": "2.0.0",
         "projection_contract_version": work_catalogue.PROJECTION_CONTRACT_VERSION,
         "source_entity_id": "source-entity", "redaction_policy": "canonical",
         "target_page_paths": coexisting, "version": 2,
