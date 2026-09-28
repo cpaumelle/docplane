@@ -331,6 +331,7 @@ def discovery() -> dict[str, Any]:
         "surfaces": {
             "self_issue": "/api/v1/auth/self-issue" if acquisition["self_service"] else None,
             "pages": "/api/v1/pages",
+            "redirects": "/api/v1/redirects",
             "search": "/api/v1/search",
             "resolve": "/api/v1/resolve",
             "changes": "/api/v1/changes",
@@ -404,6 +405,45 @@ def list_pages(
         rows = cur.fetchall()
     pages = [_page_dict(row) for row in rows]
     return {"pages": pages, "count": len(pages), "total": total, "limit": limit}
+
+
+# The docs.redirects path contract (CHECK constraint and the ADD/REMOVE_REDIRECT payload schema).
+REDIRECT_PATH_PATTERN = r"^[a-z0-9/_-]+\.md$"
+
+
+@router.get("/api/v1/redirects")
+def list_redirects(
+    to_path: str | None = Query(default=None, pattern=REDIRECT_PATH_PATTERN),
+    limit: int = Query(default=500, ge=1, le=2000),
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Read-only view of the authored redirects (docs.redirects), one row per source path.
+
+    Tooling that must know which redirects exist, or which ones target a page before it is
+    archived or moved, reads them here instead of from the database. Mutation stays with
+    the ADD_REDIRECT / REMOVE_REDIRECT change operations. `to_path` filters to the redirects
+    whose immediate target is that page; chains are not followed. `total` is the full match
+    count, so a caller can tell a truncated page from a complete one."""
+    del principal
+    where, params = ("", [])
+    if to_path is not None:
+        where, params = " WHERE to_path = %s", [to_path]
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM docs.redirects" + where, params)
+        total = int(cur.fetchone()[0])
+        cur.execute(
+            "SELECT from_path, to_path, revision, version, updated_at FROM docs.redirects"
+            + where + " ORDER BY from_path LIMIT %s",
+            [*params, limit],
+        )
+        rows = cur.fetchall()
+    redirects = [
+        {"from_path": r[0], "to_path": r[1], "revision": r[2], "version": int(r[3]),
+         "updated_at": r[4].isoformat() if r[4] is not None else None}
+        for r in rows
+    ]
+    return {"redirects": redirects, "count": len(redirects), "total": total, "limit": limit}
 
 
 def search_snippet(content: str, query: str, radius: int = 180) -> str:
