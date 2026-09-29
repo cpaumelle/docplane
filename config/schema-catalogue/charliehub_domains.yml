@@ -37,6 +37,16 @@ schemas:
       reason: >-
         ccm_security.* was hand-applied alongside ccm.* with no genesis
         migrations; this page shows the deployed structure only.
+  mail:
+    description: >-
+      Mail API send-audit state. Single writer: the Mail API (POST /api/mail/send);
+      services never write mail.* directly nor send SMTP to Postfix. mail.events is the
+      outbound-email send/rate-limit audit history. Authority: architecture-map subsystem
+      mail-api (no dedicated service page yet).
+    canonical:
+      status: NOT_YET_COMPARED
+      reason: >-
+        Migration provenance not yet traced; this page shows deployed structure only.
   transit:
     description: >-
       Transit Manager desired state: WireGuard topology, edge nodes, execution
