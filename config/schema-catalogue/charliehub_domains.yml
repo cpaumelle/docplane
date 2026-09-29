@@ -96,9 +96,34 @@ schemas:
         control-plane tables, so no clean migration build can reproduce this
         schema. This page shows the deployed structure only.
     viewpoints:
-      - name: LAN Watcher observed addressing
+      - name: Domain and ingress management
         description: >-
-          LAN Watcher observed LAN addressing and its derived read model. LAN
-          Watcher is the only writer; DDL and column semantics are owned by
-          network/fabric-v2/lan-schema.md.
-        tables: [devices, ip_assignments, lan_hosts, lan_heartbeats, network_actions_log, device_icons, network_devices, infrastructure_assets, lan_hosts_legacy]
+          Domain Manager routing/DNS/TLS intent and its cleanup queues. Authority
+          and write path: infrastructure/domain-manager.md.
+        tables: [domains, dns_cleanup_pending, cert_cleanup_jobs, localhost_services]
+      - name: LAN observation and identity
+        description: >-
+          LAN Watcher observed LAN addressing, device identity, icons and network
+          events. Only writer: LAN Watcher; semantics in
+          network/fabric-v2/lan-watcher.md. The lan_hosts read model is in Views.
+        tables: [devices, ip_assignments, lan_events, lan_heartbeats, network_devices, network_actions_log, device_icons, lan_hosts_legacy]
+      - name: CCM-LAN desired state and convergence
+        description: >-
+          CCM-LAN managed DHCP scopes, reservations and realization/convergence
+          records. Authority: services/ccm-lan.md.
+        tables: [ccm_lan_scopes, ccm_lan_reservations, ccm_lan_realization_sets, ccm_lan_realization_set_members, ccm_lan_scope_convergence]
+      - name: Infrastructure inventory and virtualization
+        description: >-
+          Reconciled Proxmox node/VM/CT inventory and virtualization records.
+          Membership authority: LAN Watcher (network/fabric-v2/lan-watcher.md).
+        tables: [infrastructure_assets, infrastructure_asset_audit, nodes, server_virtualization_domains, vm_templates]
+      - name: Identity and Authelia integration
+        description: >-
+          Authelia session-realm intent projected to the session-cookie config.
+          Authority: services/authelia.md.
+        tables: [authelia_realms, migration_053_realm_redirect_state]
+      - name: Shared governance and audit
+        description: >-
+          Cross-subsystem governance, deploy evidence and the migration ledger
+          shared across control-plane services.
+        tables: [governance_audit, deploy_log, schema_migrations]

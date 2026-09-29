@@ -149,9 +149,16 @@ def test_pilot_configuration_states_d3_exactly():
     public = config["schemas"]["public"]["canonical"]
     assert public["status"] == "NOT_AVAILABLE" and "single migration source" in public["reason"]
     public_viewpoints = config["schemas"]["public"]["viewpoints"]
-    assert [vp["name"] for vp in public_viewpoints] == ["LAN Watcher observed addressing"]
+    assert [vp["name"] for vp in public_viewpoints] == [
+        "Domain and ingress management",
+        "LAN observation and identity",
+        "CCM-LAN desired state and convergence",
+        "Infrastructure inventory and virtualization",
+        "Identity and Authelia integration",
+        "Shared governance and audit",
+    ]
     assert all(viewpoint["tables"] for viewpoint in public_viewpoints)
-    assert "devices" in public_viewpoints[0]["tables"] and "lan_hosts" in public_viewpoints[0]["tables"]
+    assert "devices" in public_viewpoints[1]["tables"]
 
 
 def test_configuration_is_validated_fail_closed(tmp_path):
