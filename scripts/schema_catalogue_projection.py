@@ -86,6 +86,7 @@ def load_config(path: Path | None) -> dict[str, Any]:
                 }
             )
         normalised[str(schema)] = {
+            "title": str(spec.get("title", "")).strip() or None,
             "description": str(spec.get("description", "")).strip() or None,
             "canonical": {
                 "status": status,
@@ -108,6 +109,7 @@ def config_hash(config: dict[str, Any], static_provenance: dict[str, Any]) -> st
 
 def schema_config(config: dict[str, Any], schema: str) -> dict[str, Any]:
     return config["schemas"].get(schema) or {
+        "title": None,
         "description": None,
         "canonical": {"status": "NOT_YET_COMPARED", "reason": None, "source": None},
         "viewpoints": [],
@@ -504,11 +506,17 @@ def render_pages(
         spec = schema_config(config, schema)
         body = structure[schema]
         canonical = spec["canonical"]
+        title = spec.get("title")
+        label_md = title or f"`{schema}`"
+        label_plain = title or schema
         inventory.append(
-            f"| [`{schema}`]({schema}.md) | {len(body['tables'])} | {len(body['views'])} | "
+            f"| [{label_md}]({schema}.md) | {len(body['tables'])} | {len(body['views'])} | "
             f"{len(body['enums'])} | deployed introspection | {canonical['status'].replace('_', ' ').lower()} |"
         )
-        lines = [f"# {db_display} — `{schema}`", "", *lifecycle_lines, "", stamp, ""]
+        lines = [f"# {db_display} — {label_md}", ""]
+        if title:
+            lines += [f"*Physical PostgreSQL schema: `{schema}`.*", ""]
+        lines += [*lifecycle_lines, "", stamp, ""]
         if spec["description"]:
             lines += [spec["description"], ""]
         if body["comment"]:
@@ -577,8 +585,8 @@ def render_pages(
         pages.append(
             {
                 "path": f"{section}/{db_key}/{schema}.md",
-                "title": f"{db_display} — {schema}",
-                "nav_path": f"Model / Schema catalogue / {db_display} / {schema}",
+                "title": f"{db_display} — {label_plain}",
+                "nav_path": f"Model / Schema catalogue / {db_display} / {label_plain}",
                 "content": "\n".join(lines).rstrip() + "\n",
             }
         )

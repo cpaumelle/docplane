@@ -149,9 +149,16 @@ def test_pilot_configuration_states_d3_exactly():
     public = config["schemas"]["public"]["canonical"]
     assert public["status"] == "NOT_AVAILABLE" and "single migration source" in public["reason"]
     public_viewpoints = config["schemas"]["public"]["viewpoints"]
-    assert [vp["name"] for vp in public_viewpoints] == ["LAN Watcher observed addressing"]
+    assert [vp["name"] for vp in public_viewpoints] == [
+        "Domain and ingress management",
+        "LAN observation and identity",
+        "CCM-LAN desired state and convergence",
+        "Infrastructure inventory and virtualization",
+        "Identity and Authelia integration",
+        "Shared governance and audit",
+    ]
     assert all(viewpoint["tables"] for viewpoint in public_viewpoints)
-    assert "devices" in public_viewpoints[0]["tables"] and "lan_hosts" in public_viewpoints[0]["tables"]
+    assert "devices" in public_viewpoints[1]["tables"]
 
 
 def test_configuration_is_validated_fail_closed(tmp_path):
@@ -179,3 +186,29 @@ def test_projection_document_carries_the_fingerprinted_structure_verbatim():
     assert schema_catalogue.fingerprint(document["schemas"]) == document["source_fingerprint"] == fp
     assert len(document["relations"]) == 3
     schema_catalogue.guard_projection(document, {"environment": "test"})  # clean input passes
+
+
+def test_schema_title_override_sets_human_label_keeps_physical_name():
+    cfg = {"schemas": {"ccm": {
+        "title": "CCM Edge",
+        "description": None,
+        "canonical": {"status": "NOT_YET_COMPARED", "reason": None, "source": None},
+        "viewpoints": [],
+    }}}
+    pages = _render(cfg)
+    overview = pages[0]["content"]
+    ccm = next(p for p in pages if p["path"].endswith("/ccm.md"))
+    transit = next(p for p in pages if p["path"].endswith("/transit.md"))
+    # human-facing title overrides the heading, page title and nav label
+    assert ccm["content"].startswith("# Pilot DB — CCM Edge\n")
+    assert ccm["title"] == "Pilot DB — CCM Edge"
+    assert ccm["nav_path"] == "Model / Schema catalogue / Pilot DB / CCM Edge"
+    # physical schema name stays visible
+    assert "*Physical PostgreSQL schema: `ccm`.*" in ccm["content"]
+    # overview links the human label to the physical page file
+    assert "[CCM Edge](ccm.md)" in overview
+    # a schema with no override is unchanged (physical name in backticks, no physical-line)
+    assert transit["content"].startswith("# Pilot DB — `transit`\n")
+    assert transit["title"] == "Pilot DB — transit"
+    assert transit["nav_path"] == "Model / Schema catalogue / Pilot DB / transit"
+    assert "*Physical PostgreSQL schema:" not in transit["content"]
