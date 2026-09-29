@@ -71,6 +71,7 @@ schemas:
         description: Guest VPN tenancy (10.88) and contractor mediated access (10.90) through gateways, declared services and grants.
         tables: [peers, vpn_users, vpn_peer_ownership, vpn_invites, vpn_sites, vpn_peer_traffic_accumulator, share_tokens, gateway_peer_bindings, access_gateways, declared_services, service_endpoints, access_grants, contractor_identities, contractor_identity_events]
   public:
+    title: Shared Control Plane
     description: >-
       Shared default schema of the charliehub_domains cluster. It has no single
       writer: it holds LAN Watcher observed-addressing tables (devices,
