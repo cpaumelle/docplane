@@ -146,6 +146,12 @@ def test_pilot_configuration_states_d3_exactly():
     assert ccm["status"] == "NOT_AVAILABLE" and "genesis" in ccm["reason"]
     assert transit["status"] == "NOT_YET_COMPARED" and "migrate_schema.py" in transit["source"]
     assert all(viewpoint["tables"] for viewpoint in config["schemas"]["transit"]["viewpoints"])
+    public = config["schemas"]["public"]["canonical"]
+    assert public["status"] == "NOT_AVAILABLE" and "single migration source" in public["reason"]
+    public_viewpoints = config["schemas"]["public"]["viewpoints"]
+    assert [vp["name"] for vp in public_viewpoints] == ["LAN Watcher observed addressing"]
+    assert all(viewpoint["tables"] for viewpoint in public_viewpoints)
+    assert "devices" in public_viewpoints[0]["tables"] and "lan_hosts" in public_viewpoints[0]["tables"]
 
 
 def test_configuration_is_validated_fail_closed(tmp_path):

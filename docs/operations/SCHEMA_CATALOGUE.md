@@ -258,3 +258,49 @@ applies: deploy code and migration 018; provision the source role and
 protected environment; run one attended generation canary and one attended
 observer canary; update the artifact execution contract to generation trigger
 `SCHEDULED`; install the units inert; enable separately; soak.
+
+## Adding a schema to an existing database
+
+Not every service that owns tables is a new database. A service may live in a
+schema of a database the catalogue already sources. LAN Watcher is the worked
+example: it connects to the existing `charliehub_domains` cluster
+(`DB_NAME=charliehub_domains`, role `lan_watcher`, host `charliehub-postgres`)
+and creates its tables in the shared `public` schema, not a database or schema
+of its own. Onboarding it is therefore adding the `public` schema to the
+existing `charliehub_domains` catalogue, not registering an additional database.
+
+Because the catalogue introspects whole schemas only, adding `public` catalogues
+**every** object in it — LAN Watcher's `devices`, `ip_assignments`, the
+`lan_hosts` view, `lan_heartbeats`, `network_actions_log`, `device_icons`,
+`network_devices`, `infrastructure_assets` and `lan_hosts_legacy`, but also the
+CCM-LAN `ccm_lan_*` tables, the Domain Manager `domains` table and hand-applied
+control-plane tables (`authelia_realms`, `nodes`, `deploy_log`,
+`governance_audit`, and others). There is no table filter and viewpoints only
+group tables for readers; they never restrict introspection. The schema
+description must therefore state that `public` has no single writer, and its
+`canonical.status` is `NOT_AVAILABLE` because no single migration source
+reproduces a multi-service schema.
+
+Two changes are required, in separate governed gates:
+
+1. **Presentation (this PR, config only).** Add a `public:` entry to
+   `config/schema-catalogue/charliehub_domains.yml` with its description, the
+   `NOT_AVAILABLE` canonical status and a viewpoint grouping LAN Watcher's own
+   tables under `network/fabric-v2/lan-watcher.md` as the authority. This adds no
+   structure and cannot introspect anything on its own.
+2. **Introspection (separate, not in this PR).** Add `public` to
+   `CATALOGUE_SCHEMAS` in the protected generator environment
+   `/etc/charliehub/docplane-schema-catalogue.env`
+   (`CATALOGUE_SCHEMAS=ccm,transit,public`) and the matching observer
+   environment. This is a change to a deployed protected file and is gated by
+   the same governed rollout as the pilot (attended canary, then soak). The
+   existing `charliehub_domains` source role already reaches the database; the
+   catalogue reads `public` under projection contract 2 with **no** table grants
+   and needs only `USAGE ON SCHEMA public` if `public` usage has been revoked
+   from `PUBLIC` (verify at the gate — by default `PUBLIC` holds `USAGE` on
+   `public`, so no new grant is typically required). Never grant the source role
+   any table privilege, and never reuse an application role.
+
+Once `public` is introspected, the generated pages are
+`model/schema-catalogue/charliehub_domains/public.md` (plus the refreshed
+`model/schema-catalogue/charliehub_domains/index.md` overview).
