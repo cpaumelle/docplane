@@ -18,7 +18,7 @@ schemas:
     description: >-
       CCM-Edge desired and realization state for managed edges. Single writer:
       the Domain Manager CCM-Edge API (/api/ccm/edge/*); see services/ccm-edge.md
-      and control-plane/data-models/ccm.md for authority and semantics.
+      and control-plane/foundational/ccm.md for authority and semantics.
     canonical:
       status: NOT_AVAILABLE
       reason: >-
@@ -26,6 +26,17 @@ schemas:
         runbook, Known gaps). Only later domain-manager migrations (047 onward)
         alter it, so no clean migration build can reproduce it. This page shows
         the deployed structure only.
+  ccm_security:
+    description: >-
+      CCM-Security edge SSH-defence desired state and derived projections,
+      rendered by the Domain Manager CCM-Security renderer. No verified CRUD
+      API: desired-state mutation is blocked pending a ratified sole writer;
+      see services/ccm-security.md for authority and semantics.
+    canonical:
+      status: NOT_AVAILABLE
+      reason: >-
+        ccm_security.* was hand-applied alongside ccm.* with no genesis
+        migrations; this page shows the deployed structure only.
   transit:
     description: >-
       Transit Manager desired state: WireGuard topology, edge nodes, execution
