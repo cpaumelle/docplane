@@ -1,0 +1,81 @@
+# Presentation configuration for the Trevarn PostgreSQL schema catalogue.
+#
+# Authority: schema and object structure comes only from live projection-contract
+# 2 introspection. This file supplies human descriptions and the known migration
+# source; it does not create or filter database structure.
+
+schemas:
+  platform:
+    description: >-
+      Trevarn's shared identity and tenant platform: users, memberships,
+      API keys, tenant and device/gateway registries, allocation, settings,
+      audit and platform administration. See services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      reason: >-
+        A canonical build source exists in the ordered Trevarn baseline. It has
+        not yet been compared with the deployed schema.
+  ingest:
+    description: >-
+      Trevarn's ingestion layer: raw uplinks, LNS events, gateway reception,
+      durable ingest spool and receipts. See services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      reason: >-
+        A canonical build source exists in the ordered Trevarn baseline. It has
+        not yet been compared with the deployed schema.
+  occupancy:
+    description: >-
+      Trevarn occupancy and people-counter events, aggregates, device and
+      gateway twinning, locations, installation plans and reports. See
+      services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      reason: >-
+        A canonical build source exists in the ordered Trevarn baseline. It has
+        not yet been compared with the deployed schema.
+  analytics:
+    description: >-
+      Trevarn reporting projections consumed by analytics interfaces and
+      report APIs. See services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      reason: >-
+        A canonical build source exists in the ordered Trevarn baseline. It has
+        not yet been compared with the deployed schema.
+  parking:
+    description: >-
+      Trevarn parking sites, spaces, reservations, state transitions, downlink
+      queue, actuations and display state. See services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      reason: >-
+        A canonical build source exists in the ordered Trevarn baseline. It has
+        not yet been compared with the deployed schema.
+  contact:
+    description: >-
+      Trevarn contact-study detections, asset-scan captures, twinning history
+      and processing watermark. See services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      reason: >-
+        A canonical build source exists in the ordered Trevarn baseline. It has
+        not yet been compared with the deployed schema.
+  public:
+    description: >-
+      PostgreSQL's default schema. The vps3 production preflight found only the
+      schema migration ledger here on 2026-10-08; development parity fixtures
+      may also appear in this schema. See services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core/db/migrate.sh
+      reason: >-
+        The database migration runner owns the public migration ledger. Compare
+        its deployed structure with a clean baseline build before claiming
+        canonical parity.
