@@ -92,6 +92,20 @@ def test_scoped_generator_cannot_mutate_another_catalogue_artifact():
     assert denied.value.detail["code"] == "PRINCIPAL_ARTIFACT_SCOPE_DENIED"
 
 
+def test_scoped_generator_rejects_trevarn_artifact_bound_to_another_source():
+    principal = _principal((ArtifactScope("schema-catalogue-trevarn", "GENERATE", "trevarn", None,
+                                         "model/schema-catalogue/trevarn/"),))
+    with pytest.raises(HTTPException) as denied:
+        require_artifact_id_scope(
+            _OneRowConnection(("schema-catalogue-trevarn", "DECLARED", "DATABASE", "docplane")),
+            principal,
+            "artifact-from-other-source",
+            "GENERATE",
+        )
+    assert denied.value.status_code == 403
+    assert denied.value.detail["code"] == "PRINCIPAL_SOURCE_ENTITY_SCOPE_DENIED"
+
+
 def test_scoped_observer_cannot_submit_other_valid_observation_kinds():
     principal = _principal((ArtifactScope("schema-catalogue-trevarn", "OBSERVE", None,
                                          "FRESHNESS_CHECK", None),))

@@ -753,6 +753,10 @@ def handoff_artifact(
         predecessor_key = require_artifact_id_scope(conn, principal, str(predecessor_id), "GENERATE")
         require_artifact_scope(principal, predecessor_key, "GENERATE", page_paths=request.successor.target_page_paths)
         require_artifact_scope(principal, request.successor.artifact_key, "GENERATE", page_paths=request.successor.target_page_paths)
+        require_source_entity_scope(
+            conn, principal, request.successor.artifact_key,
+            str(request.successor.source_entity_id),
+        )
         replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_HANDOFF", digest)
         if replayed is not None:
             return replayed

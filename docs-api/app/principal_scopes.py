@@ -65,7 +65,12 @@ def require_artifact_id_scope(
 ) -> str:
     cur = conn.cursor()
     cur.execute(
-        "SELECT artifact_key, status FROM model.generated_artifacts WHERE artifact_id = %s",
+        """
+        SELECT a.artifact_key, a.status, e.entity_kind, e.entity_key
+          FROM model.generated_artifacts a
+          JOIN model.entities e ON e.entity_id = a.source_entity_id
+         WHERE a.artifact_id = %s
+        """,
         (artifact_id,),
     )
     row = cur.fetchone()
@@ -76,6 +81,13 @@ def require_artifact_id_scope(
     require_artifact_scope(
         principal, row[0], operation, observation_kind=observation_kind
     )
+    if principal.artifact_scopes is not None and operation == "GENERATE":
+        scope = next(
+            item for item in principal.artifact_scopes
+            if item.artifact_key == row[0] and item.operation == "GENERATE"
+        )
+        if row[2] != "DATABASE" or row[3] != scope.source_entity_key:
+            raise HTTPException(status_code=403, detail={"code": "PRINCIPAL_SOURCE_ENTITY_SCOPE_DENIED"})
     return row[0]
 
 
@@ -112,6 +124,10 @@ def require_ownership_plan_scope(conn, principal: Principal, plan: dict[str, Any
         require_artifact_scope(
             principal, successor.get("artifact_key", ""), "GENERATE",
             page_paths=successor.get("target_page_paths") or [],
+        )
+        require_source_entity_scope(
+            conn, principal, successor.get("artifact_key", ""),
+            str(successor.get("source_entity_id", "")),
         )
     return artifact_key
 
