@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import ipaddress
 
+import psycopg2.extensions
+
 from secret_source import read_secret
 
 
@@ -17,7 +19,14 @@ def source_connection_parameters() -> dict[str, str]:
     """
     host = os.environ.get("CATALOGUE_SOURCE_HOST", "").strip()
     if not host:
-        return {"dsn": read_secret("CATALOGUE_SOURCE_DSN")}
+        dsn = read_secret("CATALOGUE_SOURCE_DSN")
+        try:
+            legacy_sslmode = psycopg2.extensions.parse_dsn(dsn).get("sslmode", "")
+        except Exception as exc:
+            raise RuntimeError("CATALOGUE_SOURCE_DSN is invalid") from exc
+        if legacy_sslmode == "disable" or os.environ.get("PGSSLMODE", "").strip() == "disable":
+            raise RuntimeError("sslmode=disable requires the verified VM1124 Trevarn Docker bridge")
+        return {"dsn": dsn}
     try:
         host = str(ipaddress.ip_address(host))
     except ValueError as exc:
@@ -41,6 +50,8 @@ def source_connection_parameters() -> dict[str, str]:
         "port": str(port),
     }
     sslmode = os.environ.get("CATALOGUE_SOURCE_SSLMODE", "").strip()
+    if not sslmode:
+        sslmode = os.environ.get("PGSSLMODE", "").strip()
     if sslmode:
         if sslmode not in {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}:
             raise RuntimeError("CATALOGUE_SOURCE_SSLMODE is not a supported libpq mode")

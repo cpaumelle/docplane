@@ -277,6 +277,11 @@ def test_connection_parameters_read_password_file_and_confine_disable_sslmode(
     with pytest.raises(RuntimeError, match="restricted to the VM1124 Trevarn Docker bridge"):
         consumer.source_connection_parameters()
 
+    monkeypatch.delenv("CATALOGUE_SOURCE_SSLMODE")
+    monkeypatch.setenv("PGSSLMODE", "disable")
+    with pytest.raises(RuntimeError, match="restricted to the VM1124 Trevarn Docker bridge"):
+        consumer.source_connection_parameters()
+
 
 @pytest.mark.parametrize("consumer", [schema_catalogue, observer], ids=["generator", "observer"])
 def test_connection_parameters_fail_closed_on_missing_or_invalid_password_file(

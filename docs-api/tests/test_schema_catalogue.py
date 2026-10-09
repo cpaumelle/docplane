@@ -106,7 +106,7 @@ def _patch_runtime(monkeypatch, *, artifact, previous, stored, events=None):
             schema_catalogue, "publish_projection",
             lambda *_a, **_k: events.append("projection"),
         )
-    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "not-used")
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "postgresql://catalogue.invalid/docs")
     monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
     monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
     monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")

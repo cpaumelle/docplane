@@ -101,7 +101,7 @@ import ipaddress
 import sys
 ipaddress.ip_address(sys.argv[1])
 PY
-if [[ "${CATALOGUE_SOURCE_SSLMODE:-}" == "disable" ]]; then
+if [[ "${CATALOGUE_SOURCE_SSLMODE:-${PGSSLMODE:-}}" == "disable" ]]; then
   [[ "${CATALOGUE_ENVIRONMENT:-}" == "development" \
     && "${CATALOGUE_SOURCE_IDENTITY:-}" == "VM1124/trevarn" \
     && "${CATALOGUE_SOURCE_DOCKER_NETWORK:-}" == "trevarn-net" \
