@@ -1,5 +1,6 @@
 import pytest
-from fastapi import HTTPException
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app import agent_auth
@@ -99,9 +100,59 @@ def test_scoped_principal_can_reach_only_scoped_write_surfaces(monkeypatch):
     assert agent_auth._scoped_write_route_allowed(
         _request("PUT", "/api/v1/model/entities/00000000-0000-0000-0000-000000000001/page-links/catalogues")
     )
+    assert agent_auth._scoped_write_route_allowed(
+        _request("PUT", "/api/v1/model/artifacts/00000000-0000-0000-0000-000000000001/projection")
+    )
+    assert agent_auth._scoped_write_route_allowed(
+        _request("PUT", "/api/v1/model/artifacts/00000000-0000-0000-0000-000000000001/targets")
+    )
+    assert agent_auth._scoped_write_route_allowed(
+        _request("POST", "/api/v1/model/entities/00000000-0000-0000-0000-000000000001/links")
+    )
     assert not agent_auth._scoped_write_route_allowed(
         _request("POST", "/api/v1/model/entities/00000000-0000-0000-0000-000000000001/retire")
     )
+
+
+_LIFECYCLE_AND_EXECUTION_ROUTES = [
+    ("PUT", "/api/v1/model/artifacts/00000000-0000-0000-0000-000000000001/execution-contract"),
+    ("POST", "/api/v1/model/artifacts/00000000-0000-0000-0000-000000000001/handoff"),
+    ("POST", "/api/v1/model/artifacts/00000000-0000-0000-0000-000000000001/retire"),
+]
+
+
+def _authorization_response(monkeypatch, principal, method, path):
+    monkeypatch.setattr(agent_auth, "authenticate", lambda _authorization: principal)
+    app = FastAPI()
+
+    async def endpoint(authorized: Principal = Depends(agent_auth.require_contributor)):
+        return {"principal_id": authorized.principal_id}
+
+    app.add_api_route(path, endpoint, methods=[method])
+    return TestClient(app).request(method, path, headers={"Authorization": "Bearer test"})
+
+
+@pytest.mark.parametrize(("method", "path"), _LIFECYCLE_AND_EXECUTION_ROUTES)
+def test_scoped_generator_gets_403_for_execution_and_lifecycle_routes(monkeypatch, method, path):
+    principal = _principal((ArtifactScope(
+        "schema-catalogue-trevarn", "GENERATE", "trevarn", None,
+        "model/schema-catalogue/trevarn/",
+    ),))
+
+    response = _authorization_response(monkeypatch, principal, method, path)
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "PRINCIPAL_WRITE_SCOPE_DENIED"
+
+
+@pytest.mark.parametrize(("method", "path"), _LIFECYCLE_AND_EXECUTION_ROUTES)
+def test_legacy_contributor_keeps_existing_execution_and_lifecycle_access(monkeypatch, method, path):
+    principal = _principal(None)
+
+    response = _authorization_response(monkeypatch, principal, method, path)
+
+    assert response.status_code == 200
+    assert response.json() == {"principal_id": "principal-1"}
 
 
 def test_artifact_scope_binds_operation_key_kind_and_page_prefix():
