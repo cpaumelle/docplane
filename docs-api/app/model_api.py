@@ -33,9 +33,12 @@ from app.model_models import (
 )
 from app.artifact_ownership import handoff_targets, reconcile_targets, target_ids
 from app.principal_scopes import (
+    require_model_entity_create_scope,
     require_artifact_id_scope,
     require_artifact_scope,
     require_source_entity_scope,
+    require_catalogue_entity_scope,
+    require_schema_database_link_scope,
 )
 
 router = APIRouter(tags=["model-v1"])
@@ -107,6 +110,10 @@ def create_entity(
     key = _key(idempotency_key)
     digest = receipt_digest({"route": "entity-create", **request.model_dump(mode="json")})
     _guard_attributes(request.entity_kind, request.attributes)
+    require_model_entity_create_scope(
+        principal, request.entity_kind, request.entity_key,
+        request.attributes, str(request.owner_principal_id) if request.owner_principal_id else None,
+    )
     with get_conn() as conn:
         replayed = load_receipt(conn, principal, key, "MODEL_ENTITY_CREATE", digest)
         if replayed is not None:
@@ -357,6 +364,12 @@ def create_entity_link(
     if request.to_entity_id == entity_id:
         raise HTTPException(status_code=422, detail={"code": "MODEL_LINK_SELF"})
     with get_conn() as conn:
+        schema_scope = require_catalogue_entity_scope(conn, principal, str(entity_id))
+        if schema_scope is not None:
+            require_schema_database_link_scope(
+                conn, principal, str(entity_id), str(request.to_entity_id),
+                request.relation, request.note, request.metadata,
+            )
         replayed = load_receipt(conn, principal, key, "MODEL_ENTITY_LINK", digest)
         if replayed is not None:
             return replayed

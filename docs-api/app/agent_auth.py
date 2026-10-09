@@ -146,9 +146,15 @@ def _scoped_write_route_allowed(request: Request) -> bool:
     path = request.url.path
     if method == "POST":
         return (
-            path in {"/api/v1/model/artifacts", "/api/v1/changes", "/api/v1/observations"}
+            path in {
+                "/api/v1/model/artifacts", "/api/v1/changes",
+                "/api/v1/model/entities", "/api/v1/observations",
+            }
             or re.fullmatch(
                 r"/api/v1/model/artifacts/[0-9a-fA-F-]+/(?:handoff|retire)", path
+            ) is not None
+            or re.fullmatch(
+                r"/api/v1/model/entities/[0-9a-fA-F-]+/links", path
             ) is not None
             or re.fullmatch(
                 r"/api/v1/changes/[0-9a-fA-F-]+/(?:operations|validate|publish)", path
@@ -156,7 +162,8 @@ def _scoped_write_route_allowed(request: Request) -> bool:
         )
     if method == "PUT":
         return re.fullmatch(
-            r"/api/v1/model/artifacts/[0-9a-fA-F-]+/(?:projection|targets|execution-contract)", path
+            r"/api/v1/model/(?:artifacts/[0-9a-fA-F-]+/(?:projection|targets|execution-contract)|entities/[0-9a-fA-F-]+/page-links/catalogues)",
+            path,
         ) is not None
     return method in {"GET", "HEAD", "OPTIONS"}
 

@@ -59,6 +59,86 @@ def require_source_entity_scope(
         raise HTTPException(status_code=403, detail={"code": "PRINCIPAL_SOURCE_ENTITY_SCOPE_DENIED"})
 
 
+def _catalogue_scope_for_entity_key(principal: Principal, entity_kind: str, entity_key: str):
+    if principal.artifact_scopes is None:
+        return None
+    for scope in principal.artifact_scopes:
+        if scope.operation != "GENERATE" or not scope.source_entity_key:
+            continue
+        if (
+            (entity_kind == "DATABASE" and entity_key == scope.source_entity_key)
+            or (entity_kind == "SCHEMA" and entity_key.startswith(scope.source_entity_key + "."))
+        ):
+            return scope
+    raise HTTPException(status_code=403, detail={"code": "PRINCIPAL_MODEL_ENTITY_SCOPE_DENIED"})
+
+
+def require_model_entity_create_scope(
+    principal: Principal, entity_kind: str, entity_key: str,
+    attributes: dict[str, Any], owner_principal_id: str | None,
+) -> None:
+    scope = _catalogue_scope_for_entity_key(principal, entity_kind, entity_key)
+    if scope is not None and (attributes or owner_principal_id is not None):
+        raise HTTPException(status_code=403, detail={"code": "PRINCIPAL_MODEL_ENTITY_SCOPE_DENIED"})
+
+
+def require_catalogue_entity_scope(conn, principal: Principal, entity_id: str):
+    if principal.artifact_scopes is None:
+        return None
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT entity_kind, entity_key FROM model.entities WHERE entity_id = %s",
+        (entity_id,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "MODEL_ENTITY_NOT_FOUND"})
+    scope = _catalogue_scope_for_entity_key(principal, row[0], row[1])
+    return scope, row[0], row[1]
+
+
+def require_schema_database_link_scope(
+    conn, principal: Principal, schema_entity_id: str, database_entity_id: str,
+    relation: str, note: str | None, metadata: dict[str, Any],
+) -> None:
+    if principal.artifact_scopes is None:
+        return
+    schema = require_catalogue_entity_scope(conn, principal, schema_entity_id)
+    database = require_catalogue_entity_scope(conn, principal, database_entity_id)
+    if (
+        schema is None or database is None
+        or schema[1] != "SCHEMA"
+        or database[1] != "DATABASE"
+        or database[2] != schema[0].source_entity_key
+        or relation != "STORES_IN"
+        or note is not None
+        or metadata
+    ):
+        raise HTTPException(status_code=403, detail={"code": "PRINCIPAL_MODEL_LINK_SCOPE_DENIED"})
+
+
+def require_catalogue_page_links_scope(
+    conn, principal: Principal, entity_id: str, page_resource_ids: list[str],
+) -> None:
+    if principal.artifact_scopes is None:
+        return
+    scoped = require_catalogue_entity_scope(conn, principal, entity_id)
+    if scoped is None:
+        return
+    scope = scoped[0]
+    if page_resource_ids:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT path FROM docs.pages WHERE resource_id = ANY(%s::uuid[])",
+            (page_resource_ids,),
+        )
+        paths = [row[0] for row in cur.fetchall()]
+        if len(paths) != len(page_resource_ids) or any(
+            not path.startswith(scope.page_path_prefix or "") for path in paths
+        ):
+            raise HTTPException(status_code=403, detail={"code": "PRINCIPAL_PAGE_PATH_SCOPE_DENIED"})
+
+
 def require_artifact_id_scope(
     conn, principal: Principal, artifact_id: str, operation: str,
     *, observation_kind: str | None = None,

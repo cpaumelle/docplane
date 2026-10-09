@@ -94,7 +94,11 @@ includes explicit `artifact_scopes`. A scoped principal is marked
 `SCOPED_AUTOMATION` and cannot use other write routes. Each scope binds an exact
 artifact key to `GENERATE` or one observation kind. A GENERATE grant also binds
 the source DATABASE entity key and a relative page-path prefix; change plans and
-every page operation are checked against that prefix. An OBSERVE grant binds to
+every page operation are checked against that prefix. For MODEL identity it
+permits only that DATABASE entity, its SCHEMA children, `STORES_IN` links from
+those schemas to the database, and exact `CATALOGUES` links to pages under the
+same prefix. Other entity kinds, entity updates, links, and page-link relations
+remain denied. An OBSERVE grant binds to
 one artifact and either `FRESHNESS_CHECK` or `GENERATION`. Artifact, source,
 change, page, and observation checks are enforced by docs-api on each write.
 
