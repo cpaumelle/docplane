@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
 from secret_source import read_secret  # noqa: E402
+from schema_catalogue_connection import source_connection_parameters  # noqa: E402
 
 SOURCE_ENTITY_KIND = "DATABASE"
 
@@ -143,7 +144,8 @@ def record_observation(
 def observe_source(
     client: ObserveClient,
     *,
-    dsn: str,
+    dsn: str | None = None,
+    connection_parameters: dict[str, str] | None = None,
     db_key: str,
     schemas: list[str],
     probe_id: str,
@@ -152,7 +154,14 @@ def observe_source(
     """Read Schema and emit exactly one FRESHNESS_CHECK after identity resolves."""
     source = resolve_source_entity(client, db_key)
     try:
-        with connector(dsn) as connection:
+        if connection_parameters is not None:
+            source_connection = connector(**connection_parameters)
+        elif dsn is not None:
+            # Compatibility for callers of the pre-parameters Python API.
+            source_connection = connector(dsn)
+        else:
+            source_connection = connector(**source_connection_parameters())
+        with source_connection as connection:
             structure = introspect(connection, schemas)
     except Exception as exc:
         return record_observation(
@@ -201,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         result, succeeded = observe_source(
             client,
-            dsn=_required_secret("CATALOGUE_SOURCE_DSN"),
+            connection_parameters=source_connection_parameters(),
             db_key=_required_environment("CATALOGUE_DB_KEY"),
             schemas=schemas,
             probe_id=probe_id,

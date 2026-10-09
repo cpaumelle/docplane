@@ -154,8 +154,56 @@ CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres
 ```
 
 The observer never falls back to the generator bearer or PostgreSQL role.
-Neither protected file may persist `CATALOGUE_SOURCE_DSN`; both wrappers derive
-it from current Compose identity and pass it only in process memory.
+Neither protected file may persist `CATALOGUE_SOURCE_DSN`; the wrappers
+rediscover the Compose address, then the Python entrypoint resolves the password
+and passes keyword connection parameters directly to psycopg2. No credential-
+bearing DSN is assembled, persisted, or logged.
+
+For the VM1124 Trevarn attended one-shot, settings contain secret paths only:
+
+```text
+# /etc/docplane/schema-catalogue.d/trevarn.env (root:root 0600)
+DOCPLANE_API=https://docplane.charliehub.internal
+DOCPLANE_SCHEMA_CATALOGUE_TOKEN_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-generator/docplane-token
+CATALOGUE_DB_KEY=trevarn
+CATALOGUE_DB_DISPLAY=Trevarn (VM1124 development schema)
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SOURCE_DB=trevarn
+CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_reader
+CATALOGUE_SOURCE_PASSWORD_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-generator/db-password
+CATALOGUE_SOURCE_PORT=5432
+CATALOGUE_SOURCE_COMPOSE_PROJECT=trevarn-core
+CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres
+CATALOGUE_ENVIRONMENT=development
+CATALOGUE_SOURCE_IDENTITY=VM1124/trevarn
+CATALOGUE_SOURCE_DOCKER_NETWORK=trevarn-net
+CATALOGUE_SOURCE_SSLMODE=disable
+
+# /etc/docplane/schema-catalogue-observer.d/trevarn.env (root:root 0600)
+DOCPLANE_API=https://docplane.charliehub.internal
+DOCPLANE_SCHEMA_OBSERVER_TOKEN_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-observer/docplane-token
+CATALOGUE_DB_KEY=trevarn
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SOURCE_DB=trevarn
+CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_observer
+CATALOGUE_SOURCE_PASSWORD_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-observer/db-password
+CATALOGUE_SOURCE_PORT=5432
+CATALOGUE_SOURCE_COMPOSE_PROJECT=trevarn-core
+CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres
+CATALOGUE_ENVIRONMENT=development
+CATALOGUE_SOURCE_IDENTITY=VM1124/trevarn
+CATALOGUE_SOURCE_DOCKER_NETWORK=trevarn-net
+CATALOGUE_SOURCE_SSLMODE=disable
+```
+
+Each secret file is delivered separately under its consumer directory with
+root ownership and mode `0400`; the settings directories are root-owned mode
+`0700`. The wrappers verify the configured Compose container has exactly one
+usable address and, before allowing `sslmode=disable`, confirm it is attached
+to `trevarn-net` with the VM1124 development source labels above. PostgreSQL
+remains unpublished. Existing callers that supply a DSN directly retain the
+legacy `CATALOGUE_SOURCE_DSN[_FILE]` compatibility path; the host wrappers
+reject DSNs in their settings files.
 
 ## Runtime discovery and exclusion
 

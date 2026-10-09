@@ -26,8 +26,9 @@ replays receipts instead of duplicating work.
 Environment:
   DOCPLANE_API                     routed front, e.g. https://docplane.internal
   DOCPLANE_SCHEMA_CATALOGUE_TOKEN[_FILE]  AUTOMATION bearer (never logged)
-  CATALOGUE_SOURCE_DSN[_FILE]             source database DSN (structure is read with
-                                          a read-only transaction)
+  CATALOGUE_SOURCE_PASSWORD[_FILE]         source password when the host wrapper
+                                          discovers host/database/user/port settings
+  CATALOGUE_SOURCE_DSN[_FILE]             legacy direct-caller connection (read-only)
   CATALOGUE_DB_KEY                 entity key for the database, e.g. docplane
   CATALOGUE_DB_DISPLAY             display name, e.g. "DocPlane PostgreSQL"
   CATALOGUE_SCHEMAS                comma-separated schema names to catalogue
@@ -67,6 +68,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from migration.redaction import redact  # noqa: E402
 from secret_source import read_secret  # noqa: E402
+from schema_catalogue_connection import source_connection_parameters  # noqa: E402
 
 # The authoritative source projection (structure introspection + fingerprint)
 # lives in a pure, side-effect-free module so the SCHEDULED schema observer
@@ -736,7 +738,7 @@ def main(argv: list[str] | None = None) -> int:
     if (args.emit_projection or args.emit_pages) and not args.dry_run:
         parser.error("--emit-projection/--emit-pages are review aids and require --dry-run")
 
-    dsn = _required_secret("CATALOGUE_SOURCE_DSN")
+    source_connection = source_connection_parameters()
     db_key = os.environ["CATALOGUE_DB_KEY"]
     db_display = os.environ.get("CATALOGUE_DB_DISPLAY", db_key)
     schemas = [name.strip() for name in os.environ["CATALOGUE_SCHEMAS"].split(",") if name.strip()]
@@ -746,9 +748,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     config = projection.load_config(config_path(db_key))
 
-    with psycopg2.connect(dsn) as source:
+    with psycopg2.connect(**source_connection) as source:
         structure = introspect(source, schemas)
-    with psycopg2.connect(dsn) as source:
+    with psycopg2.connect(**source_connection) as source:
         metadata = source_metadata(source)
     structure_hash = fingerprint(structure)
     render_config_hash = projection.config_hash(config, static_provenance)

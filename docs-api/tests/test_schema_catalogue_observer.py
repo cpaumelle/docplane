@@ -132,6 +132,8 @@ def test_wrapper_shares_lock_and_contention_is_benign_without_probe(tmp_path):
     wrapper = scripts / "run_schema_catalogue_source_observer.sh"
     wrapper.write_text((SCRIPTS / wrapper.name).read_text(encoding="utf-8"), encoding="utf-8")
     wrapper.chmod(0o755)
+    for module in ("secret_source.py", "schema_catalogue_connection.py"):
+        (scripts / module).write_text((SCRIPTS / module).read_text(encoding="utf-8"), encoding="utf-8")
     marker = tmp_path / "observer-called"
     (scripts / "schema_catalogue_observer.py").write_text(
         f"from pathlib import Path\nPath({str(marker)!r}).write_text('called')\n", encoding="utf-8"
@@ -174,9 +176,172 @@ def test_runtime_and_units_are_inert_least_privilege_contracts():
     assert "search_path = docs" in runbook
 
 
+def test_observer_host_wrapper_uses_its_own_secret_files_and_source_parameters(tmp_path):
+    repository = tmp_path / "repository"
+    scripts = repository / "scripts"
+    scripts.mkdir(parents=True)
+    wrapper = scripts / "run_schema_catalogue_source_observer.sh"
+    wrapper.write_text((SCRIPTS / wrapper.name).read_text(encoding="utf-8"), encoding="utf-8")
+    wrapper.chmod(0o755)
+    for module in ("secret_source.py", "schema_catalogue_connection.py"):
+        (scripts / module).write_text((SCRIPTS / module).read_text(encoding="utf-8"), encoding="utf-8")
+    receipt = tmp_path / "observer-receipt.json"
+    (scripts / "schema_catalogue_observer.py").write_text(
+        "import json, os, sys\n"
+        "sys.path.insert(0, os.path.dirname(__file__))\n"
+        "from secret_source import read_secret\n"
+        "from schema_catalogue_connection import source_connection_parameters\n"
+        "params = source_connection_parameters()\n"
+        "token = read_secret('DOCPLANE_SCHEMA_OBSERVER_TOKEN')\n"
+        "with open(os.environ['OBSERVER_WRAPPER_RECEIPT'], 'w') as out:\n"
+        " out.write(json.dumps({'host': params['host'], 'password_present': bool(params['password']), "
+        "'token_present': bool(token), 'has_dsn': 'dsn' in params}))\n",
+        encoding="utf-8",
+    )
+    secret_dir = tmp_path / "secrets"
+    secret_dir.mkdir(mode=0o700)
+    files = {}
+    for name, value in (("db-password", "observer-db-secret"), ("docplane-token", "observer-api-secret")):
+        path = secret_dir / name
+        path.write_text(value, encoding="utf-8")
+        path.chmod(0o400)
+        files[name] = path
+    settings = tmp_path / "observer.env"
+    settings.write_text(
+        "DOCPLANE_API=https://docplane.invalid\n"
+        f"DOCPLANE_SCHEMA_OBSERVER_TOKEN_FILE={files['docplane-token']}\n"
+        "CATALOGUE_DB_KEY=trevarn\nCATALOGUE_SCHEMAS=platform,ingest\n"
+        "CATALOGUE_SOURCE_DB=trevarn\nCATALOGUE_SOURCE_USER=trevarn_schema_catalogue_observer\n"
+        f"CATALOGUE_SOURCE_PASSWORD_FILE={files['db-password']}\n"
+        "CATALOGUE_SOURCE_PORT=5432\nCATALOGUE_SOURCE_COMPOSE_PROJECT=trevarn-core\n"
+        "CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres\nCATALOGUE_ENVIRONMENT=development\n"
+        "CATALOGUE_SOURCE_IDENTITY=VM1124/trevarn\nCATALOGUE_SOURCE_DOCKER_NETWORK=trevarn-net\n"
+        "CATALOGUE_SOURCE_SSLMODE=disable\n",
+        encoding="utf-8",
+    )
+    settings.chmod(0o600)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    docker = fake_bin / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ $1 == ps ]]; then printf 'postgres-container\\n'; "
+        "else printf 'trevarn-net=172.23.0.8\\n'; fi\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{fake_bin}:{env['PATH']}",
+        "DOCPLANE_SCHEMA_OBSERVER_ENV_FILE": str(settings),
+        "DOCPLANE_SCHEMA_CATALOGUE_LOCK_FILE": str(tmp_path / "observer.lock"),
+        "OBSERVER_WRAPPER_RECEIPT": str(receipt),
+    })
+    result = subprocess.run(
+        ["bash", str(wrapper), "--probe-id", "33333333-3333-4333-8333-333333333333"],
+        env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "observer-db-secret" not in result.stdout + result.stderr
+    assert "observer-api-secret" not in result.stdout + result.stderr
+    assert json.loads(receipt.read_text()) == {
+        "host": "172.23.0.8", "password_present": True, "token_present": True, "has_dsn": False,
+    }
+
+
+@pytest.mark.parametrize("consumer", [schema_catalogue, observer], ids=["generator", "observer"])
+def test_connection_parameters_read_password_file_and_confine_disable_sslmode(
+    monkeypatch, tmp_path, consumer
+):
+    secret_file = tmp_path / "db-password"
+    secret_file.write_text("password with punctuation", encoding="utf-8")
+    secret_file.chmod(0o400)
+    monkeypatch.setenv("CATALOGUE_SOURCE_HOST", "172.23.0.9")
+    monkeypatch.setenv("CATALOGUE_SOURCE_DB", "trevarn")
+    monkeypatch.setenv("CATALOGUE_SOURCE_USER", "trevarn_schema_catalogue_reader")
+    monkeypatch.setenv("CATALOGUE_SOURCE_PORT", "5432")
+    monkeypatch.setenv("CATALOGUE_SOURCE_PASSWORD_FILE", str(secret_file))
+    monkeypatch.setenv("CATALOGUE_SOURCE_SSLMODE", "disable")
+    monkeypatch.setenv("CATALOGUE_ENVIRONMENT", "development")
+    monkeypatch.setenv("CATALOGUE_SOURCE_IDENTITY", "VM1124/trevarn")
+    monkeypatch.setenv("CATALOGUE_SOURCE_DOCKER_NETWORK", "trevarn-net")
+    params = consumer.source_connection_parameters()
+    assert params == {
+        "host": "172.23.0.9", "dbname": "trevarn",
+        "user": "trevarn_schema_catalogue_reader", "password": "password with punctuation",
+        "port": "5432", "sslmode": "disable",
+    }
+    assert "dsn" not in params
+
+    monkeypatch.setenv("CATALOGUE_ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="restricted to the VM1124 Trevarn Docker bridge"):
+        consumer.source_connection_parameters()
+
+
+@pytest.mark.parametrize("consumer", [schema_catalogue, observer], ids=["generator", "observer"])
+def test_connection_parameters_fail_closed_on_missing_or_invalid_password_file(
+    monkeypatch, tmp_path, consumer
+):
+    from secret_source import SecretSourceError
+
+    monkeypatch.setenv("CATALOGUE_SOURCE_HOST", "172.23.0.9")
+    monkeypatch.setenv("CATALOGUE_SOURCE_DB", "trevarn")
+    monkeypatch.setenv("CATALOGUE_SOURCE_USER", "reader")
+    monkeypatch.setenv("CATALOGUE_SOURCE_PORT", "5432")
+    monkeypatch.setenv("CATALOGUE_SOURCE_PASSWORD", "legacy-password")
+    monkeypatch.setenv("CATALOGUE_SOURCE_PASSWORD_FILE", str(tmp_path / "missing-password"))
+    with pytest.raises(SecretSourceError) as missing:
+        consumer.source_connection_parameters()
+    assert "legacy-password" not in str(missing.value)
+
+    invalid = tmp_path / "invalid-password"
+    invalid.write_bytes(b"\xff")
+    monkeypatch.setenv("CATALOGUE_SOURCE_PASSWORD_FILE", str(invalid))
+    with pytest.raises(SecretSourceError, match="not valid UTF-8"):
+        consumer.source_connection_parameters()
+
+    readable = tmp_path / "unreadable-password"
+    readable.write_text("unreadable-sentinel", encoding="utf-8")
+    monkeypatch.setenv("CATALOGUE_SOURCE_PASSWORD_FILE", str(readable))
+    real_read_bytes = Path.read_bytes
+
+    def deny_password_read(path):
+        if path == readable:
+            raise PermissionError("permission denied")
+        return real_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", deny_password_read)
+    with pytest.raises(SecretSourceError, match="not readable") as unreadable:
+        consumer.source_connection_parameters()
+    assert "unreadable-sentinel" not in str(unreadable.value)
+
+
+@pytest.mark.parametrize(
+    ("consumer", "required", "other"),
+    [
+        (schema_catalogue, "DOCPLANE_SCHEMA_CATALOGUE_TOKEN", "DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
+        (observer, "DOCPLANE_SCHEMA_OBSERVER_TOKEN", "DOCPLANE_SCHEMA_CATALOGUE_TOKEN"),
+    ],
+    ids=["generator-token-is-not-observer-token", "observer-token-is-not-generator-token"],
+)
+def test_consumers_do_not_fall_back_to_the_other_consumers_token(
+    monkeypatch, tmp_path, consumer, required, other
+):
+    from secret_source import SecretSourceError
+
+    wrong_token_file = tmp_path / "other-token"
+    wrong_token_file.write_text("wrong-consumer-token", encoding="utf-8")
+    monkeypatch.setenv(f"{other}_FILE", str(wrong_token_file))
+    monkeypatch.delenv(required, raising=False)
+    monkeypatch.delenv(f"{required}_FILE", raising=False)
+    with pytest.raises(SecretSourceError):
+        consumer._required_secret(required)
+
+
 @pytest.mark.skipif(not os.environ.get("DB_HOST"), reason="requires disposable PostgreSQL")
-def test_disposable_least_privilege_role_preserves_projection_without_row_access():
-    """Execute the #174 privilege/search-path contract on CI's throwaway DB."""
+@pytest.mark.parametrize("consumer", [schema_catalogue, observer], ids=["generator", "observer"])
+def test_disposable_bare_reader_preserves_contract2_without_tenant_data_access(consumer):
+    """Both one-shot consumers introspect pg_catalog without schema/table grants."""
     import psycopg2
     from psycopg2 import sql
 
@@ -185,7 +350,7 @@ def test_disposable_least_privilege_role_preserves_projection_without_row_access
         f"dbname={os.environ.get('DB_NAME', 'docs')} user={os.environ.get('DB_USER', 'docs')} "
         f"password={os.environ.get('DB_PASS', '')}"
     )
-    role = f"schema_observer_test_{uuid4().hex[:10]}"
+    role = f"schema_catalogue_test_{uuid4().hex[:10]}"
     password = uuid4().hex
     schemas = ["docplane", "docs", "model", "observe", "work"]
     probe_table = f"observer_privilege_probe_{uuid4().hex[:10]}"
@@ -195,51 +360,36 @@ def test_disposable_least_privilege_role_preserves_projection_without_row_access
         with owner.cursor() as cur:
             cur.execute(sql.SQL("CREATE ROLE {} LOGIN PASSWORD %s").format(sql.Identifier(role)), (password,))
             cur.execute(sql.SQL("ALTER ROLE {} SET default_transaction_read_only = on").format(sql.Identifier(role)))
-            cur.execute(sql.SQL("ALTER ROLE {} SET search_path = docs").format(sql.Identifier(role)))
-            cur.execute(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(
-                sql.SQL(", ").join(map(sql.Identifier, schemas)), sql.Identifier(role)
+            cur.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                sql.Identifier(os.environ.get("DB_NAME", "docs")), sql.Identifier(role)
             ))
-            for schema in schemas:
-                cur.execute(sql.SQL("GRANT REFERENCES ON ALL TABLES IN SCHEMA {} TO {}").format(
-                    sql.Identifier(schema), sql.Identifier(role)
-                ))
-                cur.execute(sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA {} GRANT REFERENCES ON TABLES TO {}").format(
-                    sql.Identifier(os.environ.get("DB_USER", "docs")), sql.Identifier(schema), sql.Identifier(role)
-                ))
             # Created after default privileges: parity must remain durable.
             cur.execute(sql.SQL("CREATE TABLE docs.{} (id integer PRIMARY KEY, note text)").format(sql.Identifier(probe_table)))
 
-        observer_dsn = (
+        reader_dsn = (
             f"host={os.environ['DB_HOST']} port={os.environ.get('DB_PORT', '5432')} "
             f"dbname={os.environ.get('DB_NAME', 'docs')} user={role} password={password}"
         )
-        with psycopg2.connect(owner_dsn) as owner_read, psycopg2.connect(observer_dsn) as observer_read:
+        with psycopg2.connect(owner_dsn) as owner_read, psycopg2.connect(reader_dsn) as reader_read:
             expected = schema_catalogue_source.introspect(owner_read, schemas)
-            actual = schema_catalogue_source.introspect(observer_read, schemas)
+            actual = consumer.introspect(reader_read, schemas)
         assert actual == expected
         assert schema_catalogue_source.fingerprint(actual) == schema_catalogue_source.fingerprint(expected)
         assert len(actual["docs"]["tables"][probe_table]["columns"]) == 2
 
-        with psycopg2.connect(observer_dsn) as restricted:
+        with psycopg2.connect(reader_dsn) as restricted:
             with restricted.cursor() as cur:
                 with pytest.raises(psycopg2.Error):
                     cur.execute("SELECT * FROM docs.pages LIMIT 1")
             restricted.rollback()
             with restricted.cursor() as cur:
                 with pytest.raises(psycopg2.Error):
-                    cur.execute("CREATE TABLE docs.observer_write_must_fail (id integer)")
+                    cur.execute("CREATE TABLE docs.catalogue_write_must_fail (id integer)")
     finally:
         with owner.cursor() as cur:
             cur.execute(sql.SQL("DROP TABLE IF EXISTS docs.{}").format(sql.Identifier(probe_table)))
-            for schema in schemas:
-                cur.execute(sql.SQL("ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA {} REVOKE REFERENCES ON TABLES FROM {}").format(
-                    sql.Identifier(os.environ.get("DB_USER", "docs")), sql.Identifier(schema), sql.Identifier(role)
-                ))
-                cur.execute(sql.SQL("REVOKE REFERENCES ON ALL TABLES IN SCHEMA {} FROM {}").format(
-                    sql.Identifier(schema), sql.Identifier(role)
-                ))
-            cur.execute(sql.SQL("REVOKE USAGE ON SCHEMA {} FROM {}").format(
-                sql.SQL(", ").join(map(sql.Identifier, schemas)), sql.Identifier(role)
+            cur.execute(sql.SQL("REVOKE CONNECT ON DATABASE {} FROM {}").format(
+                sql.Identifier(os.environ.get("DB_NAME", "docs")), sql.Identifier(role)
             ))
             cur.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
         owner.close()
@@ -249,9 +399,9 @@ def test_disposable_least_privilege_role_preserves_projection_without_row_access
     ("consumer", "name"),
     [
         (schema_catalogue, "DOCPLANE_SCHEMA_CATALOGUE_TOKEN"),
-        (schema_catalogue, "CATALOGUE_SOURCE_DSN"),
+        (schema_catalogue, "CATALOGUE_SOURCE_PASSWORD"),
         (observer, "DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
-        (observer, "CATALOGUE_SOURCE_DSN"),
+        (observer, "CATALOGUE_SOURCE_PASSWORD"),
     ],
 )
 def test_secrets_v3_file_source_wins_for_each_runtime_secret(
@@ -275,9 +425,9 @@ def test_secrets_v3_file_source_wins_for_each_runtime_secret(
     ("consumer", "name"),
     [
         (schema_catalogue, "DOCPLANE_SCHEMA_CATALOGUE_TOKEN"),
-        (schema_catalogue, "CATALOGUE_SOURCE_DSN"),
+        (schema_catalogue, "CATALOGUE_SOURCE_PASSWORD"),
         (observer, "DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
-        (observer, "CATALOGUE_SOURCE_DSN"),
+        (observer, "CATALOGUE_SOURCE_PASSWORD"),
     ],
 )
 def test_secrets_v3_missing_file_fails_closed_for_each_runtime_secret(
@@ -297,9 +447,9 @@ def test_secrets_v3_missing_file_fails_closed_for_each_runtime_secret(
     ("consumer", "name"),
     [
         (schema_catalogue, "DOCPLANE_SCHEMA_CATALOGUE_TOKEN"),
-        (schema_catalogue, "CATALOGUE_SOURCE_DSN"),
+        (schema_catalogue, "CATALOGUE_SOURCE_PASSWORD"),
         (observer, "DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
-        (observer, "CATALOGUE_SOURCE_DSN"),
+        (observer, "CATALOGUE_SOURCE_PASSWORD"),
     ],
 )
 def test_secrets_v3_unreadable_file_fails_closed_for_each_runtime_secret(
