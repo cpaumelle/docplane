@@ -405,6 +405,7 @@ def test_disposable_postgres_introspection_matches_expected_semantics():
                 reader.commit()
                 with pytest.raises(psycopg2.errors.InsufficientPrivilege):
                     cur.execute("SELECT * FROM seam_probe.child")
+                reader.rollback()
 
     finally:
         cleanup = psycopg2.connect(dsn)
