@@ -254,7 +254,9 @@ def test_disposable_least_privilege_role_preserves_projection_without_row_access
         (observer, "CATALOGUE_SOURCE_DSN"),
     ],
 )
-def test_secrets_v3_file_source_wins_for_each_runtime_secret(monkeypatch, tmp_path, consumer, name):
+def test_secrets_v3_file_source_wins_for_each_runtime_secret(
+    monkeypatch, tmp_path, consumer, name
+):
     secret_file = tmp_path / "runtime-secret"
     secret_file.write_text("file-value", encoding="utf-8")
     monkeypatch.setenv(f"{name}_FILE", str(secret_file))
