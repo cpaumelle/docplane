@@ -46,6 +46,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import schema_catalogue  # noqa: E402
 import schema_catalogue_source  # noqa: E402
+import schema_catalogue_projection  # noqa: E402
 
 # The small reviewed structure fixture — identical to the one in
 # test_schema_catalogue.py. Kept as a literal so this test file is a
@@ -266,6 +267,12 @@ def test_disposable_postgres_introspection_matches_expected_semantics():
         setup.autocommit = True
         with setup.cursor() as cur:
             cur.execute(ddl)
+            cur.execute("DROP ROLE IF EXISTS schema_catalogue_reader_probe")
+            cur.execute(
+                "CREATE ROLE schema_catalogue_reader_probe NOLOGIN NOINHERIT "
+                "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+            )
+            cur.execute("GRANT schema_catalogue_reader_probe TO CURRENT_USER")
     finally:
         setup.close()
 
@@ -342,12 +349,72 @@ def test_disposable_postgres_introspection_matches_expected_semantics():
         assert view["kind"] == "view"
         assert [column["name"] for column in view["columns"]] == ["id", "code"]
         assert "WHERE" in view["definition"] and "active" in view["definition"]
+
+        # The generator's actual metadata-only reader has no schema/table grants.
+        # Run the shared source projection under SET ROLE to prove pg_catalog returns
+        # the same complete contract-2 columns without exposing tenant row data.
+        with psycopg2.connect(dsn) as reader:
+            with reader.cursor() as cur:
+                cur.execute("SET ROLE schema_catalogue_reader_probe")
+                reader.commit()
+                cur.execute(
+                    """
+                    SELECT r.rolsuper, r.rolbypassrls,
+                           has_schema_privilege(current_user, 'seam_probe', 'USAGE'),
+                           has_table_privilege(current_user, 'seam_probe.child', 'SELECT')
+                      FROM pg_roles r
+                     WHERE r.rolname = current_user
+                    """
+                )
+                assert cur.fetchone() == (False, False, False, False)
+                reader.commit()
+            reader_structure = schema_catalogue_source.introspect(reader, ["seam_probe"])
+
+        assert reader_structure == structure
+        reader_columns = {
+            column["name"]: column
+            for column in reader_structure["seam_probe"]["tables"]["child"]["columns"]
+        }
+        assert reader_columns["note"]["type"] == "text"
+        assert reader_columns["note"]["nullable"] is True
+        assert reader_columns["note"]["default"] is None
+        assert reader_columns["tags"]["type"] == "text[]"
+        assert reader_columns["tags"]["nullable"] is False
+        assert reader_columns["tags"]["default"] == "'{}'::text[]"
+        assert reader_columns["id"]["identity"] == "ALWAYS"
+        assert reader_columns["code_upper"]["generated"] == "upper(code)"
+
+        # The least-privilege result is the same native Contract 2 input; no
+        # adapter or extra projection path is needed.
+        document = schema_catalogue_projection.build_document(
+            "probe",
+            "Probe",
+            reader_structure,
+            schema_catalogue_source.fingerprint(reader_structure),
+            "test-config",
+            2,
+        )
+        assert document["projection_contract_version"] == 2
+        assert document["schemas"] == structure
+        assert document["relations"] == schema_catalogue_projection.relations(structure)
+
+        # Metadata visibility did not imply table-data visibility.
+        with psycopg2.connect(dsn) as reader:
+            with reader.cursor() as cur:
+                cur.execute("SET ROLE schema_catalogue_reader_probe")
+                reader.commit()
+                with pytest.raises(psycopg2.errors.InsufficientPrivilege):
+                    cur.execute("SELECT * FROM seam_probe.child")
+
     finally:
         cleanup = psycopg2.connect(dsn)
         try:
             cleanup.autocommit = True
             with cleanup.cursor() as cur:
                 cur.execute("DROP SCHEMA IF EXISTS seam_probe CASCADE; DROP SCHEMA IF EXISTS structure_probe CASCADE;")
+                cur.execute("DROP OWNED BY schema_catalogue_reader_probe")
+                cur.execute("REVOKE schema_catalogue_reader_probe FROM CURRENT_USER")
+                cur.execute("DROP ROLE schema_catalogue_reader_probe")
         finally:
             cleanup.close()
 
