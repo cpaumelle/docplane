@@ -285,3 +285,33 @@ def test_secrets_v3_missing_file_fails_closed_for_each_runtime_secret(
     with pytest.raises(SecretSourceError) as error:
         consumer._required_secret(name)
     assert "legacy-value" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    ("consumer", "name"),
+    [
+        (schema_catalogue, "DOCPLANE_SCHEMA_CATALOGUE_TOKEN"),
+        (schema_catalogue, "CATALOGUE_SOURCE_DSN"),
+        (observer, "DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
+        (observer, "CATALOGUE_SOURCE_DSN"),
+    ],
+)
+def test_secrets_v3_unreadable_file_fails_closed_for_each_runtime_secret(
+    monkeypatch, tmp_path, consumer, name
+):
+    from secret_source import SecretSourceError
+
+    secret_file = tmp_path / "unreadable-secret"
+    monkeypatch.setenv(f"{name}_FILE", str(secret_file))
+    monkeypatch.setenv(name, "sensitive-legacy-value")
+
+    def deny_read(path):
+        if path == secret_file:
+            raise PermissionError("permission denied")
+        raise AssertionError("unexpected file read")
+
+    monkeypatch.setattr(Path, "read_bytes", deny_read)
+    with pytest.raises(SecretSourceError) as error:
+        consumer._required_secret(name)
+    assert "sensitive-legacy-value" not in str(error.value)
+    assert "sensitive-legacy-value" not in repr(error.value)
