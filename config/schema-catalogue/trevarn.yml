@@ -11,83 +11,84 @@ schemas:
       API keys, tenant and device/gateway registries, allocation, settings,
       audit and platform administration. See services/trevarn/database.md.
     canonical:
-      status: NOT_YET_COMPARED
+      status: AVAILABLE
       source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A clean development source is migration-qualified at reviewed commit
-        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
-        Production parity remains unverified; do not present this source as
-        live production evidence.
+        A clean, isolated VM1124 development source is migration-qualified at
+        reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2: 78 matching
+        migration hashes through 280. Production parity is unverified; this
+        catalogue describes development schema only.
   ingest:
     description: >-
       Trevarn's ingestion layer: raw uplinks, LNS events, gateway reception,
       durable ingest spool and receipts. See services/trevarn/database.md.
     canonical:
-      status: NOT_YET_COMPARED
+      status: AVAILABLE
       source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A clean development source is migration-qualified at reviewed commit
-        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
-        Production parity remains unverified; do not present this source as
-        live production evidence.
+        A clean, isolated VM1124 development source is migration-qualified at
+        reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2: 78 matching
+        migration hashes through 280. Production parity is unverified; this
+        catalogue describes development schema only.
   occupancy:
     description: >-
       Trevarn occupancy and people-counter events, aggregates, device and
       gateway twinning, locations, installation plans and reports. See
       services/trevarn/database.md.
     canonical:
-      status: NOT_YET_COMPARED
+      status: AVAILABLE
       source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A clean development source is migration-qualified at reviewed commit
-        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
-        Production parity remains unverified; do not present this source as
-        live production evidence.
+        A clean, isolated VM1124 development source is migration-qualified at
+        reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2: 78 matching
+        migration hashes through 280. Production parity is unverified; this
+        catalogue describes development schema only.
   analytics:
     description: >-
       Trevarn reporting projections consumed by analytics interfaces and
       report APIs. See services/trevarn/database.md.
     canonical:
-      status: NOT_YET_COMPARED
+      status: AVAILABLE
       source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A clean development source is migration-qualified at reviewed commit
-        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
-        Production parity remains unverified; do not present this source as
-        live production evidence.
+        A clean, isolated VM1124 development source is migration-qualified at
+        reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2: 78 matching
+        migration hashes through 280. Production parity is unverified; this
+        catalogue describes development schema only.
   parking:
     description: >-
       Trevarn parking sites, spaces, reservations, state transitions, downlink
       queue, actuations and display state. See services/trevarn/database.md.
     canonical:
-      status: NOT_YET_COMPARED
+      status: AVAILABLE
       source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A clean development source is migration-qualified at reviewed commit
-        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
-        Production parity remains unverified; do not present this source as
-        live production evidence.
+        A clean, isolated VM1124 development source is migration-qualified at
+        reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2: 78 matching
+        migration hashes through 280. Production parity is unverified; this
+        catalogue describes development schema only.
   contact:
     description: >-
       Trevarn contact-study detections, asset-scan captures, twinning history
       and processing watermark. See services/trevarn/database.md.
     canonical:
-      status: NOT_YET_COMPARED
+      status: AVAILABLE
       source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A clean development source is migration-qualified at reviewed commit
-        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
-        Production parity remains unverified; do not present this source as
-        live production evidence.
+        A clean, isolated VM1124 development source is migration-qualified at
+        reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2: 78 matching
+        migration hashes through 280. Production parity is unverified; this
+        catalogue describes development schema only.
   public:
     description: >-
       PostgreSQL's default schema. The vps3 production preflight found only the
       schema migration ledger here on 2026-10-08; development parity fixtures
       may also appear in this schema. See services/trevarn/database.md.
     canonical:
-      status: NOT_YET_COMPARED
+      status: AVAILABLE
       source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        The isolated development database owns the MODEL source ledger through
-        migration 280. Production parity remains unverified; public parity
-        fixtures belong to development only.
+        The isolated VM1124 database was built from reviewed migrations and has 78
+        matching ledger hashes through 280. Production parity is unverified.
+        The shared-development public parity fixtures are excluded from this
+        clean source.
