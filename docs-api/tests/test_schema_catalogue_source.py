@@ -360,9 +360,11 @@ def test_disposable_postgres_introspection_matches_expected_semantics():
                 cur.execute(
                     """
                     SELECT r.rolsuper, r.rolbypassrls,
-                           has_schema_privilege(current_user, 'seam_probe', 'USAGE'),
-                           has_table_privilege(current_user, 'seam_probe.child', 'SELECT')
+                           has_schema_privilege(current_user, n.oid, 'USAGE'),
+                           has_table_privilege(current_user, c.oid, 'SELECT')
                       FROM pg_roles r
+                      JOIN pg_namespace n ON n.nspname = 'seam_probe'
+                      JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = 'child'
                      WHERE r.rolname = current_user
                     """
                 )
