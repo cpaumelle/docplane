@@ -151,9 +151,6 @@ def _scoped_write_route_allowed(request: Request) -> bool:
                 "/api/v1/model/entities", "/api/v1/observations",
             }
             or re.fullmatch(
-                r"/api/v1/model/artifacts/[0-9a-fA-F-]+/(?:handoff|retire)", path
-            ) is not None
-            or re.fullmatch(
                 r"/api/v1/model/entities/[0-9a-fA-F-]+/links", path
             ) is not None
             or re.fullmatch(
@@ -162,7 +159,7 @@ def _scoped_write_route_allowed(request: Request) -> bool:
         )
     if method == "PUT":
         return re.fullmatch(
-            r"/api/v1/model/(?:artifacts/[0-9a-fA-F-]+/(?:projection|targets|execution-contract)|entities/[0-9a-fA-F-]+/page-links/catalogues)",
+            r"/api/v1/model/(?:artifacts/[0-9a-fA-F-]+/(?:projection|targets)|entities/[0-9a-fA-F-]+/page-links/catalogues)",
             path,
         ) is not None
     return method in {"GET", "HEAD", "OPTIONS"}
