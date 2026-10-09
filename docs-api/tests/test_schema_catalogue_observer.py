@@ -243,3 +243,45 @@ def test_disposable_least_privilege_role_preserves_projection_without_row_access
             ))
             cur.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role)))
         owner.close()
+
+
+@pytest.mark.parametrize(
+    ("consumer", "name"),
+    [
+        (schema_catalogue, "DOCPLANE_SCHEMA_CATALOGUE_TOKEN"),
+        (schema_catalogue, "CATALOGUE_SOURCE_DSN"),
+        (observer, "DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
+        (observer, "CATALOGUE_SOURCE_DSN"),
+    ],
+)
+def test_secrets_v3_file_source_wins_for_each_runtime_secret(monkeypatch, tmp_path, consumer, name):
+    from secret_source import read_secret
+
+    secret_file = tmp_path / "runtime-secret"
+    secret_file.write_text("file-value", encoding="utf-8")
+    monkeypatch.setenv(f"{name}_FILE", str(secret_file))
+    monkeypatch.setenv(name, "legacy-value")
+
+    assert consumer._required_secret(name) == "file-value"
+
+
+@pytest.mark.parametrize(
+    ("consumer", "name"),
+    [
+        (schema_catalogue, "DOCPLANE_SCHEMA_CATALOGUE_TOKEN"),
+        (schema_catalogue, "CATALOGUE_SOURCE_DSN"),
+        (observer, "DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
+        (observer, "CATALOGUE_SOURCE_DSN"),
+    ],
+)
+def test_secrets_v3_missing_file_fails_closed_for_each_runtime_secret(
+    monkeypatch, tmp_path, consumer, name
+):
+    from secret_source import SecretSourceError
+
+    monkeypatch.setenv(f"{name}_FILE", str(tmp_path / "missing-secret"))
+    monkeypatch.setenv(name, "legacy-value")
+
+    with pytest.raises(SecretSourceError) as error:
+        consumer._required_secret(name)
+    assert "legacy-value" not in str(error.value)
