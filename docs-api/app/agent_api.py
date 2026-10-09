@@ -38,6 +38,11 @@ from app.mutation_receipts import receipt_digest
 from app.markdown_sections import find_section, outline, summary
 from app.publication import change_view, publish_change, validate_change
 from app.runtime import certification_status, deploy_current_state
+from app.principal_scopes import (
+    require_change_scope,
+    require_ownership_plan_scope,
+    require_page_operation_scope,
+)
 
 router = APIRouter(tags=["docplane-v1"])
 
@@ -124,6 +129,17 @@ def capabilities(principal: Principal = Depends(require_contributor)) -> dict[st
             "display_name": principal.display_name,
             "principal_kind": principal.principal_kind,
             "role": "CONTRIBUTOR",
+            "authorization_mode": "SCOPED_AUTOMATION" if principal.artifact_scopes is not None else "CONTRIBUTOR",
+            "artifact_scopes": [
+                {
+                    "artifact_key": scope.artifact_key,
+                    "operation": scope.operation,
+                    "source_entity_key": scope.source_entity_key,
+                    "observation_kind": scope.observation_kind,
+                    "page_path_prefix": scope.page_path_prefix,
+                }
+                for scope in principal.artifact_scopes or ()
+            ],
         },
         "documents": {
             "read": True,
@@ -146,6 +162,17 @@ def me(principal: Principal = Depends(require_contributor)) -> dict[str, Any]:
         "display_name": principal.display_name,
         "principal_kind": principal.principal_kind,
         "role": "CONTRIBUTOR",
+        "authorization_mode": "SCOPED_AUTOMATION" if principal.artifact_scopes is not None else "CONTRIBUTOR",
+        "artifact_scopes": [
+            {
+                "artifact_key": scope.artifact_key,
+                "operation": scope.operation,
+                "source_entity_key": scope.source_entity_key,
+                "observation_kind": scope.observation_kind,
+                "page_path_prefix": scope.page_path_prefix,
+            }
+            for scope in principal.artifact_scopes or ()
+        ],
     }
 
 
@@ -193,13 +220,30 @@ def create_principal(
         cur.execute(
             """
             INSERT INTO docplane.principals
-                (principal_kind, display_name, status, metadata)
-            VALUES (%s, %s, 'ACTIVE', %s)
+                (principal_kind, display_name, status, metadata, authorization_mode)
+            VALUES (%s, %s, 'ACTIVE', %s, %s)
             RETURNING principal_id
             """,
-            (request.principal_kind, request.display_name.strip(), _json(request.metadata)),
+            (
+                request.principal_kind, request.display_name.strip(), _json(request.metadata),
+                "SCOPED_AUTOMATION" if request.artifact_scopes is not None else "CONTRIBUTOR",
+            ),
         )
         principal_id = cur.fetchone()[0]
+        for scope in request.artifact_scopes or []:
+            cur.execute(
+                """
+                INSERT INTO docplane.principal_artifact_scopes
+                    (principal_id, artifact_key, operation, source_entity_key,
+                     observation_kind, page_path_prefix)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    principal_id, scope.artifact_key, scope.operation,
+                    scope.source_entity_key,
+                    scope.observation_kind, scope.page_path_prefix,
+                ),
+            )
         cur.execute(
             """
             INSERT INTO docplane.api_tokens
@@ -834,6 +878,13 @@ def create_change(
 ) -> dict[str, Any]:
     key = _idempotency(idempotency_key)
     with get_conn() as conn:
+        if request.generated_ownership_plan is not None:
+            require_ownership_plan_scope(
+                conn, principal,
+                request.generated_ownership_plan.model_dump(mode="json"),
+            )
+        elif principal.artifact_scopes is not None:
+            raise HTTPException(status_code=403, detail={"code": "PRINCIPAL_CHANGE_SCOPE_DENIED"})
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM docplane.workspaces WHERE workspace_key = %s", (request.workspace_key,))
         if cur.fetchone() is None:
@@ -897,6 +948,11 @@ def add_operation(
 ) -> dict[str, Any]:
     key = _idempotency(idempotency_key)
     with get_conn() as conn:
+        require_page_operation_scope(
+            conn, principal, str(change_id), request.operation_type,
+            str(request.page_resource_id) if request.page_resource_id else None,
+            request.payload,
+        )
         change = change_view(conn, str(change_id))
         if change["status"] not in {"DRAFT", "VALIDATED"}:
             raise HTTPException(status_code=409, detail={"code": "CHANGE_NOT_MUTABLE", "status": change["status"]})
@@ -968,6 +1024,9 @@ def validate_change_endpoint(
     change_id: UUID,
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
+    if principal.artifact_scopes is not None:
+        with get_conn() as conn:
+            require_change_scope(conn, principal, str(change_id))
     return validate_change(change_id, principal)
 
 
@@ -978,6 +1037,9 @@ def publish_change_endpoint(
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     _idempotency(idempotency_key)
+    if principal.artifact_scopes is not None:
+        with get_conn() as conn:
+            require_change_scope(conn, principal, str(change_id))
     return publish_change(change_id, principal)
 
 

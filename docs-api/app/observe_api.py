@@ -24,6 +24,7 @@ from app.event_store import append_event
 from app.model_contracts import secret_findings
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.observe_models import ObservationBatch
+from app.principal_scopes import require_observation_scopes
 
 # Evidence payloads (command output, config fragments) are exactly where
 # secrets leak; the same fail-closed policy as model attributes applies.
@@ -185,6 +186,7 @@ def record_observations(
     if item_errors:
         raise HTTPException(status_code=422, detail={"code": "OBSERVATION_BATCH_REJECTED", "errors": item_errors})
     with get_conn() as conn:
+        require_observation_scopes(conn, principal, request.observations)
         replayed = load_receipt(conn, principal, key, "OBSERVATIONS_RECORD", digest)
         if replayed is not None:
             return replayed

@@ -32,6 +32,11 @@ from app.model_models import (
     EntityUpdate,
 )
 from app.artifact_ownership import handoff_targets, reconcile_targets, target_ids
+from app.principal_scopes import (
+    require_artifact_id_scope,
+    require_artifact_scope,
+    require_source_entity_scope,
+)
 
 router = APIRouter(tags=["model-v1"])
 
@@ -621,6 +626,13 @@ def declare_artifact(
         # remediation is regeneration from the authoritative source.
         raise HTTPException(status_code=422, detail={"code": "MODEL_ARTIFACT_REQUIRES_AUTOMATION", "principal_kind": principal.principal_kind})
     with get_conn() as conn:
+        require_artifact_scope(
+            principal, request.artifact_key, "GENERATE",
+            page_paths=request.target_page_paths,
+        )
+        require_source_entity_scope(
+            conn, principal, request.artifact_key, str(request.source_entity_id)
+        )
         replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_DECLARE", digest)
         if replayed is not None:
             return replayed
@@ -703,6 +715,8 @@ def reconcile_artifact_targets(
     key = _key(idempotency_key)
     digest = receipt_digest({"route": "artifact-targets-reconcile", "artifact_id": str(artifact_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        artifact_key = require_artifact_id_scope(conn, principal, str(artifact_id), "GENERATE")
+        require_artifact_scope(principal, artifact_key, "GENERATE", page_paths=request.target_page_paths)
         replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_TARGETS_RECONCILE", digest)
         if replayed is not None:
             return replayed
@@ -736,6 +750,9 @@ def handoff_artifact(
     key = _key(idempotency_key)
     digest = receipt_digest({"route": "artifact-handoff", "predecessor_id": str(predecessor_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        predecessor_key = require_artifact_id_scope(conn, principal, str(predecessor_id), "GENERATE")
+        require_artifact_scope(principal, predecessor_key, "GENERATE", page_paths=request.successor.target_page_paths)
+        require_artifact_scope(principal, request.successor.artifact_key, "GENERATE", page_paths=request.successor.target_page_paths)
         replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_HANDOFF", digest)
         if replayed is not None:
             return replayed
@@ -770,6 +787,7 @@ def update_artifact_execution_contract(
         **request.model_dump(mode="json"),
     })
     with get_conn() as conn:
+        require_artifact_id_scope(conn, principal, str(artifact_id), "GENERATE")
         replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_EXECUTION_CONTRACT_UPDATE", digest)
         if replayed is not None:
             return replayed
@@ -817,6 +835,7 @@ def retire_artifact(
     key = _key(idempotency_key)
     digest = receipt_digest({"route": "artifact-retire", "artifact_id": str(artifact_id), **request.model_dump(mode="json")})
     with get_conn() as conn:
+        require_artifact_id_scope(conn, principal, str(artifact_id), "GENERATE")
         replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_RETIRE", digest)
         if replayed is not None:
             return replayed
