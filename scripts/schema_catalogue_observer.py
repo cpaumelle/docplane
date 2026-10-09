@@ -20,9 +20,11 @@ from uuid import UUID, uuid4
 import psycopg2
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
+from secret_source import read_secret  # noqa: E402
 
 SOURCE_ENTITY_KIND = "DATABASE"
 
@@ -58,6 +60,11 @@ class ObserveClient:
             # Bound errors: never echo response bodies which may contain data
             # outside the observer's safe journal contract.
             raise RuntimeError(f"DocPlane API returned HTTP {error.code}") from error
+
+
+def _required_secret(name: str) -> str:
+    """Resolve secrets-v3 FILE delivery, retaining the existing env transition."""
+    return read_secret(name)
 
 
 def _required_environment(name: str) -> str:
@@ -185,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         client = ObserveClient(
             _required_environment("DOCPLANE_API"),
-            _required_environment("DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
+            _required_secret("DOCPLANE_SCHEMA_OBSERVER_TOKEN"),
         )
         schemas = [
             item.strip()
@@ -194,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         result, succeeded = observe_source(
             client,
-            dsn=_required_environment("CATALOGUE_SOURCE_DSN"),
+            dsn=_required_secret("CATALOGUE_SOURCE_DSN"),
             db_key=_required_environment("CATALOGUE_DB_KEY"),
             schemas=schemas,
             probe_id=probe_id,
