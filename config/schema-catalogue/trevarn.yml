@@ -15,128 +15,164 @@ schemas:
       API keys, tenant and device/gateway registries, allocation, settings,
       audit and platform administration. See services/trevarn/database.md.
     canonical:
-      status: AVAILABLE
+      status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; evidence bundle in
-        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
-        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
-        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
-        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
-        (282–283)
+        VM1124 development database trevarn; read-only evidence bundle in
+        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
+        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
+        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
+        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
+        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
+        It additionally contains migrations 285–286 from merged PR #281
+        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
+        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
+        PR #286 updates its README; neither adds a numbered migration.
       reason: >-
-        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
-        four evidence files; all 81 ledger migration hashes match the SQL at
-        the source revisions above, through 283. The schema-only export records
-        the observed development structure. PRs #270 and #274 remain open and
-        unmerged. This is development-schema provenance; production parity is
-        not asserted. Projection contract 2 records migration_ledger as
-        NOT_CAPTURED at runtime; this qualification is supporting evidence.
+        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
+        entries through 283, and its schema-only DDL describes that VM1124 development
+        state. Its migration hashes were verified against the reviewed migration sources.
+        Current GitHub main has later schema migrations 285–286 that are not in this
+        captured database state; the current main schema has therefore not been
+        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        not a claim about current GitHub-main schema or vps3 production parity.
+        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
+        bundle is supporting provenance only.
   ingest:
     description: >-
       Trevarn's ingestion layer: raw uplinks, LNS events, gateway reception,
       durable ingest spool and receipts. See services/trevarn/database.md.
     canonical:
-      status: AVAILABLE
+      status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; evidence bundle in
-        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
-        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
-        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
-        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
-        (282–283)
+        VM1124 development database trevarn; read-only evidence bundle in
+        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
+        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
+        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
+        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
+        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
+        It additionally contains migrations 285–286 from merged PR #281
+        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
+        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
+        PR #286 updates its README; neither adds a numbered migration.
       reason: >-
-        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
-        four evidence files; all 81 ledger migration hashes match the SQL at
-        the source revisions above, through 283. The schema-only export records
-        the observed development structure. PRs #270 and #274 remain open and
-        unmerged. This is development-schema provenance; production parity is
-        not asserted. Projection contract 2 records migration_ledger as
-        NOT_CAPTURED at runtime; this qualification is supporting evidence.
+        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
+        entries through 283, and its schema-only DDL describes that VM1124 development
+        state. Its migration hashes were verified against the reviewed migration sources.
+        Current GitHub main has later schema migrations 285–286 that are not in this
+        captured database state; the current main schema has therefore not been
+        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        not a claim about current GitHub-main schema or vps3 production parity.
+        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
+        bundle is supporting provenance only.
   occupancy:
     description: >-
       Trevarn occupancy and people-counter events, aggregates, device and
       gateway twinning, locations, installation plans and reports. See
       services/trevarn/database.md.
     canonical:
-      status: AVAILABLE
+      status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; evidence bundle in
-        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
-        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
-        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
-        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
-        (282–283)
+        VM1124 development database trevarn; read-only evidence bundle in
+        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
+        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
+        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
+        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
+        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
+        It additionally contains migrations 285–286 from merged PR #281
+        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
+        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
+        PR #286 updates its README; neither adds a numbered migration.
       reason: >-
-        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
-        four evidence files; all 81 ledger migration hashes match the SQL at
-        the source revisions above, through 283. The schema-only export records
-        the observed development structure. PRs #270 and #274 remain open and
-        unmerged. This is development-schema provenance; production parity is
-        not asserted. Projection contract 2 records migration_ledger as
-        NOT_CAPTURED at runtime; this qualification is supporting evidence.
+        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
+        entries through 283, and its schema-only DDL describes that VM1124 development
+        state. Its migration hashes were verified against the reviewed migration sources.
+        Current GitHub main has later schema migrations 285–286 that are not in this
+        captured database state; the current main schema has therefore not been
+        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        not a claim about current GitHub-main schema or vps3 production parity.
+        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
+        bundle is supporting provenance only.
   analytics:
     description: >-
       Trevarn reporting projections consumed by analytics interfaces and
       report APIs. See services/trevarn/database.md.
     canonical:
-      status: AVAILABLE
+      status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; evidence bundle in
-        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
-        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
-        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
-        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
-        (282–283)
+        VM1124 development database trevarn; read-only evidence bundle in
+        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
+        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
+        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
+        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
+        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
+        It additionally contains migrations 285–286 from merged PR #281
+        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
+        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
+        PR #286 updates its README; neither adds a numbered migration.
       reason: >-
-        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
-        four evidence files; all 81 ledger migration hashes match the SQL at
-        the source revisions above, through 283. The schema-only export records
-        the observed development structure. PRs #270 and #274 remain open and
-        unmerged. This is development-schema provenance; production parity is
-        not asserted. Projection contract 2 records migration_ledger as
-        NOT_CAPTURED at runtime; this qualification is supporting evidence.
+        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
+        entries through 283, and its schema-only DDL describes that VM1124 development
+        state. Its migration hashes were verified against the reviewed migration sources.
+        Current GitHub main has later schema migrations 285–286 that are not in this
+        captured database state; the current main schema has therefore not been
+        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        not a claim about current GitHub-main schema or vps3 production parity.
+        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
+        bundle is supporting provenance only.
   parking:
     description: >-
       Trevarn parking sites, spaces, reservations, state transitions, downlink
       queue, actuations and display state. See services/trevarn/database.md.
     canonical:
-      status: AVAILABLE
+      status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; evidence bundle in
-        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
-        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
-        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
-        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
-        (282–283)
+        VM1124 development database trevarn; read-only evidence bundle in
+        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
+        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
+        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
+        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
+        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
+        It additionally contains migrations 285–286 from merged PR #281
+        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
+        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
+        PR #286 updates its README; neither adds a numbered migration.
       reason: >-
-        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
-        four evidence files; all 81 ledger migration hashes match the SQL at
-        the source revisions above, through 283. The schema-only export records
-        the observed development structure. PRs #270 and #274 remain open and
-        unmerged. This is development-schema provenance; production parity is
-        not asserted. Projection contract 2 records migration_ledger as
-        NOT_CAPTURED at runtime; this qualification is supporting evidence.
+        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
+        entries through 283, and its schema-only DDL describes that VM1124 development
+        state. Its migration hashes were verified against the reviewed migration sources.
+        Current GitHub main has later schema migrations 285–286 that are not in this
+        captured database state; the current main schema has therefore not been
+        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        not a claim about current GitHub-main schema or vps3 production parity.
+        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
+        bundle is supporting provenance only.
   contact:
     description: >-
       Trevarn contact-study detections, asset-scan captures, twinning history
       and processing watermark. See services/trevarn/database.md.
     canonical:
-      status: AVAILABLE
+      status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; evidence bundle in
-        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
-        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
-        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
-        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
-        (282–283)
+        VM1124 development database trevarn; read-only evidence bundle in
+        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
+        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
+        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
+        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
+        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
+        It additionally contains migrations 285–286 from merged PR #281
+        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
+        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
+        PR #286 updates its README; neither adds a numbered migration.
       reason: >-
-        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
-        four evidence files; all 81 ledger migration hashes match the SQL at
-        the source revisions above, through 283. The schema-only export records
-        the observed development structure. PRs #270 and #274 remain open and
-        unmerged. This is development-schema provenance; production parity is
-        not asserted. Projection contract 2 records migration_ledger as
-        NOT_CAPTURED at runtime; this qualification is supporting evidence.
+        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
+        entries through 283, and its schema-only DDL describes that VM1124 development
+        state. Its migration hashes were verified against the reviewed migration sources.
+        Current GitHub main has later schema migrations 285–286 that are not in this
+        captured database state; the current main schema has therefore not been
+        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        not a claim about current GitHub-main schema or vps3 production parity.
+        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
+        bundle is supporting provenance only.
   public:
     description: >-
       PostgreSQL's default schema, included as a whole by projection-contract 2.
@@ -144,19 +180,25 @@ schemas:
       structure is read by introspection, while migration row identity remains
       outside the contract-2 projection. See services/trevarn/database.md.
     canonical:
-      status: AVAILABLE
+      status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; evidence bundle in
-        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
-        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
-        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
-        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
-        (282–283)
+        VM1124 development database trevarn; read-only evidence bundle in
+        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
+        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
+        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
+        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
+        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
+        It additionally contains migrations 285–286 from merged PR #281
+        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
+        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
+        PR #286 updates its README; neither adds a numbered migration.
       reason: >-
-        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
-        four evidence files; all 81 ledger migration hashes match the SQL at
-        the source revisions above, through 283. The schema-only export records
-        the observed development structure. PRs #270 and #274 remain open and
-        unmerged. This is development-schema provenance; production parity is
-        not asserted. Projection contract 2 records migration_ledger as
-        NOT_CAPTURED at runtime; this qualification is supporting evidence.
+        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
+        entries through 283, and its schema-only DDL describes that VM1124 development
+        state. Its migration hashes were verified against the reviewed migration sources.
+        Current GitHub main has later schema migrations 285–286 that are not in this
+        captured database state; the current main schema has therefore not been
+        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        not a claim about current GitHub-main schema or vps3 production parity.
+        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
+        bundle is supporting provenance only.
