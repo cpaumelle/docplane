@@ -175,7 +175,6 @@ def _wrapper_fixture(tmp_path: Path, *, docker_mode: str = "valid", hold: str = 
         "CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres\n"
         "CATALOGUE_ENVIRONMENT=development\n"
         "CATALOGUE_SOURCE_IDENTITY=VM1124/trevarn\n"
-        "CATALOGUE_SOURCE_DOCKER_NETWORK=trevarn-net\n"
         "CATALOGUE_SOURCE_SSLMODE=disable\n",
         encoding="utf-8",
     )

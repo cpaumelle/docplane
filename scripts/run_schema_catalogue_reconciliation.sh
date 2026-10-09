@@ -104,9 +104,9 @@ PY
 if [[ "${CATALOGUE_SOURCE_SSLMODE:-${PGSSLMODE:-}}" == "disable" ]]; then
   [[ "${CATALOGUE_ENVIRONMENT:-}" == "development" \
     && "${CATALOGUE_SOURCE_IDENTITY:-}" == "VM1124/trevarn" \
-    && "${CATALOGUE_SOURCE_DOCKER_NETWORK:-}" == "trevarn-net" \
     && " ${network_names[*]} " == *" trevarn-net "* ]] \
     || fail "sslmode=disable is allowed only for VM1124 Trevarn on trevarn-net"
+  export CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED=trevarn-net
 fi
 
 exec python3 "$repository_root/scripts/schema_catalogue.py" "$@"

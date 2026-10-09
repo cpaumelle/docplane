@@ -215,7 +215,7 @@ def test_observer_host_wrapper_uses_its_own_secret_files_and_source_parameters(t
         f"CATALOGUE_SOURCE_PASSWORD_FILE={files['db-password']}\n"
         "CATALOGUE_SOURCE_PORT=5432\nCATALOGUE_SOURCE_COMPOSE_PROJECT=trevarn-core\n"
         "CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres\nCATALOGUE_ENVIRONMENT=development\n"
-        "CATALOGUE_SOURCE_IDENTITY=VM1124/trevarn\nCATALOGUE_SOURCE_DOCKER_NETWORK=trevarn-net\n"
+        "CATALOGUE_SOURCE_IDENTITY=VM1124/trevarn\n"
         "CATALOGUE_SOURCE_SSLMODE=disable\n",
         encoding="utf-8",
     )
@@ -264,7 +264,7 @@ def test_connection_parameters_read_password_file_and_confine_disable_sslmode(
     monkeypatch.setenv("CATALOGUE_SOURCE_SSLMODE", "disable")
     monkeypatch.setenv("CATALOGUE_ENVIRONMENT", "development")
     monkeypatch.setenv("CATALOGUE_SOURCE_IDENTITY", "VM1124/trevarn")
-    monkeypatch.setenv("CATALOGUE_SOURCE_DOCKER_NETWORK", "trevarn-net")
+    monkeypatch.setenv("CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED", "trevarn-net")
     params = consumer.source_connection_parameters()
     assert params == {
         "host": "172.23.0.9", "dbname": "trevarn",
@@ -278,6 +278,7 @@ def test_connection_parameters_read_password_file_and_confine_disable_sslmode(
         consumer.source_connection_parameters()
 
     monkeypatch.delenv("CATALOGUE_SOURCE_SSLMODE")
+    monkeypatch.delenv("CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED")
     monkeypatch.setenv("PGSSLMODE", "disable")
     with pytest.raises(RuntimeError, match="restricted to the VM1124 Trevarn Docker bridge"):
         consumer.source_connection_parameters()

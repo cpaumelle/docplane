@@ -58,7 +58,7 @@ def source_connection_parameters() -> dict[str, str]:
         if sslmode == "disable" and not (
             os.environ.get("CATALOGUE_ENVIRONMENT", "").strip() == "development"
             and os.environ.get("CATALOGUE_SOURCE_IDENTITY", "").strip() == "VM1124/trevarn"
-            and os.environ.get("CATALOGUE_SOURCE_DOCKER_NETWORK", "").strip() == "trevarn-net"
+            and os.environ.get("CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED", "").strip() == "trevarn-net"
         ):
             raise RuntimeError(
                 "CATALOGUE_SOURCE_SSLMODE=disable is restricted to the VM1124 Trevarn Docker bridge"
