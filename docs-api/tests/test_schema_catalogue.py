@@ -88,7 +88,7 @@ def _patch_runtime(monkeypatch, *, artifact, previous, stored, events=None):
         def __exit__(self, *args):
             return False
 
-    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda _dsn: Source())
+    monkeypatch.setattr(schema_catalogue.psycopg2, "connect", lambda **_params: Source())
     monkeypatch.setattr(schema_catalogue, "introspect", lambda *_: STRUCTURE)
     monkeypatch.setattr(schema_catalogue, "source_metadata", lambda *_: {
         "database_name": "docs", "server_version": "16.0",
@@ -106,7 +106,7 @@ def _patch_runtime(monkeypatch, *, artifact, previous, stored, events=None):
             schema_catalogue, "publish_projection",
             lambda *_a, **_k: events.append("projection"),
         )
-    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "not-used")
+    monkeypatch.setenv("CATALOGUE_SOURCE_DSN", "postgresql://catalogue.invalid/docs")
     monkeypatch.setenv("CATALOGUE_DB_KEY", "docplane")
     monkeypatch.setenv("CATALOGUE_SCHEMAS", "docplane")
     monkeypatch.setenv("DOCPLANE_API", "https://docplane.invalid")
@@ -130,30 +130,52 @@ def _wrapper_fixture(tmp_path: Path, *, docker_mode: str = "valid", hold: str = 
     wrapper.chmod(0o755)
     receipt = tmp_path / "generator-receipt.json"
     generator = scripts / "schema_catalogue.py"
+    (scripts / "secret_source.py").write_text(
+        (ROOT / "scripts" / "secret_source.py").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (scripts / "schema_catalogue_connection.py").write_text(
+        (ROOT / "scripts" / "schema_catalogue_connection.py").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
     generator.write_text(
         "import json, os, sys, time\n"
-        "from urllib.parse import urlsplit\n"
-        "dsn = urlsplit(os.environ['CATALOGUE_SOURCE_DSN'])\n"
+        "sys.path.insert(0, os.path.dirname(__file__))\n"
+        "from secret_source import read_secret\n"
+        "from schema_catalogue_connection import source_connection_parameters\n"
+        "params = source_connection_parameters()\n"
+        "token = read_secret('DOCPLANE_SCHEMA_CATALOGUE_TOKEN')\n"
         "with open(os.environ['SCHEMA_WRAPPER_RECEIPT'], 'a', encoding='utf-8') as out:\n"
-        "    out.write(json.dumps({'scheme': dsn.scheme, 'host': dsn.hostname, "
-        "'port': dsn.port, 'database': dsn.path, 'password_present': bool(dsn.password), "
-        "'args': sys.argv[1:]}) + '\\n')\n"
+        "    out.write(json.dumps({'host': params.get('host'), 'port': params.get('port'), "
+        "'database': params.get('dbname'), 'password_present': bool(params.get('password')), "
+        "'token_present': bool(token), 'has_dsn': 'dsn' in params, 'args': sys.argv[1:]}) + '\\n')\n"
         "time.sleep(float(os.environ.get('SCHEMA_WRAPPER_HOLD_SECONDS', '0')))\n",
         encoding="utf-8",
     )
+    secrets = tmp_path / "secrets"
+    secrets.mkdir(mode=0o700)
+    for name, value in (
+        ("db-password", "synthetic password/with punctuation"),
+        ("docplane-token", "synthetic-test-token"),
+    ):
+        secret = secrets / name
+        secret.write_text(value, encoding="utf-8")
+        secret.chmod(0o400)
     environment_file = tmp_path / "schema.env"
     environment_file.write_text(
         "DOCPLANE_API=https://docplane.invalid\n"
-        "DOCPLANE_SCHEMA_CATALOGUE_TOKEN=synthetic-test-token\n"
+        f"DOCPLANE_SCHEMA_CATALOGUE_TOKEN_FILE={secrets / 'docplane-token'}\n"
         "CATALOGUE_DB_KEY=docplane\n"
         "CATALOGUE_DB_DISPLAY='DocPlane PostgreSQL'\n"
         "CATALOGUE_SCHEMAS=docplane,docs,model,observe,work\n"
         "CATALOGUE_SOURCE_DB=docs\n"
         "CATALOGUE_SOURCE_USER=docs\n"
-        "CATALOGUE_SOURCE_PASSWORD='synthetic password/with punctuation'\n"
+        f"CATALOGUE_SOURCE_PASSWORD_FILE={secrets / 'db-password'}\n"
         "CATALOGUE_SOURCE_PORT=5432\n"
         "CATALOGUE_SOURCE_COMPOSE_PROJECT=docplane\n"
-        "CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres\n",
+        "CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres\n"
+        "CATALOGUE_ENVIRONMENT=development\n"
+        "CATALOGUE_SOURCE_IDENTITY=VM1124/trevarn\n"
+        "CATALOGUE_SOURCE_SSLMODE=disable\n",
         encoding="utf-8",
     )
     environment_file.chmod(0o600)
@@ -172,9 +194,9 @@ def _wrapper_fixture(tmp_path: Path, *, docker_mode: str = "valid", hold: str = 
         "elif [[ $1 == inspect ]]; then\n"
         "  case \"$SCHEMA_DOCKER_MODE\" in\n"
         "    unresolved-address) exit 0 ;;\n"
-        "    ambiguous-address) printf '172.23.0.5\\n172.24.0.5\\n' ;;\n"
-        "    invalid-address) printf 'not-an-address\\n' ;;\n"
-        "    *) printf '172.23.0.5\\n' ;;\n"
+        "    ambiguous-address) printf 'trevarn-net=172.23.0.5\\ntest-net=172.24.0.5\\n' ;;\n"
+        "    invalid-address) printf 'trevarn-net=not-an-address\\n' ;;\n"
+        "    *) printf 'trevarn-net=172.23.0.5\\n' ;;\n"
         "  esac\n"
         "else\n"
         "  exit 2\n"
@@ -204,7 +226,7 @@ def test_runtime_wrapper_contract_is_bounded_and_contains_no_secrets_or_schedule
     assert "/run/lock/docplane-schema-catalogue.lock" in wrapper
     assert "/tmp" not in wrapper
     assert "/etc/docplane/schema-catalogue.env" in wrapper
-    assert "CATALOGUE_SOURCE_DSN=" in wrapper
+    assert "CATALOGUE_SOURCE_DSN=" not in wrapper
     assert "com.docker.compose.project=" in wrapper
     assert "com.docker.compose.service=" in wrapper
     assert "DOCPLANE_SCHEMA_CATALOGUE_TOKEN=" not in wrapper
@@ -231,7 +253,7 @@ def test_runtime_wrapper_contract_is_bounded_and_contains_no_secrets_or_schedule
     assert "schema_catalogue_observer" not in template
 
 
-def test_runtime_wrapper_discovers_endpoint_and_passes_only_transient_dsn(tmp_path):
+def test_runtime_wrapper_discovers_endpoint_and_passes_connection_parameters_in_memory(tmp_path):
     wrapper, _, receipt, env = _wrapper_fixture(tmp_path)
 
     result = subprocess.run(
@@ -242,11 +264,12 @@ def test_runtime_wrapper_discovers_endpoint_and_passes_only_transient_dsn(tmp_pa
     assert "synthetic password" not in result.stdout + result.stderr
     record = json.loads(receipt.read_text(encoding="utf-8"))
     assert record == {
-        "scheme": "postgresql",
         "host": "172.23.0.5",
-        "port": 5432,
-        "database": "/docs",
+        "port": "5432",
+        "database": "docs",
         "password_present": True,
+        "token_present": True,
+        "has_dsn": False,
         "args": ["--dry-run"],
     }
 
