@@ -1,8 +1,12 @@
 # Presentation configuration for the Trevarn PostgreSQL schema catalogue.
 #
-# Authority: schema and object structure comes only from live projection-contract
-# 2 introspection. This file supplies human descriptions and the known migration
-# source; it does not create or filter database structure.
+# Authority: structure is generated only from live projection-contract 2
+# introspection. This file supplies descriptions and migration provenance; it
+# does not create or filter database structure.
+#
+# Runtime CATALOGUE_SCHEMAS must be: platform,ingest,occupancy,analytics,parking,contact,public.
+# The verified source also has cbre_compat (3 tables and 1 view); it is an
+# existing CBRE compatibility area and is excluded from this Trevarn catalogue.
 
 schemas:
   platform:
@@ -12,26 +16,42 @@ schemas:
       audit and platform administration. See services/trevarn/database.md.
     canonical:
       status: AVAILABLE
-      source: VM1124 isolated database trevarn_cutover; trevarn-core/db/migrate.sh; reported 81-entry ledger through 283
+      source: >-
+        VM1124 development database trevarn; evidence bundle in
+        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
+        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
+        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
+        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
+        (282–283)
       reason: >-
-        Qualification reported: 81 ledger entries through 283, comprising
-        the 78 production-baseline migrations plus 281–283; hashes reported
-        verified. The reviewed source commit SHA and schema-object comparison
-        are not yet evidenced. Production parity is unverified; this catalogue
-        describes the development target only.
+        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
+        four evidence files; all 81 ledger migration hashes match the SQL at
+        the source revisions above, through 283. The schema-only export records
+        the observed development structure. PRs #270 and #274 remain open and
+        unmerged. This is development-schema provenance; production parity is
+        not asserted. Projection contract 2 records migration_ledger as
+        NOT_CAPTURED at runtime; this qualification is supporting evidence.
   ingest:
     description: >-
       Trevarn's ingestion layer: raw uplinks, LNS events, gateway reception,
       durable ingest spool and receipts. See services/trevarn/database.md.
     canonical:
       status: AVAILABLE
-      source: VM1124 isolated database trevarn_cutover; trevarn-core/db/migrate.sh; reported 81-entry ledger through 283
+      source: >-
+        VM1124 development database trevarn; evidence bundle in
+        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
+        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
+        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
+        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
+        (282–283)
       reason: >-
-        Qualification reported: 81 ledger entries through 283, comprising
-        the 78 production-baseline migrations plus 281–283; hashes reported
-        verified. The reviewed source commit SHA and schema-object comparison
-        are not yet evidenced. Production parity is unverified; this catalogue
-        describes the development target only.
+        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
+        four evidence files; all 81 ledger migration hashes match the SQL at
+        the source revisions above, through 283. The schema-only export records
+        the observed development structure. PRs #270 and #274 remain open and
+        unmerged. This is development-schema provenance; production parity is
+        not asserted. Projection contract 2 records migration_ledger as
+        NOT_CAPTURED at runtime; this qualification is supporting evidence.
   occupancy:
     description: >-
       Trevarn occupancy and people-counter events, aggregates, device and
@@ -39,63 +59,104 @@ schemas:
       services/trevarn/database.md.
     canonical:
       status: AVAILABLE
-      source: VM1124 isolated database trevarn_cutover; trevarn-core/db/migrate.sh; reported 81-entry ledger through 283
+      source: >-
+        VM1124 development database trevarn; evidence bundle in
+        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
+        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
+        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
+        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
+        (282–283)
       reason: >-
-        Qualification reported: 81 ledger entries through 283, comprising
-        the 78 production-baseline migrations plus 281–283; hashes reported
-        verified. The reviewed source commit SHA and schema-object comparison
-        are not yet evidenced. Production parity is unverified; this catalogue
-        describes the development target only.
+        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
+        four evidence files; all 81 ledger migration hashes match the SQL at
+        the source revisions above, through 283. The schema-only export records
+        the observed development structure. PRs #270 and #274 remain open and
+        unmerged. This is development-schema provenance; production parity is
+        not asserted. Projection contract 2 records migration_ledger as
+        NOT_CAPTURED at runtime; this qualification is supporting evidence.
   analytics:
     description: >-
       Trevarn reporting projections consumed by analytics interfaces and
       report APIs. See services/trevarn/database.md.
     canonical:
       status: AVAILABLE
-      source: VM1124 isolated database trevarn_cutover; trevarn-core/db/migrate.sh; reported 81-entry ledger through 283
+      source: >-
+        VM1124 development database trevarn; evidence bundle in
+        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
+        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
+        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
+        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
+        (282–283)
       reason: >-
-        Qualification reported: 81 ledger entries through 283, comprising
-        the 78 production-baseline migrations plus 281–283; hashes reported
-        verified. The reviewed source commit SHA and schema-object comparison
-        are not yet evidenced. Production parity is unverified; this catalogue
-        describes the development target only.
+        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
+        four evidence files; all 81 ledger migration hashes match the SQL at
+        the source revisions above, through 283. The schema-only export records
+        the observed development structure. PRs #270 and #274 remain open and
+        unmerged. This is development-schema provenance; production parity is
+        not asserted. Projection contract 2 records migration_ledger as
+        NOT_CAPTURED at runtime; this qualification is supporting evidence.
   parking:
     description: >-
       Trevarn parking sites, spaces, reservations, state transitions, downlink
       queue, actuations and display state. See services/trevarn/database.md.
     canonical:
       status: AVAILABLE
-      source: VM1124 isolated database trevarn_cutover; trevarn-core/db/migrate.sh; reported 81-entry ledger through 283
+      source: >-
+        VM1124 development database trevarn; evidence bundle in
+        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
+        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
+        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
+        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
+        (282–283)
       reason: >-
-        Qualification reported: 81 ledger entries through 283, comprising
-        the 78 production-baseline migrations plus 281–283; hashes reported
-        verified. The reviewed source commit SHA and schema-object comparison
-        are not yet evidenced. Production parity is unverified; this catalogue
-        describes the development target only.
+        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
+        four evidence files; all 81 ledger migration hashes match the SQL at
+        the source revisions above, through 283. The schema-only export records
+        the observed development structure. PRs #270 and #274 remain open and
+        unmerged. This is development-schema provenance; production parity is
+        not asserted. Projection contract 2 records migration_ledger as
+        NOT_CAPTURED at runtime; this qualification is supporting evidence.
   contact:
     description: >-
       Trevarn contact-study detections, asset-scan captures, twinning history
       and processing watermark. See services/trevarn/database.md.
     canonical:
       status: AVAILABLE
-      source: VM1124 isolated database trevarn_cutover; trevarn-core/db/migrate.sh; reported 81-entry ledger through 283
+      source: >-
+        VM1124 development database trevarn; evidence bundle in
+        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
+        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
+        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
+        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
+        (282–283)
       reason: >-
-        Qualification reported: 81 ledger entries through 283, comprising
-        the 78 production-baseline migrations plus 281–283; hashes reported
-        verified. The reviewed source commit SHA and schema-object comparison
-        are not yet evidenced. Production parity is unverified; this catalogue
-        describes the development target only.
+        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
+        four evidence files; all 81 ledger migration hashes match the SQL at
+        the source revisions above, through 283. The schema-only export records
+        the observed development structure. PRs #270 and #274 remain open and
+        unmerged. This is development-schema provenance; production parity is
+        not asserted. Projection contract 2 records migration_ledger as
+        NOT_CAPTURED at runtime; this qualification is supporting evidence.
   public:
     description: >-
       PostgreSQL's default schema, included as a whole by projection-contract 2.
-      Its object inventory comes from read-only introspection of the configured
-      source; the catalogue does not filter tables. See services/trevarn/database.md.
+      The verified development export contains public.schema_migrations; its
+      structure is read by introspection, while migration row identity remains
+      outside the contract-2 projection. See services/trevarn/database.md.
     canonical:
       status: AVAILABLE
-      source: VM1124 isolated database trevarn_cutover; trevarn-core/db/migrate.sh; reported 81-entry ledger through 283
+      source: >-
+        VM1124 development database trevarn; evidence bundle in
+        trevarn-core PR #276 head c9a2e15ad88302f281183d9584e13a29b95a7238;
+        migration sources: main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b
+        (000–280), PR #270 head 3b88f22ccc46157cacf29ac92cbb0232d9c7a23e
+        (281), PR #274 head 42d3d780ddda1c310cf91363e10899f7edf2fa08
+        (282–283)
       reason: >-
-        Qualification reported: 81 ledger entries through 283, comprising
-        the 78 production-baseline migrations plus 281–283; hashes reported
-        verified. The reviewed source commit SHA and schema-object comparison
-        are not yet evidenced. Production parity is unverified; this catalogue
-        describes the development target only.
+        Evidence captured 2026-10-09T11:38:08Z. SHA256SUMS verified for all
+        four evidence files; all 81 ledger migration hashes match the SQL at
+        the source revisions above, through 283. The schema-only export records
+        the observed development structure. PRs #270 and #274 remain open and
+        unmerged. This is development-schema provenance; production parity is
+        not asserted. Projection contract 2 records migration_ledger as
+        NOT_CAPTURED at runtime; this qualification is supporting evidence.
