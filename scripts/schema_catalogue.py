@@ -25,9 +25,9 @@ replays receipts instead of duplicating work.
 
 Environment:
   DOCPLANE_API                     routed front, e.g. https://docplane.internal
-  DOCPLANE_SCHEMA_CATALOGUE_TOKEN  AUTOMATION bearer (never logged)
-  CATALOGUE_SOURCE_DSN             source database DSN (structure is read with
-                                   a read-only transaction)
+  DOCPLANE_SCHEMA_CATALOGUE_TOKEN[_FILE]  AUTOMATION bearer (never logged)
+  CATALOGUE_SOURCE_DSN[_FILE]             source database DSN (structure is read with
+                                          a read-only transaction)
   CATALOGUE_DB_KEY                 entity key for the database, e.g. docplane
   CATALOGUE_DB_DISPLAY             display name, e.g. "DocPlane PostgreSQL"
   CATALOGUE_SCHEMAS                comma-separated schema names to catalogue
@@ -66,6 +66,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from migration.redaction import redact  # noqa: E402
+from secret_source import read_secret  # noqa: E402
 
 # The authoritative source projection (structure introspection + fingerprint)
 # lives in a pure, side-effect-free module so the SCHEDULED schema observer
@@ -101,6 +102,11 @@ GENERATOR = {
     "version": GENERATOR_VERSION,
     "projection_contract_version": PROJECTION_CONTRACT_VERSION,
 }
+
+
+def _required_secret(name: str) -> str:
+    """Resolve secrets-v3 FILE delivery, retaining the existing env transition."""
+    return read_secret(name)
 
 
 class ProjectionRefusedError(RuntimeError):
@@ -730,7 +736,7 @@ def main(argv: list[str] | None = None) -> int:
     if (args.emit_projection or args.emit_pages) and not args.dry_run:
         parser.error("--emit-projection/--emit-pages are review aids and require --dry-run")
 
-    dsn = os.environ["CATALOGUE_SOURCE_DSN"]
+    dsn = _required_secret("CATALOGUE_SOURCE_DSN")
     db_key = os.environ["CATALOGUE_DB_KEY"]
     db_display = os.environ.get("CATALOGUE_DB_DISPLAY", db_key)
     schemas = [name.strip() for name in os.environ["CATALOGUE_SCHEMAS"].split(",") if name.strip()]
@@ -785,7 +791,7 @@ def main(argv: list[str] | None = None) -> int:
                 target.write_text(page["content"], encoding="utf-8")
         return 0
 
-    client = Client(os.environ["DOCPLANE_API"], os.environ["DOCPLANE_SCHEMA_CATALOGUE_TOKEN"])
+    client = Client(os.environ["DOCPLANE_API"], _required_secret("DOCPLANE_SCHEMA_CATALOGUE_TOKEN"))
     entities = ensure_entities(client, db_key, db_display, schemas, identity)
     artifact_key = f"schema-catalogue-{db_key}"
     artifact = current_artifact(client, artifact_key)
