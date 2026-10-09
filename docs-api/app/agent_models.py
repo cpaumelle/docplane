@@ -8,11 +8,55 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.model_models import GeneratedOwnershipPlan
 
 
+class PrincipalArtifactScope(BaseModel):
+    artifact_key: str = Field(pattern=r"^[a-z0-9][a-z0-9_.-]{0,126}$")
+    operation: Literal["GENERATE", "OBSERVE"]
+    source_entity_key: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9_.-]{0,126}$")
+    observation_kind: Literal["FRESHNESS_CHECK", "GENERATION"] | None = None
+    page_path_prefix: str | None = Field(default=None, min_length=1, max_length=512)
+
+    @field_validator("page_path_prefix")
+    @classmethod
+    def safe_page_prefix(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        parts = value.rstrip("/").split("/")
+        if (
+            value.startswith("/") or not value.endswith("/") or "//" in value
+            or any(not part or part in {".", ".."} for part in parts)
+            or any(not part.isascii() or not all(char.isalnum() or char in "_.-" for char in part) for part in parts)
+        ):
+            raise ValueError("page_path_prefix must be a safe relative directory ending in '/'")
+        return value
+
+    @model_validator(mode="after")
+    def operation_fields(self):
+        if self.operation == "GENERATE":
+            if self.source_entity_key is None or self.observation_kind is not None or self.page_path_prefix is None:
+                raise ValueError("GENERATE requires source_entity_key and page_path_prefix and forbids observation_kind")
+        elif self.source_entity_key is not None or self.observation_kind is None or self.page_path_prefix is not None:
+            raise ValueError("OBSERVE requires observation_kind and forbids source_entity_key and page_path_prefix")
+        return self
+
+
 class PrincipalCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
     principal_kind: Literal["HUMAN", "AGENT", "AUTOMATION"] = "HUMAN"
     expires_at: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Omitted means the existing full contributor role. Supplying scopes opts
+    # the principal into server-enforced, artifact-bound write authorization.
+    artifact_scopes: list[PrincipalArtifactScope] | None = Field(default=None, min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def scopes_require_automation(self):
+        if self.artifact_scopes is not None and self.principal_kind != "AUTOMATION":
+            raise ValueError("artifact_scopes are only valid for AUTOMATION principals")
+        if self.artifact_scopes is not None:
+            unique = {(s.artifact_key, s.operation) for s in self.artifact_scopes}
+            if len(unique) != len(self.artifact_scopes):
+                raise ValueError("artifact_scopes must be unique by artifact_key and operation")
+        return self
 
 
 class PrincipalToken(BaseModel):
