@@ -12,20 +12,24 @@ schemas:
       audit and platform administration. See services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
-      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A canonical build source exists in the ordered Trevarn baseline. It has
-        not yet been compared with the deployed schema.
+        A clean development source is migration-qualified at reviewed commit
+        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
+        Production parity remains unverified; do not present this source as
+        live production evidence.
   ingest:
     description: >-
       Trevarn's ingestion layer: raw uplinks, LNS events, gateway reception,
       durable ingest spool and receipts. See services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
-      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A canonical build source exists in the ordered Trevarn baseline. It has
-        not yet been compared with the deployed schema.
+        A clean development source is migration-qualified at reviewed commit
+        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
+        Production parity remains unverified; do not present this source as
+        live production evidence.
   occupancy:
     description: >-
       Trevarn occupancy and people-counter events, aggregates, device and
@@ -33,40 +37,48 @@ schemas:
       services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
-      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A canonical build source exists in the ordered Trevarn baseline. It has
-        not yet been compared with the deployed schema.
+        A clean development source is migration-qualified at reviewed commit
+        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
+        Production parity remains unverified; do not present this source as
+        live production evidence.
   analytics:
     description: >-
       Trevarn reporting projections consumed by analytics interfaces and
       report APIs. See services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
-      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A canonical build source exists in the ordered Trevarn baseline. It has
-        not yet been compared with the deployed schema.
+        A clean development source is migration-qualified at reviewed commit
+        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
+        Production parity remains unverified; do not present this source as
+        live production evidence.
   parking:
     description: >-
       Trevarn parking sites, spaces, reservations, state transitions, downlink
       queue, actuations and display state. See services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
-      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A canonical build source exists in the ordered Trevarn baseline. It has
-        not yet been compared with the deployed schema.
+        A clean development source is migration-qualified at reviewed commit
+        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
+        Production parity remains unverified; do not present this source as
+        live production evidence.
   contact:
     description: >-
       Trevarn contact-study detections, asset-scan captures, twinning history
       and processing watermark. See services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
-      source: trevarn-core/db/baseline/*.sql via db/migrate.sh
+      source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        A canonical build source exists in the ordered Trevarn baseline. It has
-        not yet been compared with the deployed schema.
+        A clean development source is migration-qualified at reviewed commit
+        91a001974f82a98274363ed6e35929a99d39e5e2 through migration 280.
+        Production parity remains unverified; do not present this source as
+        live production evidence.
   public:
     description: >-
       PostgreSQL's default schema. The vps3 production preflight found only the
@@ -74,8 +86,8 @@ schemas:
       may also appear in this schema. See services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
-      source: trevarn-core/db/migrate.sh
+      source: VM1124 isolated database trevarn_qual_91a_20261009, built by trevarn-core/db/migrate.sh from reviewed commit 91a001974f82a98274363ed6e35929a99d39e5e2; migration high-water mark 280
       reason: >-
-        The database migration runner owns the public migration ledger. Compare
-        its deployed structure with a clean baseline build before claiming
-        canonical parity.
+        The isolated development database owns the MODEL source ledger through
+        migration 280. Production parity remains unverified; public parity
+        fixtures belong to development only.
