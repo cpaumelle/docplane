@@ -345,3 +345,144 @@ def test_activity_bodies_parameter_is_closed_to_unknown_values():
     app.dependency_overrides[require_contributor] = lambda: None
     response = TestClient(app).get(f"/api/v1/initiatives/{_INITIATIVE}?activity_bodies=everything")
     assert response.status_code == 422
+
+
+# --- agent read: allowlisted activity metadata, links and owner kind ---------
+
+_CAPTURE = "3c2a1b0d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+_OWNER = "7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d"
+_HEX40 = "0123456789abcdef0123456789abcdef01234567"
+
+
+def _get_full(monkeypatch, metadatas: list, links: list, owner_kind="AUTOMATION", **kwargs):
+    activities = [(f"a-{n}", "p-1", "NOTE", "plain body", meta, f"2026-10-2{n}T00:00:00Z") for n, meta in enumerate(metadatas)]
+    results = [activities, links, []]
+    if kwargs.get("activity_bodies") == "redacted":
+        results.append([(owner_kind,)] if owner_kind else [])
+    cur = SequencedCursor(results)
+    monkeypatch.setattr(work_api, "get_conn", lambda: RecordingConnection(cur))
+    monkeypatch.setattr(work_api, "_load", lambda _conn, _id: {"initiative_id": _INITIATIVE, "owner_principal_id": _OWNER})
+    from uuid import UUID
+    return work_api.get_initiative(UUID(_INITIATIVE), principal=None, **kwargs)
+
+
+def test_redacted_read_returns_allowlisted_typed_references_only(monkeypatch):
+    meta = {"title": "free-form title", "classification": "x", "references": [
+        {"reference_type": "PR", "reference_id": "cpaumelle/docplane#213"},
+        {"reference_type": "COMMIT", "reference_id": _HEX40},
+        {"reference_type": "ARTIFACT", "reference_id": f"token {_TOKEN_SHAPED}"},
+        {"reference_type": "BOGUS", "reference_id": "dropped"},
+        "not-a-dict"]}
+    out = _get_full(monkeypatch, [meta], [], activity_bodies="redacted")
+    activity = out["activities"][0]
+    assert out["activity_metadata"] == "allowlisted-v1"
+    assert "metadata" not in activity and "title" not in activity and "classification" not in activity
+    assert activity["references"] == [
+        {"reference_type": "PR", "reference_id": "cpaumelle/docplane#213", "reference_id_withheld": False},
+        # a 40-hex id is secret-shaped to the canonical redactor: withheld, never exempted
+        {"reference_type": "COMMIT", "reference_id": None, "reference_id_withheld": True},
+        {"reference_type": "ARTIFACT", "reference_id": None, "reference_id_withheld": True},
+    ]
+    assert _TOKEN_SHAPED not in repr(out) and _HEX40 not in repr(out)
+
+
+def test_redacted_read_projects_reported_provenance_and_source_capture(monkeypatch):
+    meta = {"capture_id": _CAPTURE, "capture_kind": "FINDING", "capture_origin": {
+        "agent": "claude-code-hub2", "corrects": "c96344b6",
+        "supersedes": "a6d79271-bbcd-4814-82f4-e704c1890313, not-an-id",
+        "related_capture": "c697f075-33c4-408c-92c9-e768265535b7",
+        "repo": "trevarn-core", "password": "hunter2-synthetic", "free": {"nested": "dropped"}}}
+    out = _get_full(monkeypatch, [meta], [], activity_bodies="redacted")
+    activity = out["activities"][0]
+    assert activity["source_capture_id"] == _CAPTURE
+    assert activity["provenance"] == {
+        "reported_producer": "claude-code-hub2", "reported_producer_withheld": False,
+        "corrects": ["c96344b6"], "supersedes": ["a6d79271-bbcd-4814-82f4-e704c1890313"],
+        "relates_to": ["c697f075-33c4-408c-92c9-e768265535b7"]}
+    # the reported producer is a claim; the authenticated writer stays separate
+    assert activity["author_principal_id"] == "p-1"
+    assert "hunter2" not in repr(out) and "trevarn-core" not in repr(out)
+
+
+def test_secret_shaped_reported_producer_is_withheld(monkeypatch):
+    meta = {"capture_origin": {"source": f"agent {_TOKEN_SHAPED}"}}
+    out = _get_full(monkeypatch, [meta], [], activity_bodies="redacted")
+    assert out["activities"][0]["provenance"] == {"reported_producer": None, "reported_producer_withheld": True}
+    assert _TOKEN_SHAPED not in repr(out)
+
+
+def test_redacted_read_links_and_owner_kind(monkeypatch):
+    links = [("CONTEXT", "EXTERNAL", f"docplane://work/captures/{_CAPTURE}", "p-1", "2026-10-20T00:00:00Z"),
+             ("EVIDENCE", "EXTERNAL", f"https://example.invalid/?t={_TOKEN_SHAPED}", "p-1", "2026-10-20T00:00:00Z")]
+    out = _get_full(monkeypatch, [{}], links, activity_bodies="redacted")
+    founding, leaky = out["links"]
+    assert founding["resource_id"] == f"docplane://work/captures/{_CAPTURE}" and founding["resource_id_withheld"] is False
+    assert leaky["resource_id"] is None and leaky["resource_id_withheld"] is True
+    assert out["owner_principal_id"] == _OWNER and out["owner_principal_kind"] == "AUTOMATION"
+    assert _TOKEN_SHAPED not in repr(out)
+
+
+def test_raw_read_shape_is_unchanged(monkeypatch):
+    meta = {"capture_id": _CAPTURE, "capture_origin": {"agent": "x"}}
+    out = _get_full(monkeypatch, [meta], [], activity_bodies="raw")
+    assert "activity_metadata" not in out and "owner_principal_kind" not in out
+    assert out["activities"][0]["metadata"] == meta and "provenance" not in out["activities"][0]
+
+
+# --- agent discovery: view=summary and bounded text search -------------------
+
+_ROW_KEYS = ("initiative_id", "initiative_key", "workspace_id", "workspace_key", "title", "objective", "scope",
+             "owner_principal_id", "work_state", "priority", "version", "target_date", "review_due_at",
+             "blocker_summary", "soak_started_at", "soak_review_at", "soak_success_criteria",
+             "soak_failure_conditions", "soak_monitoring_ref", "parked_reason", "parked_review_at",
+             "parked_indefinitely", "promotion_state", "promotion_change_id", "model_disposition",
+             "model_disposition_note", "observe_disposition", "observe_disposition_note", "completed_at",
+             "created_at", "updated_at")
+
+
+def _row(n, title, owner=_OWNER):
+    values = {k: None for k in _ROW_KEYS}
+    values.update(initiative_id=f"00000000-0000-4000-8000-00000000000{n}", initiative_key=f"key-{n}", title=title,
+                  objective="free-form objective", scope="free-form scope", owner_principal_id=owner,
+                  work_state="ACTIVE", priority="NORMAL", version=1, updated_at=f"2026-10-2{n}T00:00:00Z")
+    return tuple(values[k] for k in _ROW_KEYS)
+
+
+def _summary(monkeypatch, rows, owner_rows, **kwargs):
+    cur = SequencedCursor([rows, owner_rows])
+    monkeypatch.setattr(work_api, "get_conn", lambda: RecordingConnection(cur))
+    return work_api.list_initiatives(principal=None, view="summary", **kwargs), cur
+
+
+def test_summary_view_is_allowlisted_redacted_and_stamped(monkeypatch):
+    rows = [_row(1, "Plain title"), _row(2, f"leaked {_TOKEN_SHAPED}")]
+    out, _ = _summary(monkeypatch, rows, [(_OWNER, "AUTOMATION")], limit=5)
+    assert out["initiative_view"] == "summary-v1" and out["truncated"] is False and out["count"] == 2
+    first, second = out["initiatives"]
+    assert set(first) == {"initiative_id", "initiative_key", "work_state", "priority", "owner_principal_id",
+                          "owner_principal_kind", "target_date", "review_due_at", "updated_at", "title", "title_withheld"}
+    assert first["title"] == "Plain title" and first["owner_principal_kind"] == "AUTOMATION"
+    assert second["title"] is None and second["title_withheld"] is True
+    assert _TOKEN_SHAPED not in repr(out) and "free-form" not in repr(out)
+
+
+def test_summary_view_reports_truncation(monkeypatch):
+    rows = [_row(1, "a"), _row(2, "b"), _row(3, "c")]
+    out, _ = _summary(monkeypatch, rows, [(_OWNER, "HUMAN")], limit=2)
+    assert out["count"] == 2 and out["truncated"] is True
+
+
+def test_text_search_is_literal_and_parameterised(monkeypatch):
+    _out, cur = _summary(monkeypatch, [], [], q="50%_x'; --", limit=5)
+    sql, params = cur.calls[0]
+    assert "i.initiative_key ILIKE %s ESCAPE" in sql and "i.title ILIKE %s ESCAPE" in sql
+    assert params[-3:-1] == ["%50\\%\\_x'; --%"] * 2
+    assert "50%_x" not in sql
+
+
+def test_default_list_view_is_unchanged(monkeypatch):
+    cur = RecordingCursor()
+    monkeypatch.setattr(work_api, "get_conn", lambda: RecordingConnection(cur))
+    monkeypatch.setattr(work_api, "_stamp_soak_resolution", lambda *a, **k: None)
+    out = work_api.list_initiatives(principal=None)
+    assert "initiative_view" not in out and "ILIKE" not in cur.calls[0][0]
