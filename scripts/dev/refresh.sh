@@ -198,8 +198,16 @@ SQL
   dc stop docs-api dashboard docs-mcp docs-web >/dev/null
   pgc postgres "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('$DB', '$STAGING') AND pid <> pg_backend_pid();" >/dev/null
   [ "$keep" != "$PREV" ] || pgc postgres "DROP DATABASE IF EXISTS $PREV;"
+  # ALTER DATABASE cannot run in a transaction, so the two renames are not atomic.
+  # If the second fails, compensate by renaming the working copy back before any
+  # service starts; the staging copy is left for inspection and dropped next run.
   pgc postgres "ALTER DATABASE $DB RENAME TO $keep;"
-  pgc postgres "ALTER DATABASE $STAGING RENAME TO $DB;"
+  local second="$STAGING"; [ -z "${DOCPLANE_DEV_REFRESH_FAIL_SECOND_RENAME:-}" ] || second="docs_staging_absent_for_test"
+  if ! pgc postgres "ALTER DATABASE $second RENAME TO $DB;"; then
+    pgc postgres "ALTER DATABASE $keep RENAME TO $DB;"
+    dc up -d --no-build --wait docs-api dashboard docs-mcp docs-web >/dev/null
+    record failed "second rename failed; working copy renamed back from $keep"; return 1
+  fi
   if [ -n "${DOCPLANE_DEV_REFRESH_FAIL_AFTER_SWAP:-}" ] \
      || ! dc up -d --no-build --wait docs-api dashboard docs-mcp docs-web >/dev/null 2>&1 \
      || [ "$(curl -fsS "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("pages"))')" != "$pages" ]; then

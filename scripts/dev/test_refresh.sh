@@ -78,6 +78,10 @@ before="$(echo "SELECT count(*) FROM work.captures;" | psql_dev docs)"
 ok "forced post-swap failure refused" '! DOCPLANE_DEV_REFRESH_FAIL_AFTER_SWAP=1 "$D" refresh run >/dev/null 2>&1'
 ok "working copy restored (same captures, token works)" '[ "$(echo "SELECT count(*) FROM work.captures;" | psql_dev docs)" = "$before" ] && [ "$(auth "$TOKEN")" = 200 ]'
 
+echo "== 3b. failure between the two renames restores the working copy"
+ok "forced second-rename failure refused" '! DOCPLANE_DEV_REFRESH_FAIL_SECOND_RENAME=1 "$D" refresh run >/dev/null 2>&1'
+ok "working copy renamed back (same captures, token works, no synthetic copy consumed)" '[ "$(echo "SELECT count(*) FROM work.captures;" | psql_dev docs)" = "$before" ] && [ "$(auth "$TOKEN")" = 200 ] && [ -z "$(echo "SELECT 1 FROM pg_database WHERE datname LIKE '"'"'docs_synthetic_%'"'"';" | psql_dev postgres)" ]'
+
 echo "== 4. successful refresh"
 ok "refresh applies" '"$D" refresh run >/dev/null 2>&1'
 ok "synthetic copy kept by name" '[ -n "$(echo "SELECT 1 FROM pg_database WHERE datname LIKE '"'"'docs_synthetic_%'"'"';" | psql_dev postgres)" ]'
