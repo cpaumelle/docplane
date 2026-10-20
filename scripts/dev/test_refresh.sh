@@ -58,6 +58,10 @@ echo "== 1. incomplete transfer (dump without manifest) is ignored"
 docker exec "$SRC_PG" pg_dump -U docs -d docs -Fc > "$DOCPLANE_DEV_REFRESH_INBOX/docplane-20990101T000000Z.dump"
 ok "refresh refuses with no verified pair" '! "$D" refresh run >/dev/null 2>&1'
 rm -f "$DOCPLANE_DEV_REFRESH_INBOX"/*
+export_pair 20990101T003000Z
+chmod 000 "$DOCPLANE_DEV_REFRESH_INBOX"/docplane-20990101T003000Z.*
+ok "unreadable pair is never treated as verified" '! "$D" refresh run >/dev/null 2>&1 && grep -q "no complete" "$DOCPLANE_DEV_HOME/refresh.status.json"'
+chmod 600 "$DOCPLANE_DEV_REFRESH_INBOX"/*; rm -f "$DOCPLANE_DEV_REFRESH_INBOX"/*
 
 echo "== 2. failed restore leaves the working copy"
 export_pair 20990101T010000Z

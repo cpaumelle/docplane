@@ -59,11 +59,13 @@ status() {
 }
 
 latest() {  # "<dump> <manifest>" of the newest complete, checksum-verified pair
-  local m d
+  local m d want
   for m in $(ls -1 "$INBOX"/docplane-*.manifest 2>/dev/null | sort -r); do
     d="${m%.manifest}.dump"
-    [ -s "$d" ] || continue
-    [ "$(sha256sum "$d" | cut -d' ' -f1)" = "$(field dump_sha256 "$m")" ] || continue
+    [ -r "$m" ] && [ -r "$d" ] && [ -s "$d" ] || continue   # unreadable must never compare equal
+    want="$(field dump_sha256 "$m")"
+    [[ "$want" =~ ^[0-9a-f]{64}$ ]] || continue
+    [ "$(sha256sum "$d" | cut -d' ' -f1)" = "$want" ] || continue
     echo "$d $m"; return 0
   done
   return 1
