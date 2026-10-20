@@ -14,6 +14,8 @@ additivity and the query predicates each new read builds.
 """
 from __future__ import annotations
 
+import pytest
+
 import sys
 from pathlib import Path
 
@@ -311,6 +313,28 @@ def test_redacted_read_withholds_a_body_the_transform_refuses(monkeypatch):
     assert out["activities"][0]["body"] is None
     assert out["activities"][0]["body_withheld"] is True
     assert _TOKEN_SHAPED not in repr(out)
+
+
+@pytest.mark.parametrize("body", ["plain history with an unmatched { brace", "a stray closing } brace"])
+def test_unbalanced_brace_is_withheld_not_a_server_error(monkeypatch, body):
+    # The real canonical transform: its brace post-condition raises AssertionError
+    # on this synthetic text. The read must withhold the field, not fail with 500.
+    with pytest.raises(AssertionError):
+        work_api.redact(body, label="work-activity")
+    out = _get(monkeypatch, [body, "plain {balanced} history"], activity_bodies="redacted")
+    withheld, kept = out["activities"]
+    assert withheld["body"] is None and withheld["body_withheld"] is True
+    assert kept["body"] == "plain {balanced} history" and kept["body_withheld"] is False
+
+
+def test_shared_boundary_preserves_refusal_semantics():
+    from app.work_api import _redacted_activity_body
+    assert _redacted_activity_body("ok {balanced}") == ("ok {balanced}", False)
+    assert _redacted_activity_body("unmatched {") == (None, True)
+    assert _redacted_activity_body("{<REDACTED:PASSWORD:old>}}") == (None, True)   # malformed marker
+    assert _redacted_activity_body(None) == (None, True)
+    sanitised, withheld = _redacted_activity_body(f"token {_TOKEN_SHAPED}")
+    assert withheld is False and _TOKEN_SHAPED not in sanitised and "<REDACTED:" in sanitised
 
 
 def test_activity_bodies_parameter_is_closed_to_unknown_values():

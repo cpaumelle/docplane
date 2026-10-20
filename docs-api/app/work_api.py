@@ -368,12 +368,18 @@ def _redacted_activity_body(body: Any) -> tuple[str | None, bool]:
     `migration.redaction.redact`; this is the same transform applied per body,
     so an agent read never shows more than a generated page did. A body the
     transform refuses is withheld, never returned unredacted.
+
+    The transform also asserts its own post-conditions (balanced braces, no
+    malformed markers in its output). Stored text with an unmatched brace trips
+    that check even though nothing was redacted. That is a refusal of this one
+    field, not a server error: the field is withheld and the read succeeds. The
+    canonical transform itself is unchanged.
     """
     if not isinstance(body, str):
         return None, True
     try:
         return redact(body, label="work-activity").sanitised, False
-    except (DocumentRefusedError, MalformedMarkerError):
+    except (DocumentRefusedError, MalformedMarkerError, AssertionError):
         return None, True
 
 
