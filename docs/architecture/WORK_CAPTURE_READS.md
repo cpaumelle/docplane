@@ -10,7 +10,9 @@ returns `capture_bodies=redacted`. Capture body, nullable triage note and origin
 text pass through `migration.redaction.redact`, using the same refusal boundary
 as initiative history. Each field has a boolean `<field>_withheld`; a refused
 field is null. Origin is returned as redacted fenced JSON text (`origin_text`),
-not arbitrary structured metadata. Identity, classification, attribution,
+not arbitrary structured metadata. Decoded origin strings are canonically redacted
+before JSON escaping; the existing sensitive-key guard refuses residual credential
+attributes. Any refusal withholds the whole origin. Identity, classification, attribution,
 relationship IDs and timestamps are allowlisted separately. Unknown IDs return
 `404 CAPTURE_NOT_FOUND`. There is no raw single-capture read option.
 

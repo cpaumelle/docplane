@@ -135,3 +135,21 @@ def test_capture_read_requires_contributor_and_valid_query():
     assert client.get('/api/v1/work/captures?view=unexpected').status_code == 422
     assert client.get('/api/v1/work/captures?limit=0').status_code == 422
     assert client.get('/api/v1/work/captures?cursor=' + 'x'*1025).status_code == 422
+
+
+@pytest.mark.parametrize("origin", [
+    {"source": "Bearer\n" + "X" * 32},
+    {"nested": [{"source": "Bearer\t" + "Y" * 32}]},
+    {"password": "synthetic-example-value"},
+    {"source": "unbalanced { origin"},
+])
+def test_origin_checks_decoded_strings_and_sensitive_keys(monkeypatch, origin):
+    row = list(record(1)); row[3] = origin
+    monkeypatch.setattr(api, 'get_conn', lambda: Store([tuple(row)]))
+    result = api.get_capture(UUID(int=1), principal=None)
+    rendered = result['origin_text'] or ''
+    assert all(value not in rendered for value in ('X'*32, 'Y'*32, 'synthetic-example-value'))
+    if result['origin_text_withheld']:
+        assert result['origin_text'] is None
+    else:
+        assert '<REDACTED:' in rendered

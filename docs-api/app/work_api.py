@@ -1019,6 +1019,30 @@ def _capture_position(value: Any) -> tuple[datetime, str]:
     return stamp, value[1]
 
 
+def _redacted_capture_origin(origin: Any) -> tuple[str | None, bool]:
+    """Redact decoded JSON strings before escaping can conceal credential shapes.
+
+    Reuse the canonical transform and existing key-name guard, not a parallel
+    detector. Refuse the whole origin on any unsafe field or transform failure.
+    """
+    def clean(value: Any) -> Any:
+        if isinstance(value, str):
+            return redact(value, label="work-activity").sanitised
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, dict):
+            return {clean(key): clean(item) for key, item in value.items()}
+        return value
+
+    try:
+        sanitised = clean(origin)
+        if secret_findings(sanitised):
+            return None, True
+        return _redacted_activity_body("```json\n" + json.dumps(sanitised, sort_keys=True) + "\n```")
+    except (DocumentRefusedError, MalformedMarkerError, AssertionError):
+        return None, True
+
+
 @router.get("/api/v1/work/captures/{capture_id}")
 def get_capture(
     capture_id: UUID,
@@ -1038,9 +1062,7 @@ def get_capture(
             result[field], result[field + "_withheld"] = None, False
         else:
             result[field], result[field + "_withheld"] = _redacted_activity_body(capture[field])
-    result["origin_text"], result["origin_text_withheld"] = _redacted_activity_body(
-        "```json\n" + json.dumps(capture["origin"], sort_keys=True) + "\n```"
-    )
+    result["origin_text"], result["origin_text_withheld"] = _redacted_capture_origin(capture["origin"])
     return {**result, "capture_bodies": "redacted"}
 
 
