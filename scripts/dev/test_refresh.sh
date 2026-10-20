@@ -45,7 +45,7 @@ INSERT INTO docplane.mutation_receipts (principal_id, idempotency_key, operation
 INSERT INTO work.captures (body, kind, author_principal_id, idempotency_key) VALUES ('source capture', 'FINDING', '00000000-0000-4000-8000-0000000000a1', 'cap-1');
 SQL
 
-export_pair() {  # $1 = stamp; writes dump + manifest like the hub2 exporter
+export_pair() {  # $1 = stamp; writes dump + manifest in the documented export format
   local d="$DOCPLANE_DEV_REFRESH_INBOX/docplane-$1.dump" m="$DOCPLANE_DEV_REFRESH_INBOX/docplane-$1.manifest" t
   docker exec "$SRC_PG" pg_dump -U docs -d docs -Fc --no-owner --no-privileges > "$d"
   { echo "dump_sha256=$(sha256sum "$d" | cut -d' ' -f1)"; echo "dump_bytes=$(stat -c %s "$d")"
