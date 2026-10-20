@@ -1,6 +1,8 @@
 """Active-work coordination for uniform DocPlane contributors."""
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 from datetime import datetime, timezone
@@ -939,21 +941,107 @@ def create_capture(
 def list_captures(
     status: str = Query(default="INBOX"),
     limit: int = Query(default=200, ge=1, le=1000),
+    view: str = Query(default="raw", pattern="^(raw|metadata)$"),
+    cursor: str | None = Query(default=None, max_length=1024),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     statuses = {"INBOX", "PROMOTED", "ATTACHED", "DISCARDED", "all"}
     if status not in statuses:
         raise HTTPException(status_code=422, detail={"code": "CAPTURE_STATUS_INVALID", "allowed": sorted(statuses)})
-    predicate = "" if status == "all" else " WHERE status = %s"
-    params: list[Any] = [] if status == "all" else [status]
+    # Keyset traversal is stable under new arrivals and does not skip rows when
+    # triage removes earlier rows from INBOX. Status is live, not a historical
+    # snapshot: enumerate status=all for an inventory, then re-read before triage.
+    boundary = None
+    before = None
+    if cursor is not None:
+        try:
+            token = json.loads(base64.b64decode(cursor.encode("ascii"), altchars=b"-_", validate=True))
+            if set(token) != {"v", "status", "boundary", "before"} or type(token["v"]) is not int or token["v"] != 1 or token["status"] != status:
+                raise ValueError()
+            boundary = _capture_position(token["boundary"])
+            before = _capture_position(token["before"])
+            if before > boundary:
+                raise ValueError()
+        except (ValueError, TypeError, KeyError, UnicodeError, binascii.Error, OverflowError):
+            raise HTTPException(status_code=422, detail={"code": "CAPTURE_CURSOR_INVALID"}) from None
     with get_conn() as conn:
         cur = conn.cursor()
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        if boundary is None:
+            cur.execute("SELECT created_at, capture_id::text FROM work.captures ORDER BY created_at DESC, capture_id DESC LIMIT 1")
+            top = cur.fetchone()
+            if top is None:
+                return {"captures": [], "count": 0, "total": 0, "truncated": False,
+                        "next_cursor": None, "capture_view": view,
+                        "pagination": "keyset-v1", "status": status}
+            boundary = (top[0], str(top[1]))
+        predicates = [] if status == "all" else ["status = %s"]
+        params: list[Any] = [] if status == "all" else [status]
+        if boundary is not None:
+            predicates.append("(created_at, capture_id) <= (%s, %s::uuid)")
+            params.extend(boundary)
+        predicate = " WHERE " + " AND ".join(predicates) if predicates else ""
         cur.execute(f"SELECT count(*) FROM work.captures{predicate}", params)
         total = int(cur.fetchone()[0])
-        cur.execute(_capture_select() + predicate + " ORDER BY created_at DESC LIMIT %s", [*params, limit])
+        if before is not None:
+            predicates.append("(created_at, capture_id) < (%s, %s::uuid)")
+            params.extend(before)
+        predicate = " WHERE " + " AND ".join(predicates) if predicates else ""
+        cur.execute(_capture_select() + predicate + " ORDER BY created_at DESC, capture_id DESC LIMIT %s", [*params, limit + 1])
         rows = cur.fetchall()
-    values = [_capture(row) for row in rows]
-    return {"captures": values, "count": len(values), "total": total, "truncated": len(values) < total}
+    has_more = len(rows) > limit
+    values = [_capture(row) for row in rows[:limit]]
+    next_cursor = None
+    if has_more:
+        tail = values[-1]
+        next_cursor = base64.urlsafe_b64encode(json.dumps({
+            "v": 1, "status": status,
+            "boundary": [boundary[0].isoformat(), boundary[1]],
+            "before": [tail["created_at"].isoformat(), tail["capture_id"]],
+        }, separators=(",", ":")).encode()).decode("ascii")
+    if view == "metadata":
+        values = [{k: v[k] for k in _CAPTURE_METADATA} for v in values]
+    return {"captures": values, "count": len(values), "total": total,
+            "truncated": has_more, "next_cursor": next_cursor,
+            "capture_view": view, "pagination": "keyset-v1", "status": status}
+
+
+_CAPTURE_METADATA = ("capture_id", "kind", "status", "author_principal_id",
+                     "initiative_id", "activity_id", "created_at", "triaged_at", "uri")
+
+
+def _capture_position(value: Any) -> tuple[datetime, str]:
+    if not isinstance(value, list) or len(value) != 2 or not all(isinstance(v, str) for v in value):
+        raise ValueError()
+    stamp = datetime.fromisoformat(value[0])
+    if stamp.utcoffset() is None or str(UUID(value[1])) != value[1]:
+        raise ValueError()
+    return stamp, value[1]
+
+
+@router.get("/api/v1/work/captures/{capture_id}")
+def get_capture(
+    capture_id: UUID,
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Agent read: canonical redaction only; no raw variant or free-form metadata.
+
+    The stamp lets routed clients refuse bodies from an older/mismatched server.
+    Origin is redacted as text, not trusted structured metadata. Redaction
+    refusal withholds the whole origin just as it withholds a body.
+    """
+    with get_conn() as conn:
+        capture = _load_capture(conn, capture_id)
+    result = {k: capture[k] for k in _CAPTURE_METADATA}
+    for field in ("body", "triage_note"):
+        if capture[field] is None:
+            result[field], result[field + "_withheld"] = None, False
+        else:
+            result[field], result[field + "_withheld"] = _redacted_activity_body(capture[field])
+    result["origin_text"], result["origin_text_withheld"] = _redacted_activity_body(
+        "```json\n" + json.dumps(capture["origin"], sort_keys=True) + "\n```"
+    )
+    return {**result, "capture_bodies": "redacted"}
 
 
 @router.post("/api/v1/work/captures/{capture_id}/promote")
