@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# devstack.sh — persistent, isolated DocPlane development instance with
-# synthetic data only. See scripts/dev/README.md.
+# devstack.sh — persistent, isolated DocPlane development instance holding either
+# synthetic data or a refreshed copy of a production export. See scripts/dev/README.md.
 #
 #   devstack.sh init                 dev-only secrets + DEV branding (once; keeps existing)
 #   devstack.sh check                assert the merged Compose model is isolated
@@ -16,6 +16,9 @@
 #                                    older-server consumer tests. `stop` removes it.
 #   devstack.sh test                 full pytest suite against a DISPOSABLE PostgreSQL
 #                                    (DOCPLANE_TEST_ARGS replaces the default test roots)
+#   devstack.sh refresh run|pause|resume|status
+#                                    replace the database with the newest export in
+#                                    DOCPLANE_DEV_REFRESH_INBOX (refresh.sh); local changes are overwritten
 #
 # Environment:
 #   DOCPLANE_SRC          checkout to build and run (default: this repository)
@@ -105,13 +108,14 @@ source_sha() {
 }
 
 marker() {
-  # The dev marker is created in THIS project's database only, by start; fixture
-  # tooling refuses any database without it.
+  # The dev marker is created in THIS project's database only (by start, and by
+  # refresh in staging); direct-SQL tooling refuses any database without it.
   compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -q' <<'SQL'
 CREATE TABLE IF NOT EXISTS public.docplane_dev_instance_marker (
-  marker text PRIMARY KEY CHECK (marker = 'SYNTHETIC-DATA-ONLY'),
+  marker text PRIMARY KEY,
   created_at timestamptz NOT NULL DEFAULT now());
-INSERT INTO public.docplane_dev_instance_marker (marker) VALUES ('SYNTHETIC-DATA-ONLY') ON CONFLICT DO NOTHING;
+INSERT INTO public.docplane_dev_instance_marker (marker)
+  SELECT 'DEV-INSTANCE' WHERE NOT EXISTS (SELECT 1 FROM public.docplane_dev_instance_marker);
 SQL
 }
 
@@ -141,8 +145,8 @@ cmd_fixture() {
 cmd_psql() {
   guard_host
   local has_marker
-  has_marker="$(compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) FROM public.docplane_dev_instance_marker WHERE marker = '"'"'SYNTHETIC-DATA-ONLY'"'"'"' </dev/null 2>/dev/null || true)"
-  [ "$has_marker" = "1" ] || die "database lacks the dev-instance marker; refusing direct SQL"
+  has_marker="$(compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT count(*) > 0 FROM public.docplane_dev_instance_marker"' </dev/null 2>/dev/null || true)"
+  [ "$has_marker" = "t" ] || die "database lacks the dev-instance marker; refusing direct SQL"
   compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -q -At'
 }
 
@@ -152,6 +156,7 @@ cmd_status() {
   compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Health}}\t{{.Ports}}'
   curl -fsS "$API/healthz" | python3 -c 'import json,sys; d=json.load(sys.stdin); print({"status": d.get("status"), "migrations": d.get("migrations"), "git_sha": (d.get("build") or {}).get("git_sha")})' || true
   printf 'SELECT status, count(*) FROM work.captures GROUP BY 1 ORDER BY 1;\n' | cmd_psql || true
+  cmd_refresh status || true
 }
 
 cmd_stop() { guard_host; compose stop; }
@@ -162,7 +167,7 @@ cmd_reset() {
   log "volumes to remove (project $DOCPLANE_DEV_PROJECT only):"
   docker volume ls -q --filter "label=com.docker.compose.project=$DOCPLANE_DEV_PROJECT"
   compose down -v --remove-orphans
-  rm -f "$DEV_HOME"/tokens/*.token "$DEV_HOME/state"
+  rm -f "$DEV_HOME"/tokens/*.token "$DEV_HOME/state" "$DEV_HOME/dev-principals.ids"
   cmd_start; cmd_provision; cmd_fixture
 }
 
@@ -226,7 +231,12 @@ cmd_compat() {
   log "compat-api running $sha (project network only)"
 }
 
+cmd_refresh() { guard_host; DEVSTACK="$TOOLS/devstack.sh" DEV_HOME="$DEV_HOME" API="$API" bash "$TOOLS/refresh.sh" "$@"; }
+
+# Internal: this project's Compose command (used by refresh.sh).
+cmd__compose() { compose "$@"; }
+
 case "${1:-}" in
-  init|check|start|provision|fixture|status|stop|reset|test|psql|compat) c="$1"; shift; "cmd_$c" "$@";;
-  *) sed -n '2,20p' "$0"; exit 2;;
+  init|check|start|provision|fixture|status|stop|reset|test|psql|compat|refresh|_compose) c="$1"; shift; "cmd_$c" "$@";;
+  *) sed -n '2,23p' "$0"; exit 2;;
 esac

@@ -1,9 +1,11 @@
 # Isolated development instance
 
-A persistent DocPlane instance for development and consumer testing, holding
-**synthetic data only**. It is a separate Compose project (`docplane-dev`) built
-from any committed checkout, with its own volumes, network and dev-only secrets.
-Nothing is copied from another installation.
+A persistent DocPlane instance for development and consumer testing. It is a
+separate Compose project (`docplane-dev`) built from any committed checkout, with
+its own volumes, network and dev-only secrets. Its database holds either the
+synthetic fixture or, when refresh is configured, a scrubbed copy of a production
+export (see [Refresh from a production export](#refresh-from-a-production-export)).
+No production `.env`, key or token is ever copied.
 
 ## Procedure
 
@@ -64,6 +66,46 @@ collide with a real installation (`docplane`, `docplane_*`).
   `start`. It is used only for historical shapes the API cannot create:
   backdated creation in blocks of 25 identical timestamps (60 tie groups),
   non-object legacy origins, and a pre-#171 activity body.
+
+## Refresh from a production export
+
+`devstack.sh refresh` replaces the instance's database with the newest export a
+deployment delivers into `DOCPLANE_DEV_REFRESH_INBOX`. Each export is a pair:
+`docplane-<UTC>.dump` (`pg_dump -Fc --no-owner --no-privileges`) and a
+`docplane-<UTC>.manifest` written last, which holds the dump checksum, source SHA,
+dump time and the row counts taken in the dump's own snapshot. **Every refresh
+overwrites local changes to the dev database.**
+
+```bash
+$D refresh status            # source SHA and dump time, last result, paused?, timer
+$D refresh run               # apply the newest verified export now
+$D refresh pause             # automatic (timer) runs do nothing until resume
+$D refresh resume
+```
+
+What a run does, all inside `docs_staging`, which no dev service connects to:
+
+1. Restores the dump.
+2. Checks that the source migration ledger is a checksum-identical prefix of `DOCPLANE_SRC`.
+3. Requires every foreign key to be validated, and the row counts to equal the manifest.
+4. Deletes **all** source `api_tokens`, so no production credential can authenticate.
+5. Replaces, with a marker, only those receipt, event and principal-metadata values that match the clear-token shape. All other history is kept, and the result is counted.
+6. Carries the dev principals and their tokens by the explicit IDs in `~/.config/docplane-dev/dev-principals.ids`. It refuses if a source principal has one of those IDs.
+7. Swaps by rename, health-checks, and swaps back automatically on failure.
+
+Any failure leaves the working database in place. The first replacement keeps
+the synthetic database as `docs_synthetic_<date>`; later ones keep the previous
+copy as `docs_previous`. While paused, older exports are still pruned (the two
+newest are kept). Refresh changes only data: the env file, overlay, bindings,
+access profile and empty webhooks are untouched, and `check` still passes.
+`fixture` refuses to run against a refreshed copy.
+
+The hourly timer is `systemd/docplane-dev-refresh.{service,timer}`, run as `ubuntu`
+with `~/.config/docplane-dev/refresh.env` holding `DOCPLANE_SRC`,
+`DOCPLANE_DEV_REFRESH_INBOX` and `DOCPLANE_DEV_TOOLS`. `bash test_refresh.sh` tests
+the whole path in a throwaway project: an incomplete transfer, a failed restore, a
+failure after the swap, a successful scrub and carry, pause and lock, and an
+identity collision.
 
 ## Not provided
 

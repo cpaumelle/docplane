@@ -161,6 +161,8 @@ def load(args) -> None:
     tokens = Path(args.tokens)
     if sql(args.sql_runner, "SELECT count(*) FROM public.docplane_dev_instance_marker;") != "1":
         raise SystemExit("dev-instance marker missing")
+    if sql(args.sql_runner, "SELECT to_regclass('public.docplane_dev_refresh') IS NOT NULL;") == "t":
+        raise SystemExit("this database is a refreshed production copy; the synthetic fixture is for synthetic databases only")
     done = sql(args.sql_runner, f"SELECT count(*) FROM work.captures WHERE origin->>'fixture' = '{FIXTURE}' OR (jsonb_typeof(origin) <> 'object');")
     if int(done) >= TOTAL and not args.force:
         print(f"fixture {FIXTURE} already loaded ({done} captures); nothing to do")
