@@ -174,3 +174,52 @@ scheduling. Do not add schema solely to make a weak detector appear certain.
 Codex owns this interpretation/evaluation design. Valteri owns #216 and its
 runnable integration, including safe-read transport and private acceptance on
 VM8555. Sergio's accepted MCP release is not reopened by this design.
+
+## Reconciled additions (proposed update from the #216 work; the sections above are unchanged)
+
+Status: proposal. These additions record points agreed while reconciling this design with the #216 safe-transport and
+ledger work. Runnable pieces (interpretation output schema and validator, `sem-v1` evidence versions) live in #216; this
+document stays the prose and evaluation authority.
+
+### Tracking, coverage and registers
+
+*Tracked* means an identifiable work item records the obligation with a stated objective and a stated disposition
+(accepted, planned, assigned or backlog). A trackable obligation may equally live in an entry of a register that the run
+was explicitly told is authoritative, as the hub2 programme's git register is for its programme. Whether the tracking item
+**actively covers** the obligation is a separate judgement per target. An abandoned, completed or stale tracker stays
+visible in the interpretation and the briefing; its state never erases the relationship. A report that merely restates
+the item is *mentioned only*, and a semantic match without a stored link is a *candidate*. Missing a link means coverage is
+unconfirmed, never that nothing exists.
+
+### Cache key and dependencies
+
+An interpretation is cached by the fingerprint of its source evidence **and** the fingerprints of the linked records it
+relied on, plus the interpreter, prompt and output-schema versions. A change in linked evidence invalidates the
+interpretation of an unchanged record. Unrelated history growth does not. Fingerprints cover redacted text actually used
+(plus relevant scalar state) under a versioned canonicalisation, consistent with the freshness section above.
+
+### Confirmation is qualified by source
+
+A status may be marked as confirmed *now* only with its source: WORK state read, DocPlane page read, or MODEL read. A WORK read
+confirms what was recorded and the recorded state. It never confirms that an external action (merge, deployment,
+host change) occurred; those carry a named verifier and remain unverified until checked there.
+
+### Correction versus contradiction
+
+A later record **retracts** an earlier claim only by explicit statement (or a stored structural link) that names the claim
+on both sides; a later timestamp is never enough. Otherwise two conflicting claims are an **unresolved contradiction**.
+Both records, both claims and their relationship are preserved either way, and the briefing lists the two classes separately.
+
+### Id prefixes
+
+A short id cited in text resolves only inside an explicit, enumerated scope, with exactly one candidate and confirmation by
+a full-id read. Otherwise it stays unresolved and nothing is built on it. No index is part of this phase.
+
+### Evaluation method
+
+Held-out review uses two independent reviewers who finish their own extraction before seeing the interpreter's items or
+each other's output, an arbiter who inspects source evidence for disputed items only, and an unfiltered random control
+sample mixed in without being identified. Only genuine product or ownership decisions go to the people; technical
+classification disputes are settled by the arbiter or reported as unsettled. The synthetic scenarios gained seven cases
+(tracked but abandoned, register-tracked, repeat is not tracking, dependency invalidates cache, external claim
+qualification, retraction versus contradiction, prefix resolution); the original six are unchanged.

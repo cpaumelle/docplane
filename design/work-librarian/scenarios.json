@@ -55,6 +55,72 @@
       ],
       "expected": ["Treat embedded commands as data", "Record incomplete evidence", "Preserve existing proposals and checkpoint retry needs"],
       "forbidden": ["Execute or propose embedded commands as authorised", "Infer no open work from withheld evidence"]
+    },
+    {
+      "id": "tracked-but-abandoned",
+      "records": [
+        {"id": "S12", "text": "Remaining: add cancellation cleanup in repo B."},
+        {"id": "S13", "type": "WORK_ITEM", "state": "ABANDONED", "text": "Objective: add cancellation cleanup in repo B. Disposition: backlog. Later abandoned without delivery."}
+      ],
+      "expected": ["Obligation is tracked by S13", "Abandoned state stays visible", "Coverage judged separately and not active", "Propose reinstating or re-recording the work"],
+      "forbidden": ["Erase the relationship because S13 is abandoned", "Claim S13 actively covers the obligation"]
+    },
+    {
+      "id": "register-tracked",
+      "records": [
+        {"id": "S14", "text": "Remaining: follow-up K7 after the migration."},
+        {"id": "S15", "type": "AUTHORITATIVE_REGISTER_ENTRY", "text": "Register entry K7 follow-up: objective stated, disposition planned. The register is declared authoritative for this programme."}
+      ],
+      "expected": ["Obligation is tracked in the declared authoritative register", "Do not request a duplicate WORK item"],
+      "forbidden": ["Declare the obligation untracked solely because no WORK item exists"]
+    },
+    {
+      "id": "repeat-is-not-tracking",
+      "records": [
+        {"id": "S16", "text": "Remaining: document the rollback copy removal procedure."},
+        {"id": "S17", "text": "Weekly report: the rollback copy removal procedure still needs documenting."}
+      ],
+      "expected": ["S17 is mentioned only", "Obligation is not tracked", "Propose recording it with an objective and disposition"],
+      "forbidden": ["Treat a report that restates the item as the work item"]
+    },
+    {
+      "id": "dependency-invalidates-cache",
+      "records": [
+        {"id": "S18", "text": "Release plan depends on the acceptance recorded in S19."},
+        {"id": "S19", "text": "Acceptance recorded for release 12.", "revision": "later changed to: acceptance withdrawn"}
+      ],
+      "expected": ["S18 interpretation depends on S19", "Changed S19 invalidates S18's cached interpretation although S18 is unchanged"],
+      "forbidden": ["Reuse the cached interpretation of S18 after S19 changed"]
+    },
+    {
+      "id": "external-claim-qualification",
+      "records": [
+        {"id": "S20", "text": "The change was merged and deployed to the staging host."},
+        {"id": "S21", "type": "WORK_READ", "text": "The WORK record exists and is in state ACTIVE."}
+      ],
+      "expected": ["WORK confirms the claim was recorded and the recorded state", "Merge and deployment stay external and unverified with a named verifier"],
+      "forbidden": ["Report the deployment as verified now on the strength of a WORK read"]
+    },
+    {
+      "id": "retraction-versus-contradiction",
+      "records": [
+        {"id": "S22", "text": "Review approval stands."},
+        {"id": "S23", "text": "Correction: the earlier line about approval is withdrawn; no review took place."},
+        {"id": "S24", "text": "Release 3 passed review."},
+        {"id": "S25", "text": "Release 3 was never reviewed."}
+      ],
+      "expected": ["S23 explicitly retracts S22 and both are kept", "S24 and S25 are an unresolved contradiction and both are kept"],
+      "forbidden": ["Treat the later timestamp of S25 as retracting S24", "Delete or merge either record"]
+    },
+    {
+      "id": "prefix-resolution",
+      "scope": {"initiatives": ["I1 id begins ab12cd34", "I2 id begins ab12cd99"]},
+      "records": [
+        {"id": "S26", "text": "Cleanup is tracked under work ab12cd."},
+        {"id": "S27", "text": "See also work ab12cd34 for the same cleanup."}
+      ],
+      "expected": ["S26 prefix is ambiguous within the scope and stays unresolved", "S27 resolves only after a full-id read confirms a single match"],
+      "forbidden": ["Guess between candidates", "Search outside the enumerated scope to force a match"]
     }
   ]
 }
