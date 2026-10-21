@@ -87,6 +87,29 @@ wrapper's runtime discovery and participates in the same nonblocking
 `schema-catalogue` exclusion domain. Contention is a benign skipped opportunity:
 it returns success and emits no observation. All other failures remain visible.
 
+## DocPlane principal scopes
+
+Automation principals remain full contributors unless the bootstrap request
+includes explicit `artifact_scopes`. A scoped principal is marked
+`SCOPED_AUTOMATION` and cannot use other write routes. Each scope binds an exact
+artifact key to `GENERATE` or one observation kind. A GENERATE grant also binds
+the source DATABASE entity key and a relative page-path prefix; change plans and
+every page operation are checked against that prefix. For MODEL identity it
+permits only that DATABASE entity, its SCHEMA children, `STORES_IN` links from
+those schemas to the database, and exact `CATALOGUES` links to pages under the
+same prefix. Other entity kinds, entity updates, links, and page-link relations
+remain denied. An OBSERVE grant binds to
+one artifact and either `FRESHNESS_CHECK` or `GENERATION`. Artifact, source,
+change, page, and observation checks are enforced by docs-api on each write.
+
+For a catalogue, use separate generator and observer principals. The generator
+receives only `GENERATE` for its artifact and the corresponding source database
+and catalogue path. The observer receives only `OBSERVE/FRESHNESS_CHECK` for
+that artifact. The generator may receive `OBSERVE/GENERATION` only when it must
+record its own completed generation. Scopes are established when the named
+automation principal is created through the existing bootstrap authority; do
+not use an unscoped shared token for these jobs.
+
 ## Protected environment
 
 The canonical secret file is

@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
+from app.principal_scopes import require_artifact_id_scope
 from app.event_store import append_event
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.observe_api import (
@@ -191,13 +192,15 @@ def put_artifact_projection(
         raise HTTPException(status_code=422, detail={"code": "PROJECTION_SECRET_SHAPED", "findings": findings})
     document_sha256 = canonical_sha256(request.document)
     with get_conn() as conn:
+        require_artifact_id_scope(conn, principal, str(artifact_id), "GENERATE")
         replayed = load_receipt(conn, principal, key, "MODEL_ARTIFACT_PROJECTION_PUT", digest)
         if replayed is not None:
             return replayed
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT a.status, a.declared_by::text, e.entity_kind, e.entity_key
+            SELECT a.status, a.declared_by::text, e.entity_kind, e.entity_key,
+                   a.artifact_key
               FROM model.generated_artifacts a
               JOIN model.entities e ON e.entity_id = a.source_entity_id
              WHERE a.artifact_id = %s
@@ -208,7 +211,7 @@ def put_artifact_projection(
         row = cur.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail={"code": "MODEL_ARTIFACT_NOT_FOUND"})
-        status, declared_by, entity_kind, entity_key = row
+        status, declared_by, entity_kind, entity_key, artifact_key = row
         if status != "DECLARED":
             raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_NOT_DECLARED", "status": status})
         if declared_by != str(principal.principal_id):

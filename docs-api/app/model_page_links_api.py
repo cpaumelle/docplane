@@ -16,6 +16,7 @@ from app.agent_auth import Principal, require_contributor
 from app.db import get_conn
 from app.event_store import append_event
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
+from app.principal_scopes import require_catalogue_page_links_scope
 
 router = APIRouter(tags=["model-v1"])
 
@@ -69,6 +70,9 @@ def reconcile_catalogues_page_links(
     )
 
     with get_conn() as conn:
+        require_catalogue_page_links_scope(
+            conn, principal, str(entity_id), sorted(desired),
+        )
         replayed = load_receipt(conn, principal, key, "MODEL_ENTITY_CATALOGUES_EXACT_SET", digest)
         if replayed is not None:
             return replayed
