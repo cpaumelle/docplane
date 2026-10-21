@@ -59,17 +59,31 @@ class Reads:
         A history that cannot be followed to its full ``activity_count`` is a failure,
         never a shorter list: absence of evidence cannot be claimed from a partial read.
         """
-        offset, activities, head = 0, [], None
+        offset, activities, head, seen = 0, [], None, set()
         for _ in range(MAX_PAGES):
             page = _checked(self.fetch("docplane_work_get", {
                 "initiative_id": initiative_id, "recent_activity_limit": PAGE,
                 "activity_offset": offset}))
-            head = head or page
             if page.get("initiative_id") != initiative_id:
                 raise ReadFailure("IDENTITY_MISMATCH")
+            if not isinstance(page.get("activity_count"), int) or isinstance(page.get("activity_count"), bool) or page["activity_count"] < 0:
+                raise ReadFailure("ACTIVITY_COUNT_MISSING")
+            if head is None:
+                head = page
+            elif page.get("version") != head.get("version"):
+                raise ReadFailure("VERSION_CHANGED")
+            elif page["activity_count"] != head["activity_count"]:
+                raise ReadFailure("COUNT_CHANGED")
+            if "activity_offset" in page and page["activity_offset"] != offset:
+                raise ReadFailure("OFFSET_MISMATCH")
             got = page.get("activities")
             if not isinstance(got, list):
                 raise ReadFailure("MALFORMED_RESULT")
+            for act in got:
+                aid = act.get("activity_id") if isinstance(act, dict) else None
+                if not isinstance(aid, str) or aid in seen:
+                    raise ReadFailure("DUPLICATE_ACTIVITY" if aid in seen else "MALFORMED_RESULT")
+                seen.add(aid)
             activities.extend(got)
             nxt = page.get("next_activity_offset")
             if nxt is None:
@@ -77,13 +91,12 @@ class Reads:
                 # paged history; the cursor's absence ends the walk and the count check below
                 # decides whether the history is complete.
                 break
-            if not isinstance(nxt, int) or nxt <= offset:
+            if not isinstance(nxt, int) or nxt <= offset or nxt != offset + len(got):
                 raise ReadFailure("CURSOR_NOT_ADVANCING")
             offset = nxt
         else:
             raise ReadFailure("TOO_MANY_PAGES")
-        total = head.get("activity_count")
-        if isinstance(total, int) and total != len(activities):
+        if head["activity_count"] != len(activities):
             raise ReadFailure("ACTIVITY_COUNT_MISMATCH")
         return {**head, "activities": activities}
 
@@ -123,6 +136,28 @@ def load_api_key(path, variable="CHARLIEHUB_MCP_API_KEY"):
     raise ValueError("credential file does not define " + variable)
 
 
+def _is_loopback(host):
+    import ipaddress
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host or "").is_loopback
+    except ValueError:                          # a name such as 127.0.0.1.example.com is not an address
+        return False
+
+
+class _NoRedirect:
+    """urllib handler that turns every redirect into an error instead of following it (the bearer must go nowhere else)."""
+
+    def __new__(cls):
+        import urllib.request
+
+        class Handler(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+        return Handler()
+
+
 class McpHttpClient:
     """Minimal streamable-HTTP MCP client (stdlib only) that can call read verbs only.
 
@@ -130,22 +165,36 @@ class McpHttpClient:
     ``McpReads``. ``requests`` logs method and verb names only, for acceptance evidence.
     """
 
-    def __init__(self, url, api_key, cafile=None, timeout=60):
+    def __init__(self, url, api_key, cafile=None, timeout=60, allow_loopback_http=False):
         import ssl
+        import urllib.parse
+        import urllib.request
+        parts = urllib.parse.urlsplit(url)
+        loopback = _is_loopback(parts.hostname)
+        if parts.scheme != "https" and not (parts.scheme == "http" and allow_loopback_http and loopback):
+            raise ValueError("the MCP url must be https (plain http only to a loopback test endpoint that is explicitly permitted)")
         self._url, self._timeout = url, timeout
         self._key = api_key
         self._ctx = ssl.create_default_context(cafile=cafile)
+        # A redirect would replay the Authorization header to wherever the response points: refuse every redirect.
+        self._opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=self._ctx), _NoRedirect())
         self._session, self._id = None, 0
         self.requests = []
 
     def _post(self, payload):
+        import urllib.error
         import urllib.request
         headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
                    "Authorization": "Bearer " + self._key}
         if self._session:
             headers["Mcp-Session-Id"] = self._session
         req = urllib.request.Request(self._url, json.dumps(payload).encode(), headers, method="POST")
-        with urllib.request.urlopen(req, timeout=self._timeout, context=self._ctx) as resp:
+        try:
+            resp = self._opener.open(req, timeout=self._timeout)
+        except urllib.error.HTTPError as exc:
+            exc.close()
+            raise ReadFailure("REDIRECT_REFUSED" if 300 <= exc.code < 400 else "HTTP_%d" % exc.code) from None
+        with resp:
             self._session = resp.headers.get("Mcp-Session-Id") or self._session
             body = resp.read().decode()
             kind = resp.headers.get("Content-Type", "")

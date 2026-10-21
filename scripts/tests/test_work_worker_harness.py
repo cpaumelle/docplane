@@ -125,6 +125,49 @@ class ReadTool(Workdir):
         self.assertNotIn(U(4), fps)                                                  # a record the cut removed gets no fingerprint
         self.assertNotIn("synthetic body", (self.d / "read-log.jsonl").read_text())   # the log holds ids and outcomes, never bodies
 
+    def fingerprints_with(self, name, mutate):
+        sub = self.d / name
+        sub.mkdir()
+        base = world()
+
+        def call(verb, args):
+            res = copy.deepcopy(base(verb, args))
+            mutate(verb, res)
+            return res
+        t = readtool.ReadTool(self.config(), str(sub / "read-log.jsonl"), call)
+        t.call("docplane_work_capture_get", {"capture_id": U(1)})
+        t.call("docplane_work_get", {"initiative_id": U(9)})
+        return json.loads((sub / "fingerprints.json").read_text())
+
+    def test_review_fingerprints_cover_the_typed_references_not_only_the_body(self):
+        def refs(cap=None, act=None, founding=None):
+            def mutate(verb, res):
+                if verb == "docplane_work_capture_get" and cap is not None:
+                    res["linked_capture_ids"] = cap
+                if verb == "docplane_work_get":
+                    if act is not None:
+                        res["activities"][0]["references"] = act
+                        res["activities"][0]["source_capture_id"] = act[0]["id"] if act else None
+                    if founding is not None:
+                        res["founding_capture_ids"] = founding
+            return mutate
+        base = self.fingerprints_with("a", refs())
+        none = self.fingerprints_with("b", lambda v, r: None)
+        self.assertEqual(base, none)                                                  # no references: the version a record had before is unchanged
+        ref_a = [{"type": "ACTIVITY", "id": U(50)}]
+        ref_b = [{"type": "ACTIVITY", "id": U(51)}]
+        with_a = self.fingerprints_with("c", refs(cap=[U(5)], act=ref_a, founding=[U(5)]))
+        with_b = self.fingerprints_with("d", refs(cap=[U(6)], act=ref_a, founding=[U(5)]))
+        self.assertNotEqual(with_a[U(1)], base[U(1)])                                 # same body, a reference now exists
+        self.assertNotEqual(with_a[U(1)], with_b[U(1)])                               # same body, a different referenced capture
+        self.assertNotEqual(self.fingerprints_with("e", refs(act=ref_a))[U(101)], self.fingerprints_with("f", refs(act=ref_b))[U(101)])
+        self.assertNotEqual(self.fingerprints_with("g", refs(founding=[U(5)]))[U(9)], self.fingerprints_with("h", refs(founding=[U(6)]))[U(9)])
+        order1 = self.fingerprints_with("i", refs(cap=[U(5), U(6)]))
+        order2 = self.fingerprints_with("j", refs(cap=[U(6), U(5)]))
+        self.assertEqual(order1, order2)                                              # reordering is not a change
+        for fps in (with_a, with_b):
+            self.assertEqual(fps[U(1)]["projection"], "sem-v1")
+
     def test_no_write_verb_and_know_only_when_configured(self):
         t = self.tool()
         for verb in ("docplane_work_note", "docplane_work_capture", "docplane_work_triage_discard", "write_doc"):
@@ -207,16 +250,25 @@ class RunCheck(Workdir):
             f.write(json.dumps({"tool": "docplane_work_capture_get", "cfg": "0" * 16, "ok": True, "ids_returned": []}) + "\n")
         self.assertTrue(any("mixes run configurations" in e for e in self.run_check(config, doc, fps)))
 
+    def test_review_a_labelled_derived_log_header_still_checks_and_keeps_original_rows(self):
+        config, doc, fps = self.make_run()
+        log = runcheck.load_log(str(self.d / "read-log.jsonl"))
+        derived = [dict(log[0], derived=True, derived_from_sha256="0" * 64, derived_at="2026-10-22T00:00:00Z", original_collected_from=log[1]["ts"], original_collected_to=log[-1]["ts"])] + log[1:]
+        self.assertEqual(runcheck.check_run(config, doc, derived, fps), [])
+        self.assertEqual(derived[1:], log[1:])                                    # original rows and timestamps are untouched
+        wrong = [dict(derived[0], config_sha256="1" * 64)] + derived[1:]
+        self.assertTrue(runcheck.check_run(config, doc, wrong, fps))
+
     def test_review_claimed_inspections_must_agree_with_logged_reads(self):
         config, doc, fps = self.make_run()
-        doc["intake"][0]["search"]["captures_inspected"] = 2             # the log shows two other captures opened (records 2 and 3)
+        doc["intake"][0]["search"]["captures_inspected"] = 1             # the document records one other capture read (2); the log shows two opened (2 and 3)
         self.assertEqual([e for e in self.run_check(config, doc, fps) if "captures inspected" in e], [])
         doc["intake"][0]["search"]["captures_inspected"] = 3             # claims one more than the log returned
         self.assertTrue(any("captures inspected but the log shows 2" in e for e in self.run_check(config, doc, fps)))
         doc["retrieval"]["reads"].append({"record_id": U(50), "how_found": "SEARCH", "read_ok": True})        # the document says more was read than the log returned
         self.assertTrue(any("never returned it" in e for e in self.run_check(config, doc, fps)))
         two = copy.deepcopy(doc); two["retrieval"]["reads"] = two["retrieval"]["reads"][:-1]
-        two["intake"][0]["search"]["captures_inspected"] = 2
+        two["intake"][0]["search"]["captures_inspected"] = 1
         self.assertEqual([e for e in self.run_check(config, two, fps) if "inspected" in e], [])
         two["intake"][0]["search"]["initiatives_inspected"] = 2             # only one initiative history was opened
         self.assertTrue(any("initiatives inspected but the log shows 1 histories opened" in e for e in self.run_check(config, two, fps)))
@@ -327,7 +379,7 @@ class EndToEnd(Workdir):
         self.assertEqual(self.cli("config", "verify", str(self.d / "config.json"))[0], 0)
         with self.assertRaises(FileExistsError):
             self.cli("config", "create", str(self.d / "spec.json"), "--out", str(self.d / "config.json"))       # never overwrite
-        base = ["read", "--config", str(self.d / "config.json"), "--log", str(self.d / "log.jsonl"), "--key-file", str(key)]
+        base = ["read", "--config", str(self.d / "config.json"), "--log", str(self.d / "log.jsonl"), "--key-file", str(key), "--allow-loopback-http"]
         for n in (1, 2, 3):
             self.assertEqual(self.cli(*base, "docplane_work_capture_get", json.dumps({"capture_id": U(n)}))[0], 0)
         self.assertEqual(self.cli(*base, "docplane_work_get", json.dumps({"initiative_id": U(9)}))[0], 0)

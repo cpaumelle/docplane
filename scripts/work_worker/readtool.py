@@ -26,6 +26,31 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
+# Typed relationships the interpretation relies on. They are part of the evidence version, so a changed reference moves the
+# fingerprint (and invalidates dependent reasoning) even when the body text is identical.
+CAPTURE_REFS = ("references", "source_capture_id", "initiative_id", "attached_initiative_id", "promoted_initiative_id", "linked_capture_ids", "founding_capture_ids")
+ACTIVITY_REFS = ("references", "source_capture_id")
+INITIATIVE_REFS = ("founding_capture_ids",)
+
+
+def relationships(record, keys):
+    """Canonical text of the typed references a record carries: key, and each reference's type and id, order-independent."""
+    out = []
+    for key in keys:
+        value = record.get(key)
+        if value in (None, [], ""):
+            continue
+        items = value if isinstance(value, list) else [value]
+        out.append(key + "=" + json.dumps(sorted(json.dumps(i, sort_keys=True, separators=(",", ":")) for i in items), separators=(",", ":")))
+    return ";".join(out) or None
+
+
+def _refs(record, keys):
+    """State kwargs for semantic_version: present only when the record has typed references, so a record without any keeps its version."""
+    text = relationships(record, keys)
+    return {"refs": text} if text else {}
+
+
 class ConfigConflict(Exception):
     pass
 
@@ -78,7 +103,7 @@ class ReadTool:
             ids = [res["capture_id"]]
             if (res.get("body") or "").strip() and not res.get("body_withheld"):
                 text = res["body"] + "\n" + (res.get("origin_text") or "")
-                fps[res["capture_id"]] = {"projection": "sem-v1", "value": semantic_version(text, kind=res.get("kind"), status=res.get("status")).split(":")[1]}
+                fps[res["capture_id"]] = {"projection": "sem-v1", "value": semantic_version(text, kind=res.get("kind"), status=res.get("status"), **_refs(res, CAPTURE_REFS)).split(":")[1]}
         elif verb == "docplane_work_captures":
             keep = [c for c in res.get("captures", []) if not self._after(c.get("created_at"))]
             removed = len(res.get("captures", [])) - len(keep)
@@ -89,10 +114,10 @@ class ReadTool:
             res = dict(res, activities=keep, returned_activity_count=len(keep), filtered_after_snapshot=removed,
                        note="activities after the snapshot are removed; initiative state is the instance's current state (revisions cannot be dated)")
             ids = [res["initiative_id"]] + [a["activity_id"] for a in keep]
-            fps[res["initiative_id"]] = {"projection": "sem-v1", "value": semantic_version("initiative state", work_state=res.get("work_state"), version=res.get("version")).split(":")[1]}
+            fps[res["initiative_id"]] = {"projection": "sem-v1", "value": semantic_version("initiative state", work_state=res.get("work_state"), version=res.get("version"), **_refs(res, INITIATIVE_REFS)).split(":")[1]}
             for a in keep:
                 if (a.get("body") or "").strip() and not a.get("body_withheld"):
-                    fps[a["activity_id"]] = {"projection": "sem-v1", "value": semantic_version(a["body"], activity_type=a["activity_type"]).split(":")[1]}
+                    fps[a["activity_id"]] = {"projection": "sem-v1", "value": semantic_version(a["body"], activity_type=a["activity_type"], **_refs(a, ACTIVITY_REFS)).split(":")[1]}
         elif verb == "docplane_work_initiatives":
             ids = [i["initiative_id"] for i in res.get("initiatives", [])]
             for i in res.get("initiatives", []):

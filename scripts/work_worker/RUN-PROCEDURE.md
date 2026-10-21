@@ -6,6 +6,10 @@ against WORK. Fixtures in the tests are synthetic; this package contains no prod
 ## 0. Authorised read configuration
 * Read access to a governed consolidated MCP (or a frozen disposable copy of DocPlane with its own MCP) under an identity you are authorised to use. Never borrow another
   principal's identity or reuse a production credential against a copy.
+* **Transport.** The MCP url must be `https`. Plain `http` is accepted only to a loopback address (127.0.0.0/8, `::1`, `localhost`) **and** only when the operator passes `--allow-loopback-http`
+  (frozen-copy and test endpoints). Redirects are never followed for authenticated requests: a 3xx response fails the read (`REDIRECT_REFUSED`), so the bearer cannot reach another origin.
+* **Initiative histories** are accepted only when every page carries an integer `activity_count`, the version, count and initiative id agree across pages, each page's offset is the one requested,
+  the next cursor equals the offset plus the activities returned, activity ids are unique, and the final length equals the count. Anything else is a failed read, reported incomplete, never a shorter list.
 * The credential is a 0600 key file passed by path (`CHARLIEHUB_MCP_API_KEY=` line, parsed, never sourced, never in argv, a URL, the config or the repository).
 * Verify the instance's identity before the run (for a frozen copy: the pinned dump hash and source commit) and record what you verified in `instance.expected_identity`; verify it
   again after the run and keep both records. Any difference invalidates the run.
@@ -46,6 +50,14 @@ a search scope the log does not show, or lost/duplicated obligations. Do not edi
 The directory must be new. It receives `briefing.md` (at most 400 words; the incomplete-scope and KNOW banner first; canonical facts apart from proposed organisation),
 `appendix.md` (everything, linked from the briefing) and `ledger.json`. The ledger keeps every proposal from every run; absence from a later run only flags it, and rendering fails if any pending proposal would
 not appear in the appendix. The display cap limits the briefing only.
+
+## 5b. Original logs and derived regression fixtures are different things
+* **An original run** (its interpretation, evaluations, read log, fingerprints, config, verification records and checksums) is written once, made read-only and never edited, even when a later contract would reject it.
+* **A derived regression fixture** (a corrected interpretation, view or evaluations built from an original) goes in a new directory labelled *derived regression work*, naming the original it came from and the contract head that
+  checks it. It is not a rerun, is not independent validation, and does not demonstrate interpreter accuracy.
+* A derived read log keeps every original row unchanged and in order, with its original timestamp. Its first row is a header that says `derived: true`, names the original log and its sha256, gives the original collection
+  window (first and last original timestamps) and the derivation time (`derived_at`), so the two times are never confused.
+* Fingerprints cover each record's typed references (references, source capture, founding captures) as well as its text, so a changed reference invalidates dependent reasoning even if the body is unchanged.
 
 ## 6. Hand off
 Checksum all files (`sha256 …`) and make them read-only. Originals are never edited; a correction is a new directory labelled as regression work, and a rerun is a new run with a new config. Output directories

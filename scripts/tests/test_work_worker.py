@@ -208,6 +208,32 @@ class FailureModes(unittest.TestCase):
             SnapshotReads(snap(initiatives={TASKS: [page]})).initiative(TASKS)
         self.assertEqual(caught.exception.code, "ACTIVITY_COUNT_MISMATCH")
 
+    def _paged(self, *pages):
+        return SnapshotReads(snap(initiatives={TASKS: list(pages)})).initiative(TASKS)
+
+    def _fails(self, code, *pages):
+        with self.assertRaises(ReadFailure) as caught:
+            self._paged(*pages)
+        self.assertEqual(caught.exception.code, code)
+
+    def test_review_paging_refuses_duplicates_version_changes_and_missing_counts(self):
+        a, b = activity(1), activity(2)
+        p1 = dict(initiative(TASKS, [a, b])[0], activity_count=2, activities=[a], activities_truncated=True, next_activity_offset=1)
+        # the reported example: version 1 then 2, the same activity twice, counts agreeing at the end
+        self._fails("VERSION_CHANGED", p1, dict(p1, version=2, activity_offset=1, activities=[a], next_activity_offset=None))
+        self._fails("DUPLICATE_ACTIVITY", p1, dict(p1, activity_offset=1, activities=[a], next_activity_offset=None))
+        self._fails("COUNT_CHANGED", p1, dict(p1, activity_count=3, activity_offset=1, activities=[b], next_activity_offset=None))
+        self._fails("OFFSET_MISMATCH", p1, dict(p1, activity_offset=5, activities=[b], next_activity_offset=None))
+        self._fails("CURSOR_NOT_ADVANCING", dict(p1, next_activity_offset=7), dict(p1, activity_offset=7, activities=[b], next_activity_offset=None))
+        missing = {k: v for k, v in p1.items() if k != "activity_count"}
+        self._fails("ACTIVITY_COUNT_MISSING", missing)
+        self._fails("ACTIVITY_COUNT_MISSING", dict(p1, activity_count=None))
+        self._fails("ACTIVITY_COUNT_MISSING", p1, {k: v for k, v in dict(p1, activity_offset=1, activities=[b], next_activity_offset=None).items() if k != "activity_count"})
+        self._fails("MALFORMED_RESULT", dict(p1, activities=[{"body": "no id"}], next_activity_offset=None, activity_count=1))
+        # control: consistent pages are complete
+        got = self._paged(p1, dict(p1, activity_offset=1, activities=[b], next_activity_offset=None))
+        self.assertEqual([x["activity_id"] for x in got["activities"]], [a["activity_id"], b["activity_id"]])
+
     def test_final_page_still_flagged_truncated_is_complete_when_counts_match(self):
         acts = [activity(n) for n in range(1, 6)]
         got = SnapshotReads(snap(initiatives={TASKS: initiative(TASKS, acts, pages=2)})).initiative(TASKS)
@@ -369,7 +395,7 @@ class Transport(unittest.TestCase):
     def test_live_style_run_uses_read_verbs_only_and_refuses_writes_before_the_network(self):
         base = snap(initiatives={TASKS: initiative(TASKS, [related(SUBJECT)])})
         url, log, _ = self.serve(base)
-        client = McpHttpClient(url, "fake-key-for-test")
+        client = McpHttpClient(url, "fake-key-for-test", allow_loopback_http=True)
         ledger, view = run(McpReads(client), manifest((R1, {})), {})
         used = {t for m, t, _ in log if m == "tools/call"}
         self.assertTrue(used and used <= READ_VERBS)
@@ -382,10 +408,56 @@ class Transport(unittest.TestCase):
         self.assertEqual(len(log), before)
         self.assertTrue(all(a == "Bearer fake-key-for-test" for _, _, a in log))
 
+    def test_review_redirects_are_refused_and_no_redirected_request_receives_the_bearer(self):
+        import http.server
+        import threading
+        seen_elsewhere = []
+
+        class Elsewhere(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                seen_elsewhere.append(self.headers.get("Authorization"))
+                self.send_response(200); self.end_headers()
+
+        other = http.server.HTTPServer(("127.0.0.1", 0), Elsewhere)
+        threading.Thread(target=other.serve_forever, daemon=True).start()
+        self.addCleanup(other.server_close); self.addCleanup(other.shutdown)
+        target = "http://127.0.0.1:%d/steal" % other.server_port
+
+        for code in (301, 302, 303, 307, 308):
+            class Redirect(http.server.BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_POST(self, code=code):
+                    self.rfile.read(int(self.headers["Content-Length"]))
+                    self.send_response(code); self.send_header("Location", target); self.end_headers()
+
+            first = http.server.HTTPServer(("127.0.0.1", 0), Redirect)
+            threading.Thread(target=first.serve_forever, daemon=True).start()
+            self.addCleanup(first.server_close); self.addCleanup(first.shutdown)
+            client = McpHttpClient("http://127.0.0.1:%d/mcp" % first.server_port, "fake-key-for-test", allow_loopback_http=True)
+            with self.assertRaises(ReadFailure) as caught:
+                client("docplane_work_initiatives", {})
+            self.assertEqual(caught.exception.code, "REDIRECT_REFUSED", code)
+        self.assertEqual(seen_elsewhere, [])                       # nothing reached the redirect target, let alone a bearer
+
+    def test_review_plain_http_only_to_an_explicitly_permitted_loopback_endpoint(self):
+        for url in ("http://127.0.0.1:9/mcp", "http://localhost:9/mcp", "http://[::1]:9/mcp"):
+            with self.assertRaises(ValueError):
+                McpHttpClient(url, "k")                              # not permitted unless explicitly allowed
+            McpHttpClient(url, "k", allow_loopback_http=True)
+        for url in ("http://example.com/mcp", "http://10.0.0.5/mcp", "http://127.0.0.1.example.com/mcp", "ftp://127.0.0.1/mcp", "file:///etc/passwd", "//127.0.0.1/mcp"):
+            with self.assertRaises(ValueError):
+                McpHttpClient(url, "k", allow_loopback_http=True)    # the flag never opens a remote host or another scheme
+        McpHttpClient("https://example.com/mcp", "k")
+
     def test_recording_snapshot_replays_identically_and_keeps_no_text(self):
         base = snap(initiatives={TASKS: initiative(TASKS, [related(SUBJECT)], owner="AUTOMATION")})
         url, _, _ = self.serve(base)
-        rec = RecordingReads(McpReads(McpHttpClient(url, "k")))
+        rec = RecordingReads(McpReads(McpHttpClient(url, "k", allow_loopback_http=True)))
         live, view = run(rec, manifest((R1, {})), {})
         self.assertNotIn("SENTINEL-BODY", json.dumps(rec.snapshot))
         rec.snapshot["as_of"] = "t"

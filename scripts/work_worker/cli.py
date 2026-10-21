@@ -44,6 +44,7 @@ def main(argv=None):
     src.add_argument("--mcp-url", help="consolidated MCP URL; key from --api-key-file")
     r.add_argument("--api-key-file", help="0600 env-style file defining CHARLIEHUB_MCP_API_KEY (parsed, never argv)")
     r.add_argument("--cafile", help="CA bundle for the MCP host")
+    r.add_argument("--allow-loopback-http", action="store_true", help="permit plain http to a loopback test endpoint (never for a remote host)")
     r.add_argument("--record-snapshot", help="write a text-free snapshot of the reads (0600) for offline replay")
     r.add_argument("--report-requests", action="store_true", help="print the MCP method/verb names used, to stderr")
     r.add_argument("--json", action="store_true", help="emit JSON instead of Markdown")
@@ -59,7 +60,7 @@ def main(argv=None):
     c.add_argument("--out", help="new config file to write (create)")
     rd = sub.add_parser("read", help="logging, snapshot-enforcing, read-only query tool")
     rd.add_argument("--config", required=True); rd.add_argument("--log", required=True)
-    rd.add_argument("--key-file", help="0600 file with CHARLIEHUB_MCP_API_KEY (never argv)"); rd.add_argument("--cafile")
+    rd.add_argument("--key-file", help="0600 file with CHARLIEHUB_MCP_API_KEY (never argv)"); rd.add_argument("--cafile"); rd.add_argument("--allow-loopback-http", action="store_true", help="permit plain http to a loopback test endpoint (never for a remote host)")
     rd.add_argument("verb", help="a WORK read verb, or MARK, or REGISTER"); rd.add_argument("args", nargs="?", default="{}")
     ck = sub.add_parser("check", help="validate a run: contract, config, read log, evaluations, continuity")
     ck.add_argument("--config", required=True); ck.add_argument("--interpretation", required=True); ck.add_argument("--log", required=True)
@@ -84,7 +85,7 @@ def main(argv=None):
     else:
         if not a.api_key_file:
             ap.error("--mcp-url needs --api-key-file")
-        client = McpHttpClient(a.mcp_url, load_api_key(a.api_key_file), cafile=a.cafile)
+        client = McpHttpClient(a.mcp_url, load_api_key(a.api_key_file), cafile=a.cafile, allow_loopback_http=a.allow_loopback_http)
         reads = McpReads(client)
     if a.record_snapshot:
         reads = RecordingReads(reads)
@@ -135,7 +136,7 @@ def _harness(a):
                 print("--key-file is required for reads", file=sys.stderr)
                 return 2
             from .sources import McpHttpClient, load_api_key
-            client = McpHttpClient(config["instance"]["url"], load_api_key(a.key_file), cafile=a.cafile)
+            client = McpHttpClient(config["instance"]["url"], load_api_key(a.key_file), cafile=a.cafile, allow_loopback_http=a.allow_loopback_http)
             client.open()
             def call(verb, args):
                 res = client._rpc("tools/call", {"name": verb, "arguments": args})

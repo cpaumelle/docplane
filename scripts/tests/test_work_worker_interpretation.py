@@ -434,7 +434,7 @@ class Interpretation(unittest.TestCase):
 
     def test_regression_new_work_or_duplicate_disposal_needs_captures_inspected_or_is_provisional(self):
         def doc(captures, provisional=False, kind="CAPABILITY_GAP"):
-            search = {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "synthetic", "captures_inspected": captures, "initiatives_inspected": 3, "know_access": "SEARCHED"}
+            search = {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "synthetic", "captures_inspected": captures, "initiatives_inspected": 1, "know_access": "SEARCHED"}
             d = with_ob(ob("o1")); d["records"][0]["parts"][0]["obligation"]["tracking"] = {"status": "NOT_FOUND", "targets": []}
             e = dict(intake(1, "ADDS_OBLIGATION", targets=[itarget(3)], obligations=["o1"], search=search))
             d = self.incoming(d, e)
@@ -442,10 +442,10 @@ class Interpretation(unittest.TestCase):
                                "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "EXISTING_TOOL", "tool_name": "docplane_work_capture", "rank": 1, "confidence": "medium",
                                "effect": "RECORD_NEW", "provisional": provisional, "provisional_reason": "captures were not searched" if provisional else None, "held_behind": None, "subjects": [U(1)]}]
             return d
-        self.assertEqual(interp.validate(doc(2)), [])
+        self.assertEqual(interp.validate(doc(1)), [])
         self.bad(doc(0), "needs relevant captures and initiatives inspected first")
         self.assertEqual(interp.validate(doc(0, provisional=True)), [])
-        d = doc(2); d["proposals"][0]["provisional_reason"] = "stated without being provisional"
+        d = doc(1); d["proposals"][0]["provisional_reason"] = "stated without being provisional"
         self.bad(d, "states why, and only a provisional one does")
 
     def test_regression_missing_know_access_stays_explicit(self):
@@ -540,7 +540,7 @@ class Interpretation(unittest.TestCase):
                 "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low", "effect": effect,
                 "provisional": False, "provisional_reason": None, "held_behind": None, "subjects": []}, **kw)
             filing = mk("pr5", "LINK", "CROSS_REFERENCE_ONLY", 2, subjects=subjects, held_behind=held, provisional=provisional, provisional_reason="status unverified" if provisional else None)
-            d["proposals"] = ([mk("pr8", "VERIFY", "VERIFY", 1)] if with_verify else []) + [filing]
+            d["proposals"] = ([mk("pr8", "VERIFY", "VERIFY", 1, subjects=[U(1)], evidence=[loc(1, "a")])] if with_verify else []) + [filing]
             return d
         self.bad(doc([U(1)], None, False), "must be provisional and held behind a verification proposal")      # evidence cites record 2, the subject is the uncertain record 1
         self.bad(doc([U(1)], "pr8", False), "must be provisional and held behind")
@@ -552,6 +552,52 @@ class Interpretation(unittest.TestCase):
         self.assertEqual(interp.validate(d), [])
         d["proposals"][0]["effect"] = "CLARIFY"; d["proposals"][0]["kind"] = "VERIFY"
         self.assertTrue(interp.validate(d))
+
+    def _proposal(self, pid, kind, effect, subjects, evidence, **kw):
+        return dict({"proposal_id": pid, "kind": kind, "target": "x", "change": "x", "why": "x", "alternatives": "none", "evidence": evidence, "confidence_reason": "x",
+                     "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": 1, "confidence": "low", "effect": effect,
+                     "provisional": False, "provisional_reason": None, "held_behind": None, "subjects": subjects}, **kw)
+
+    def test_review_final_the_verification_a_hold_waits_behind_must_be_read_only_and_address_the_uncertain_subject(self):
+        u = dict(ob("o1"), currency="UNCERTAIN_CURRENT", later_evidence=[loc(3, "x")], tracking={"status": "CANDIDATE", "targets": [target(3, basis="SEMANTIC")]})
+        def doc(*props):
+            d = self.incoming(with_ob(copy.deepcopy(u)), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="currency unknown", obligations=["o1"]), purpose="OBLIGATION"))
+            d["proposals"] = list(props)
+            return d
+        held = dict(provisional=True, provisional_reason="status unverified", held_behind="v1")
+        link = lambda: self._proposal("p1", "LINK", "CROSS_REFERENCE_ONLY", [U(1)], [loc(2, "c")], rank=2, **held)
+        verify = lambda **kw: self._proposal("v1", "NEXT_ACTION", "VERIFY", kw.pop("subjects", [U(1)]), kw.pop("evidence", [loc(1, "a")]), **kw)
+        # valid controls
+        self.assertEqual(interp.validate(doc(verify(), link())), [])
+        self.assertEqual(interp.validate(doc(verify(subjects=[], evidence=[loc(1, "a")]), link())), [])               # addressed through its evidence
+        self.assertEqual(interp.validate(doc(verify(tool_name="docplane_work_get", capability="EXISTING_TOOL"), link())), [])
+        self.assertEqual(interp.validate(doc(self._proposal("v1", "VERIFY", "VERIFY", [U(1)], [loc(1, "a")]), link())), [])
+        # V1/V1b: only VERIFY or NEXT_ACTION proposals can carry the VERIFY effect
+        for subject in (U(1), U(2)):
+            self.bad(doc(self._proposal("v1", "LINK", "VERIFY", [subject], [loc(2, "c")]), link()), "only a VERIFY or NEXT_ACTION proposal can have effect VERIFY")
+        self.bad(doc(self._proposal("v1", "FILE", "VERIFY", [U(1)], [loc(1, "a")]), link()), "only a VERIFY or NEXT_ACTION")
+        # V2/V2b: a verification names no tool or a read-only one
+        for write in ("docplane_work_triage_discard", "docplane_work_triage_attach", "docplane_work_note", "docplane_work_capture"):
+            self.bad(doc(verify(tool_name=write, capability="EXISTING_TOOL"), link()), "names no tool or a read-only one")
+            self.bad(doc(verify(subjects=[U(2)], evidence=[loc(2, "c")], tool_name=write, capability="EXISTING_TOOL"), link()), "names no tool or a read-only one")
+        # an unrelated verification cannot satisfy the hold
+        self.bad(doc(verify(subjects=[U(2)], evidence=[loc(2, "c")]), link()), "does not address the uncertain subject")
+        self.bad(doc(verify(subjects=[], evidence=[loc(3, "x")]), link()), "does not address the uncertain subject")
+
+    def test_review_final_a_filing_resting_on_a_provisional_intake_entry_is_itself_provisional(self):
+        search = {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "x", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": "SEARCHED"}
+        def doc(status, inspected=1, provisional=False):
+            s = dict(search, captures_inspected=inspected)
+            d = self.incoming(base(), dict(intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)], search=s), processing_status=status))
+            d["proposals"] = [self._proposal("p1", "FILE", "REHOME", [U(1)], [loc(1, "a")], provisional=provisional, provisional_reason="unfinished" if provisional else None)]
+            return d
+        self.assertEqual([e for e in interp.validate(doc("EVALUATED")) if "proposal" in e], [])
+        self.bad(doc("EVALUATED", inspected=0), "filing needs relevant captures and initiatives inspected first")
+        self.assertEqual([e for e in interp.validate(doc("EVALUATED", inspected=0, provisional=True)) if "proposal" in e], [])
+        d = doc("EVALUATED"); d["intake"][0]["processing_status"] = "REEVALUATION_DUE"; d["intake"][0]["reevaluation"] = {"due": True, "trigger": "LINKED_RECORD_CHANGED"}
+        self.bad(d, "is not fully evaluated, so the proposal is provisional")
+        d["proposals"][0].update(provisional=True, provisional_reason="intake entry awaits re-evaluation")
+        self.assertEqual([e for e in interp.validate(d) if "proposal" in e], [])
 
     def test_review_unread_or_withheld_records_are_undetermined_and_uncertain(self):
         def unread(purpose, disp="UNCERTAIN"):
@@ -566,10 +612,16 @@ class Interpretation(unittest.TestCase):
     def test_review_inspection_counts_cannot_exceed_what_this_run_read(self):
         search = lambda c, i: {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "x", "captures_inspected": c, "initiatives_inspected": i, "know_access": "SEARCHED"}
         d = with_ob(ob("o1")); d["records"][0]["parts"][0]["obligation"]["tracking"] = {"status": "NOT_FOUND", "targets": []}
-        d["retrieval"]["reads"] = [r for r in d["retrieval"]["reads"] if r["record_id"] in (U(1), U(2))]
-        self.bad(self.incoming(copy.deepcopy(d), intake(1, "ADDS_OBLIGATION", targets=[itarget(2)], obligations=["o1"], search=search(5, 1))), "but only 1 other records were read")
-        self.bad(self.incoming(copy.deepcopy(d), intake(1, "ADDS_OBLIGATION", targets=[itarget(2)], obligations=["o1"], search=search(1, 9))), "but only 1 other records were read")
-        self.assertEqual(interp.validate(self.incoming(copy.deepcopy(d), intake(1, "ADDS_OBLIGATION", targets=[itarget(2)], obligations=["o1"], search=search(1, 1)))), [])
+        def doc(c, i, reads=(1, 2, 3, 9)):                # 1 = the input, 2 = a capture, 9 = a scope initiative, 3 = a read of unknown kind
+            x = self.incoming(copy.deepcopy(d), intake(1, "ADDS_OBLIGATION", targets=[itarget(3)], obligations=["o1"], search=search(c, i)))
+            x["retrieval"]["reads"] = [r for r in x["retrieval"]["reads"] if int(r["record_id"][-4:] or 0) in reads]
+            return x
+        self.bad(doc(5, 1), "but only 1 other captures were read")
+        self.bad(doc(1, 9), "but only 1 initiatives were read")
+        self.assertEqual(interp.validate(doc(1, 1)), [])
+        # counted by what was read, not by how many records were read: a work item and an initiative are not captures
+        self.bad(doc(2, 1, reads=(1, 3, 9)), "but only 0 other captures were read")
+        self.bad(doc(1, 2, reads=(1, 2, 3)), "but only 0 initiatives were read")
 
     def test_review_later_evidence_may_cite_a_pinned_authoritative_register_row(self):
         row = lambda reg="prog-register": {"register_id": reg, "entry_ref": "K8"}

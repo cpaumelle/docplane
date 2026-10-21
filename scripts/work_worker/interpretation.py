@@ -11,6 +11,8 @@ import json
 import os
 import re
 
+from .sources import READ_VERBS
+
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "interpretation.schema.json")
 READ_NOW = {"WORK_STATE_READ_NOW", "DOCPLANE_PAGE_READ_NOW", "MODEL_READ_NOW"}
 _TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "null": type(None)}
@@ -267,6 +269,8 @@ def _check_obligation(o, record_id, obligations, registers, read, err):
 def _check_intake(doc, obligations, reads, rel, err, parts):
     """Backlog guardianship: every incoming record is evaluated, visibly, against existing work."""
     incoming = doc["run"]["scope"]["incoming_record_ids"]
+    kinds = {r["record_id"]: r["record_kind"] for r in doc["records"]}
+    initiative_ids = set(doc["run"]["scope"]["initiative_ids"]) | {i for i, k in kinds.items() if k == "initiative"}
     concerns = {}
     for c in doc["concerns"]:
         if c["concern_id"] in concerns:
@@ -325,9 +329,13 @@ def _check_intake(doc, obligations, reads, rel, err, parts):
         if purpose == "UNDETERMINED" and disp != "UNCERTAIN":
             err(f"intake: {rid} an undetermined purpose goes with an UNCERTAIN disposition")
         s = e["search"]
-        others = len({r_ for r_, ok_ in reads.items() if ok_ and r_ != rid})
-        if s["captures_inspected"] > others or s["initiatives_inspected"] > others:
-            err(f"intake: {rid} claims {s['captures_inspected']} captures and {s['initiatives_inspected']} initiatives inspected but only {others} other records were read in this run")
+        read_ids = {r_ for r_, ok_ in reads.items() if ok_ and r_ != rid}
+        cap_reads = len({r_ for r_ in read_ids if kinds.get(r_) == "capture" or r_ in incoming})
+        ini_reads = len(read_ids & initiative_ids)
+        if s["captures_inspected"] > cap_reads:
+            err(f"intake: {rid} claims {s['captures_inspected']} captures inspected but only {cap_reads} other captures were read in this run")
+        if s["initiatives_inspected"] > ini_reads:
+            err(f"intake: {rid} claims {s['initiatives_inspected']} initiatives inspected but only {ini_reads} initiatives were read in this run")
         know_entries = [x for x in doc["briefing"]["omitted"] if "know" in x["what"].lower()]
         if s["know_access"] != "SEARCHED" and not know_entries:
             err(f"intake: {rid} KNOW was not searched ({s['know_access']}): the briefing must list it as omitted")
@@ -442,10 +450,12 @@ def _check_organisation(doc, reads, err):
         if (creates or pr["kind"] in ("FILE", "LINK", "CONSOLIDATE")) and not pr["subjects"]:
             err(f"proposal {pr['proposal_id']}: filing, linking, consolidating or creating work names its subject records")
         used = list(dict.fromkeys(list(pr["subjects"]) + [e["record_id"] for e in pr["evidence"]]))
-        if creates and not pr["provisional"]:
+        if (creates or pr["kind"] in ("FILE", "LINK", "CONSOLIDATE")) and not pr["provisional"]:
             backing = [entries[i] for i in used if i in entries] or list(entries.values())
             if not backing or any(x["search"]["captures_inspected"] < 1 or x["search"]["initiatives_inspected"] < 1 for x in backing):
-                err(f"proposal {pr['proposal_id']}: new work or duplicate disposal needs relevant captures and initiatives inspected first; otherwise it is provisional")
+                err(f"proposal {pr['proposal_id']}: new work, duplicate disposal or filing needs relevant captures and initiatives inspected first; otherwise it is provisional")
+            if any(x["processing_status"] != "EVALUATED" for x in backing):
+                err(f"proposal {pr['proposal_id']}: an intake entry it rests on is not fully evaluated, so the proposal is provisional")
     pids = {pr["proposal_id"]: pr for pr in doc["proposals"]}
     shaky_parts = {(r["record_id"], p["part_id"]) for r in doc["records"] for p in r["parts"] if p["obligation"] and p["obligation"]["currency"] == "UNCERTAIN_CURRENT"}
     shaky_records = {rid for rid, _ in shaky_parts}
@@ -459,12 +469,23 @@ def _check_organisation(doc, reads, err):
         rests = any((e["record_id"], e["part_id"]) in shaky_parts for e in pr["evidence"]) or bool(set(pr["subjects"]) & (shaky_records | unsure)) or bool(subj & unsure)
         if files and rests and not (hb is not None and pr["provisional"]):
             err(f"proposal {pr['proposal_id']}: it rests on an uncertain current status, so it must be provisional and held behind a verification proposal")
+        if files and rests and hb is not None and hb in pids:
+            anchor = pids[hb]
+            need = subj & (shaky_records | unsure)
+            covered = set(anchor["subjects"]) | {e["record_id"] for e in anchor["evidence"]}
+            if need and not need <= covered:
+                err(f"proposal {pr['proposal_id']}: the verification it is held behind ({hb}) does not address the uncertain subject it rests on")
     for pr in doc["proposals"]:
         eff, kind = pr["effect"], pr["kind"]
         if kind == "FILE" and eff not in ("REHOME", "RECORD_NEW"):
             err(f"proposal {pr['proposal_id']}: FILE means rehoming or a new record")
         if kind == "VERIFY" and eff != "VERIFY":
             err(f"proposal {pr['proposal_id']}: a verification proposal has effect VERIFY")
+        if eff == "VERIFY":
+            if kind not in ("VERIFY", "NEXT_ACTION"):
+                err(f"proposal {pr['proposal_id']}: only a VERIFY or NEXT_ACTION proposal can have effect VERIFY")
+            if pr["tool_name"] is not None and pr["tool_name"] not in READ_VERBS:
+                err(f"proposal {pr['proposal_id']}: a verification proposal names no tool or a read-only one, not {pr['tool_name']}")
         if eff == "REHOME":
             homes = [placement_of[i] for i in pr["subjects"] if i in placement_of]
             if not homes or any(h != "HOME_FOUND" for h in homes):
