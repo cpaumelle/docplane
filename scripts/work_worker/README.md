@@ -156,7 +156,53 @@ read live, complete):
   tuned rule.
 * *Uncertain*: every coverage claim, every external status, and the state flags above.
 
-Not ready for unattended operation: precision of the state check is unmeasured,
+## Usefulness evaluation (agent-assessed, not human-adjudicated)
+
+* **State flags (20).** Each initiative's full history was read by an agent that
+  classified the flag. Result: 0 whole-completion evidence, 0 genuine contradictions,
+  18 partial repairs, 2 historical resolutions, 0 uncertain (17 high confidence).
+  15 of the 20 initiatives carry several RESOLUTION activities (up to 20): the
+  activity type marks sub-outcomes. Precision of this check is 0 of 20, so
+  **a RESOLUTION activity must not be reported as a state contradiction**; the
+  detector should be removed or demoted before any manual run. One agent judged
+  each flag, so this is a strong signal rather than an adjudicated count.
+* **Ownership flags (8).** All eight initiatives are owned by the single MCP
+  service identity (`charliehub-mcp-automation`); their activities were written
+  by 1-9 distinct principals. This is one systemic identity limitation (the MCP
+  writes as a shared identity and the model has no accountable-owner field), not
+  eight work items. Three of the eight are COMPLETE or ABANDONED and should not
+  be flagged at all.
+* **Blind extraction (12 records, agent had no manifest or labels).** It listed
+  67 candidate obligations (33 OPEN, 30 UNCLEAR, 4 done in the record), about 5.6
+  per record, and none came out as obligation-free. The earlier table listed 6
+  enumerated obligations, about 10 more unenumerated, and none on 9 records; the
+  agent marked 27 as OPEN on the 8 of those records in the sample. Whether that is
+  over-extraction or a coarse table is not resolved without a human reading.
+* **Existing links.** The agent found 0 structural relationships (it reported 2
+  capture ids mentioned in activity text, which this worker deliberately ignores);
+  the worker found 0 too. The sample records are untriaged captures, so no links
+  exist by construction. Links can only help after triage.
+
+## Known server behaviour: `activities_truncated`
+
+`charliehub-hub2` `mcp/tools/docplane_work.py` (base clone `d8438b35`, line 226) sets
+`activities_truncated = len(recent) < len(parsed)`, comparing the window with the
+whole history. It is therefore true on every page of a paged walk, including the
+last; only the absent `next_activity_offset` marks the end. Minimal synthetic
+reproduction (real adapter function, fabricated 5-activity payload, limit 2):
+
+    offset 0 returned 2 of 5 activities_truncated True next_activity_offset 2
+    offset 2 returned 2 of 5 activities_truncated True next_activity_offset 4
+    offset 4 returned 1 of 5 activities_truncated True next_activity_offset None
+
+The hub2 tests assert only a first page (true) and an unpaged read (false). I found
+no capture, issue or PR tracking the final-page case (searched hub2 PRs and issues,
+DocPlane search, the preserved capture and initiative inventories); #989 introduced
+paging. No capture was filed. This worker already treats the cursor and the count
+check as authoritative, so a fix (for example, true only when `next_activity_offset`
+is present) is separate and optional.
+
+Not ready for unattended operation: the state check has no demonstrated value,
 coverage cannot be confirmed automatically, and the manifest is hand-supplied.
 
 Run all synthetic tests (from the repo root):
