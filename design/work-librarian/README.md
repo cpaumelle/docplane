@@ -241,3 +241,25 @@ qualification, retraction versus contradiction, prefix resolution); the original
 * **Live state outruns captures.** A capture's account of a pull request or a register row is a historical claim; both can have moved by the time
   it is read. Reference conclusions are a comparison, not truth: in one comparison the reference reported a pull request open that had merged
   before it was written.
+
+### Backlog guardianship
+
+DocPlane WORK is the master backlog; the librarian guards it. Private indexes, briefings and interpretations are rebuildable aids and never
+another authoritative list, and the librarian's intake-processing status is kept separate from a record's own lifecycle.
+
+* **Intake evaluation of everything incoming.** Every new capture and every new activity receives one evaluation against existing canonical
+  work, with one of these dispositions: contributes evidence or progress; adds an obligation to an existing deliverable; warrants a new
+  deliverable; duplicates, corrects or supersedes earlier information; or remains uncertain.
+* **Search beyond the immediate workstream, completed work included.** A record may be called new only after a recorded search that went past
+  its own workstream and included completed work, with the search's limits stated. *Related* and *same obligation* are different relations:
+  a related new action stays a distinct, independently acceptable obligation inside the coherent group; only a same-obligation restatement is
+  consolidated, and then every source is kept.
+* **Processing coverage.** The run states which records were incoming and every one has an evaluation; totals must equal the entries. A failed
+  or withheld read, and a placement that cannot be settled, remain visible as such and are never counted as evaluated. Earlier placements are
+  re-evaluated when later evidence changes their meaning.
+* **Lifecycle is not processing.** An INBOX, attached, promoted or discarded record still needs its evaluation; a record's lifecycle never
+  stands in for whether the librarian processed it.
+* **Authority unchanged.** Proposals only for production; the corresponding triage and note verbs are named, never called.
+
+One synthetic scenario (`mixed-intake-batch`) exercises all five kinds in a single batch: restated existing obligation, related new action,
+duplicate, completion evidence and a genuinely new concern, checking each disposition and that no obligation is lost or duplicated.

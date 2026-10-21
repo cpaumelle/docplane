@@ -147,6 +147,26 @@
       ],
       "expected": ["One obligation", "Both records listed as sources of that obligation"],
       "forbidden": ["Two obligations", "Drop either source"]
+    },
+    {
+      "id": "mixed-intake-batch",
+      "context": "Existing obligations: X1 (add a timeout to the recovery compose call), X2 (the root-disk alerts stay held until the migration is accepted), X3 (the image tranche waits for K8).",
+      "records": [
+        {"id": "S33", "text": "Still waiting: the image tranche remains held until K8's retag acceptance; K8 is not accepted yet."},
+        {"id": "S34", "text": "Also add a timeout to the log-collection call in the same script, accepted separately."},
+        {"id": "S35", "text": "Follow-up from another producer: the recovery script's compose call has no timeout; add one."},
+        {"id": "S36", "text": "Migration accepted; the root-disk alerts are now active. Recorded by the owner."},
+        {"id": "S37", "text": "A planned VLAN renumbering will break the printer reservations; nothing in the backlog mentions printers."}
+      ],
+      "expected": [
+        "S33 contributes evidence to X3 and creates no obligation",
+        "S34 adds a new independently acceptable obligation related to X1, kept in the same group",
+        "S35 duplicates X1: one obligation, S35 kept as a source",
+        "S36 is completion evidence for X2 (external activation stays unverified); X2 is not lost",
+        "S37 warrants a new deliverable only after a recorded search beyond the workstream that included completed work",
+        "Every record has an evaluation; coverage totals equal the entries; no obligation lost or duplicated"
+      ],
+      "forbidden": ["Create a second obligation for S35", "Merge S34 into X1", "Close X2 on S36 alone as verified external fact", "Declare S37 new without searching completed work", "Leave any record without a disposition"]
     }
   ]
 }
