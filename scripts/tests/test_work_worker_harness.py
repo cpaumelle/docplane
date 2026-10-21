@@ -204,6 +204,26 @@ class ReadTool(Workdir):
         ok = {"content": [{"type": "text", "text": "# page\nmentions an error in passing"}]}
         self.assertEqual(cli.mcp_tool_call(type("C", (), {"_rpc": lambda s, m, p: ok})())("read_doc", {})["text"], "# page\nmentions an error in passing")
 
+    def test_later_evidence_linked_to_a_concern_informs_the_briefing_freshness_claim(self):
+        a, b, c = U(11), U(12), U(13)                    # concern record, earlier evidence, latest evidence (synthetic)
+        part = lambda rid, pid, at: {"record_id": rid, "parts": [{"part_id": pid, "temporal": {"reported_at": at}}]}
+        link = lambda rid, rel="FOLLOWS_UP": {"relation_id": "r" + rid[-2:], "type": rel, "from": {"record_id": rid, "part_id": "p"}, "to": {"record_id": a, "part_id": "blk"}}
+        def doc(lines, relations):
+            return {"records": [part(a, "blk", "2026-01-01T16:13:33Z"), part(b, "p", "2026-01-01T17:10:06Z"), part(c, "p", "2026-01-01T19:41:18Z")],
+                    "concerns": [{"concern_id": "c1", "record_id": a, "part_id": "blk"}], "relations": relations,
+                    "briefing": {"status_lines": [{"text": t, "evidence": [{"record_id": r, "part_id": "p"} for r in ev]} for t, ev in lines]}}
+        good = doc([("Latest relevant update to this concern is 19:41Z.", [b, c])], [link(b), link(c)])
+        self.assertEqual(runcheck.freshness_errors(good), [])
+        # the regression: later evidence was retrieved and linked, but the briefing still claims an older state
+        stale = doc([("Nothing after 17:17Z was found.", [b, c])], [link(b), link(c)])
+        self.assertIn("19:41Z", " ".join(runcheck.freshness_errors(stale)))
+        uncited = doc([("Latest relevant update to this concern is 19:41Z.", [c])], [link(b), link(c)])
+        self.assertIn("not cited", " ".join(runcheck.freshness_errors(uncited)))
+        self.assertIn("not cited", " ".join(runcheck.freshness_errors(doc([], [link(c)]))))
+        # nothing is inferred: no link, or a link of another type, is not checked, and no obligation is involved
+        self.assertEqual(runcheck.freshness_errors(doc([], [])), [])
+        self.assertEqual(runcheck.freshness_errors(doc([], [link(c, "SAME_DELIVERABLE")])), [])
+
     def test_no_write_verb_and_know_only_when_configured(self):
         t = self.tool()
         for verb in ("docplane_work_note", "docplane_work_capture", "docplane_work_triage_discard", "write_doc"):

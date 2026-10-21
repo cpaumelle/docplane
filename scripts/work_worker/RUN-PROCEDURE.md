@@ -40,7 +40,7 @@ The tool removes records created after the cutoff, logs every call, issues finge
 ## 3. Check
 `python3 -m work_worker check --config run/config.json --interpretation interpretation.json --log run/read-log.jsonl [--evaluations evaluations.json] [--previous prev.json --registry registry.json] --report check.json`
 Exit status 1 rejects the run: contract violations, a header that conflicts with the config, a log written under another config, a record cited without being read in this run (fingerprint),
-a search scope the log does not show, or lost/duplicated obligations. Do not edit the outputs to make them pass: record the rejection with the output and, if needed, do a new, labelled run.
+a search scope the log does not show, or lost/duplicated obligations. A concern that later evidence follows up (a FOLLOWS_UP relation into its part) must be cited by a briefing status line that names the latest linked update as HH:MMZ; only links the interpretation states are checked, relevance is not inferred. Do not edit the outputs to make them pass: record the rejection with the output and, if needed, do a new, labelled run.
 
 ## 4. Mint ids
 `python3 -m work_worker mint --interpretation interpretation.json [--registry-in registry.json] --out registry-new.json`. Ids are issued once per (record, local id) and refuse to change.
