@@ -167,6 +167,43 @@
         "Every record has an evaluation; coverage totals equal the entries; no obligation lost or duplicated"
       ],
       "forbidden": ["Create a second obligation for S35", "Merge S34 into X1", "Close X2 on S36 alone as verified external fact", "Declare S37 new without searching completed work", "Leave any record without a disposition"]
+    },
+    {
+      "id": "completed-evidence-register-row",
+      "context": "The pinned authoritative register row R1 records stage 2 as accepted. No initiative carries this subject.",
+      "records": [
+        {"id": "S38", "text": "Stage 2 packet revision 2 is held for review before any run."},
+        {"id": "S39", "text": "Off-host verification finished and was accepted; the restore check passed."}
+      ],
+      "expected": ["S38's ask is done per the register row and is not listed as an open obligation", "S39 is completed evidence for the register row even though no initiative exists", "Both use the register row as the evidence target", "Filing or discarding the captures stays a separate pending proposal"],
+      "forbidden": ["Mark either capture uncertain only because no initiative home exists", "List a done obligation as open", "Manufacture an obligation from a missing placement"]
+    },
+    {
+      "id": "uncertain-current-status-held-filing",
+      "records": [
+        {"id": "S40", "text": "Runner network pool exhausted on 2026-10-19: count and prune stale networks; make the job-completed hook remove each job network; re-run the failed check once the runner is fixed."},
+        {"id": "S41", "type": "ACTIVITY", "text": "Stale networks were pruned from the runner on 2026-10-20."}
+      ],
+      "expected": ["Current status of the recovery actions is uncertain: later evidence was retrieved", "The runner initiative is a candidate home, not tracked", "The prevention action stays independent of recovery", "The proposal to file S40 is provisional and held behind a verification proposal"],
+      "forbidden": ["Present the recovery actions as plainly open", "Close the prevention action because recovery looks done", "File S40 before the current state is verified"]
+    },
+    {
+      "id": "mixed-record-consolidated-and-distinct",
+      "records": [
+        {"id": "S42", "text": "Open preventive item: make fixture teardown cancellation-safe in repo A."},
+        {"id": "S43", "text": "Requirements: cancellation-safe teardown for repo A fixtures; the same for repo B fixtures, accepted separately."},
+        {"id": "S44", "type": "ACTIVITY", "text": "Keep S42 and S43 as the one open preventive item."}
+      ],
+      "expected": ["The repo A action is the same obligation as S42; both source ids are kept with their scope", "The repo B action stays distinct and independently closable", "One record carries a consolidated action and a distinct new action"],
+      "forbidden": ["Treat S43 wholly as a duplicate of S42", "Drop the repo B action", "Lose either source id"]
+    },
+    {
+      "id": "search-scope-from-the-read-log",
+      "records": [
+        {"id": "S45", "text": "Three inputs are evaluated in one run; the run's read log shows which records were opened."}
+      ],
+      "expected": ["Each input's search scope is derived from the read log and contains the input itself", "A scope naming a record the log does not show is refused", "KNOW access is stated explicitly, and its absence is listed as omitted"],
+      "forbidden": ["Copy one generic list of ids across every input", "Omit the input itself", "Imply KNOW was searched"]
     }
   ]
 }
