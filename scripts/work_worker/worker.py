@@ -6,7 +6,6 @@ from structured references, and mechanical checks use state fields only.
 """
 from __future__ import annotations
 
-from hashlib import sha256
 import re
 from uuid import UUID, uuid5
 
@@ -18,11 +17,6 @@ TERMINAL = frozenset({"COMPLETE", "ABANDONED"})
 MANIFEST_KEYS = {"subject_id", "obligation_id", "kind", "label"}
 MANIFEST_OPTIONAL = {"evidence_ids", "subject_activity_ids", "candidate_cover_ids"}
 SECRET_SHAPES = re.compile(r"(?i)bearer\s|token\s*[=:]|password|secret\s*[=:]|[A-Za-z0-9+/_-]{32,}")
-
-
-def coverage_token(subject_id, obligation_id):
-    """Value of the ARTIFACT reference that says "this item covers that obligation"."""
-    return sha256(f"work-worker-obligation:v1:{subject_id}:{obligation_id}".encode()).hexdigest()
 
 
 def derived_obligation(subject_id, discriminator):
@@ -77,30 +71,37 @@ def _read_capture(reads, capture_id):
     return _capture_version(cap), None
 
 
-def _coverage(initiatives):
-    """Index activities' structured links. Returns (entries, blind_ids).
+def _relationships(initiatives):
+    """Index structured relationships only: (initiative, state, activity_id, link ids).
 
-    An entry is (initiative_id, state, link_ids, tokens). ``blind_ids`` are
-    initiatives where a withheld reference means coverage cannot be ruled out.
+    Link ids are an activity's ``source_capture_id``, its ``ACTIVITY`` references and
+    the initiative's founding captures. No reference type names an *obligation*, so
+    a relationship shows related work, never that a particular obligation is covered.
+    Returns (entries, blind_ids); blind ids hold a withheld reference.
     """
     entries, blind = [], set()
     for iid, ini in initiatives.items():
         founding = {x for x in ini.get("founding_capture_ids") or [] if isinstance(x, str)}
         for act in ini["activities"]:
-            links, tokens = set(founding), set()
+            links = set(founding)
             if isinstance(act.get("source_capture_id"), str):
                 links.add(act["source_capture_id"])
             for ref in act.get("references") or []:
                 if ref.get("reference_id_withheld"):
                     blind.add(iid)
-                    continue
-                if ref.get("reference_type") == "ACTIVITY":
+                elif ref.get("reference_type") == "ACTIVITY":
                     links.add(ref.get("reference_id"))
-                elif ref.get("reference_type") == "ARTIFACT":
-                    tokens.add(ref.get("reference_id"))
-            if tokens:
-                entries.append((iid, ini.get("work_state"), links, tokens, act.get("activity_id")))
+            if links:
+                entries.append((iid, ini.get("work_state"), act.get("activity_id"), links))
     return entries, blind
+
+
+def _after_resolution(activities, resolution_ids):
+    ordered = sorted(activities, key=lambda a: (a.get("created_at") or "", a["activity_id"]))
+    last = max(i for i, a in enumerate(ordered) if a["activity_id"] in resolution_ids)
+    later = len(ordered) - 1 - last
+    return ("The newest RESOLUTION is the latest activity." if not later else
+            "%d activit%s follow the newest RESOLUTION, so work may have continued; a RESOLUTION can mark a partial outcome." % (later, "y" if later == 1 else "ies"))
 
 
 def run(reads, manifest, previous):
@@ -111,10 +112,10 @@ def run(reads, manifest, previous):
             initiatives[iid] = reads.initiative(iid)
         except ReadFailure as exc:
             failed[iid] = exc.code
-    entries, blind = _coverage(initiatives)
+    entries, blind = _relationships(initiatives)
     scope_complete = not failed and not blind
 
-    candidates, meta, excluded, covered = [], {}, {}, []
+    candidates, meta, excluded = [], {}, {}
     by_subject = {}
     for row in obligations:
         by_subject.setdefault(row["subject_id"], []).append(row)
@@ -126,33 +127,26 @@ def run(reads, manifest, previous):
         for cid in sorted(wanted):
             versions[cid], why = _read_capture(reads, cid)
             reason = reason or why
-        pending = []
-        for row in rows:
-            link_ids = {subject, *row["subject_activity_ids"]}
-            token = coverage_token(subject, row["obligation_id"])
-            hits = [e for e in entries if token in e[3] and e[2] & link_ids
-                    and e[4] not in row["subject_activity_ids"]]
-            live = [e for e in hits if e[1] != "ABANDONED"]
-            if live:
-                covered.append({"subject_id": subject, "obligation_id": row["obligation_id"],
-                                "by": sorted({e[0] for e in live})})
-                continue
-            if reason is None and not scope_complete:
-                reason = "SCOPE_INCOMPLETE"
-            pending.append((row, token, hits))
+        if reason is None and not scope_complete:
+            reason = "SCOPE_INCOMPLETE"       # the related-work list would be partial
         if reason:
             excluded[subject] = reason
             continue
         evaluated.add(subject)
-        for row, token, hits in pending:
+        for row in rows:
+            own = set(row["subject_activity_ids"])
+            link_ids = {subject} | own
+            related = sorted({(e[0], e[1]) for e in entries if e[3] & link_ids and e[2] not in own})
             evidence = [{"record_id": c, "version": versions[c]} for c in sorted(wanted)]
-            uncertainty = ["Coverage was checked only in the %d scoped initiatives; an item outside the scope cannot be seen." % len(scope_ids)]
-            if hits:
-                uncertainty.append("The only covering item is ABANDONED, so the obligation is treated as uncovered.")
+            uncertainty = ["Coverage is unconfirmed, not disproved: the governed reads have no relationship that names an obligation, "
+                           "and only the %d scoped initiatives were searched." % len(scope_ids)]
+            if related:
+                uncertainty.append("Related work found by relationship only; it may cover this obligation, a sibling one, or neither.")
             candidates.append({"subject_id": subject, "kind": row["kind"], "obligation_id": row["obligation_id"], "evidence": evidence})
             meta[f"{subject}:{row['kind']}:{row['obligation_id']}"] = {
-                "label": row["label"], "token": token, "uncertainty": uncertainty,
-                "cover_hint": row["candidate_cover_ids"], "origin": "manifest"}
+                "label": row["label"], "uncertainty": uncertainty, "cover_hint": row["candidate_cover_ids"],
+                "related": [{"initiative_id": i, "work_state": st, "initiative_key": initiatives[i].get("initiative_key")} for i, st in related],
+                "origin": "manifest"}
 
     # Mechanical checks on state fields; each initiative stands or falls on its own read.
     for iid, ini in initiatives.items():
@@ -169,18 +163,19 @@ def run(reads, manifest, previous):
             ob = derived_obligation(iid, "resolution-not-complete")
             candidates.append({"subject_id": iid, "kind": "STATE_CONTRADICTS_EVIDENCE", "obligation_id": ob, "evidence": ev})
             meta[f"{iid}:STATE_CONTRADICTS_EVIDENCE:{ob}"] = {
-                "label": ini.get("initiative_key", ""), "token": None, "origin": "state",
-                "uncertainty": ["A RESOLUTION activity exists; whether it meets the acceptance criteria is a judgment this worker does not make."]}
+                "label": ini.get("initiative_key", ""), "origin": "state",
+                "uncertainty": ["A RESOLUTION activity exists; whether it meets the acceptance criteria is a judgment this worker does not make.",
+                                _after_resolution(ini["activities"], resolutions)]}
         owner = ini["owner"] or {}
         if not owner or owner.get("principal_kind") == "AUTOMATION":
             ev = [{"record_id": iid, "version": projection_version(record="owner", principal=owner.get("principal_id"), principal_kind=owner.get("principal_kind"))}]
             ob = derived_obligation(iid, "no-accountable-owner")
             candidates.append({"subject_id": iid, "kind": "ACCOUNTABILITY_UNCLEAR", "obligation_id": ob, "evidence": ev})
             meta[f"{iid}:ACCOUNTABILITY_UNCLEAR:{ob}"] = {
-                "label": ini.get("initiative_key", ""), "token": None, "origin": "owner",
+                "label": ini.get("initiative_key", ""), "origin": "owner",
                 "uncertainty": ["The owner field records who promoted the item, not who is accountable; an assignment may exist outside this read."]}
     ledger = reconcile(previous, candidates, evaluated_subjects=sorted(evaluated))
     names = {iid: ini.get("initiative_key") for iid, ini in initiatives.items()}
     return ledger, {"source": reads.describe(), "meta": meta, "excluded": excluded, "failed_initiatives": failed,
-                    "covered": covered, "scope_size": len(scope_ids), "scope_complete": scope_complete,
+                    "scope_size": len(scope_ids), "scope_complete": scope_complete,
                     "initiative_keys": names, "evaluated": sorted(evaluated)}

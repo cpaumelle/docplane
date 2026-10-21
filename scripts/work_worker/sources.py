@@ -56,8 +56,8 @@ class Reads:
     def initiative(self, initiative_id):
         """Return the initiative with every activity page, or raise ReadFailure.
 
-        Truncation that cannot be followed to the end is a failure, never a
-        shorter list: absence of evidence cannot be claimed from a partial read.
+        A history that cannot be followed to its full ``activity_count`` is a failure,
+        never a shorter list: absence of evidence cannot be claimed from a partial read.
         """
         offset, activities, head = 0, [], None
         for _ in range(MAX_PAGES):
@@ -73,8 +73,9 @@ class Reads:
             activities.extend(got)
             nxt = page.get("next_activity_offset")
             if nxt is None:
-                if page.get("activities_truncated"):
-                    raise ReadFailure("TRUNCATED_WITHOUT_CURSOR")
+                # The live server leaves activities_truncated true on the final page of a
+                # paged history; the cursor's absence ends the walk and the count check below
+                # decides whether the history is complete.
                 break
             if not isinstance(nxt, int) or nxt <= offset:
                 raise ReadFailure("CURSOR_NOT_ADVANCING")
@@ -107,31 +108,121 @@ class McpReads(Reads):
         return {"mode": self._label, "live": True}
 
 
-def open_mcp_session(url, bearer_file):
-    """Return a synchronous ``call`` for the MCP read verbs (needs the ``mcp`` SDK).
+def load_api_key(path, variable="CHARLIEHUB_MCP_API_KEY"):
+    """Read the MCP key from a 0600 env-style or raw file. Parsed, never sourced or printed."""
+    if os.stat(path).st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+        raise PermissionError("credential file must not be group/world accessible")
+    with open(path) as handle:
+        lines = [x.strip() for x in handle if x.strip() and not x.lstrip().startswith("#")]
+    for line in lines:
+        name, sep, value = line.partition("=")
+        if sep and name.removeprefix("export ").strip() == variable:
+            return value.strip().strip("\"'")
+    if len(lines) == 1 and "=" not in lines[0]:
+        return lines[0]
+    raise ValueError("credential file does not define " + variable)
 
-    The bearer is read from a 0600 file, never from argv or the URL.
+
+class McpHttpClient:
+    """Minimal streamable-HTTP MCP client (stdlib only) that can call read verbs only.
+
+    The allowlist is enforced here, before any network traffic, as well as in
+    ``McpReads``. ``requests`` logs method and verb names only, for acceptance evidence.
     """
-    info = os.stat(bearer_file)
-    if info.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
-        raise PermissionError("bearer file must not be group/world accessible")
-    with open(bearer_file) as handle:
-        token = handle.read().strip()
-    import asyncio
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
 
-    def call(tool, args):
-        async def go():
-            async with streamablehttp_client(url, headers={"Authorization": "Bearer " + token}) as (r, w, _):
-                async with ClientSession(r, w) as session:
-                    await session.initialize()
-                    res = await session.call_tool(tool, args)
-                    if res.structuredContent is not None:
-                        return res.structuredContent
-                    return json.loads(res.content[0].text)
-        return asyncio.run(go())
-    return call
+    def __init__(self, url, api_key, cafile=None, timeout=60):
+        import ssl
+        self._url, self._timeout = url, timeout
+        self._key = api_key
+        self._ctx = ssl.create_default_context(cafile=cafile)
+        self._session, self._id = None, 0
+        self.requests = []
+
+    def _post(self, payload):
+        import urllib.request
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                   "Authorization": "Bearer " + self._key}
+        if self._session:
+            headers["Mcp-Session-Id"] = self._session
+        req = urllib.request.Request(self._url, json.dumps(payload).encode(), headers, method="POST")
+        with urllib.request.urlopen(req, timeout=self._timeout, context=self._ctx) as resp:
+            self._session = resp.headers.get("Mcp-Session-Id") or self._session
+            body = resp.read().decode()
+            kind = resp.headers.get("Content-Type", "")
+        if "text/event-stream" in kind:
+            events = [x[5:].strip() for x in body.splitlines() if x.startswith("data:")]
+            body = events[-1] if events else ""
+        return json.loads(body) if body.strip() else None
+
+    def _rpc(self, method, params, notify=False):
+        self.requests.append(method + (":" + params["name"] if method == "tools/call" else ""))
+        payload = {"jsonrpc": "2.0", "method": method, "params": params}
+        if not notify:
+            self._id += 1
+            payload["id"] = self._id
+        reply = self._post(payload)
+        if notify:
+            return None
+        if not isinstance(reply, dict) or "error" in reply:
+            raise ReadFailure("RPC_ERROR")
+        return reply.get("result")
+
+    def open(self):
+        self._rpc("initialize", {"protocolVersion": "2025-03-26", "capabilities": {},
+                                 "clientInfo": {"name": "work-worker", "version": "0"}})
+        self._rpc("notifications/initialized", {}, notify=True)
+        return self
+
+    def __call__(self, tool, args):
+        if tool not in READ_VERBS:
+            raise PermissionError("not a read verb: " + tool)
+        if self._session is None and self._id == 0:
+            self.open()
+        res = self._rpc("tools/call", {"name": tool, "arguments": args})
+        if res.get("isError"):
+            raise ReadFailure("TOOL_ERROR")
+        if res.get("structuredContent") is not None:
+            return res["structuredContent"]
+        return json.loads(res["content"][0]["text"])
+
+
+# Allowlisted projection kept by RecordingReads: identity, state and structure only.
+_CAPTURE_KEEP = ("capture_id", "created_at", "kind", "author_principal_id", "body_withheld", "origin_text_withheld", "status")
+_HEAD_KEEP = ("initiative_id", "initiative_key", "work_state", "version", "updated_at", "activity_count", "activity_offset",
+              "activities_truncated", "next_activity_offset", "owner", "founding_capture_ids")
+_ACT_KEEP = ("activity_id", "activity_type", "created_at", "author_principal_id", "source_capture_id")
+
+
+class RecordingReads(Reads):
+    """Wrap a source and keep a text-free snapshot of exactly what the worker read."""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.snapshot = {"as_of": None, "captures": {}, "initiatives": {}, "failures": {}}
+
+    def fetch(self, tool, args):
+        key = args.get("capture_id") or args.get("initiative_id")
+        try:
+            data = self._inner.fetch(tool, args)
+        except ReadFailure as exc:
+            self.snapshot["failures"][key] = exc.code
+            raise
+        res = data["result"] if isinstance(data, dict) and set(data) == {"result"} else data
+        if isinstance(res, dict) and "error" in res:
+            self.snapshot["failures"][key] = str(res.get("code") or "READ_ERROR")[:64]
+        elif tool == "docplane_work_capture_get":
+            self.snapshot["captures"][key] = {k: res.get(k) for k in _CAPTURE_KEEP}
+        elif tool == "docplane_work_get":
+            page = {k: res[k] for k in _HEAD_KEEP if k in res}
+            page["activities"] = [{**{k: a.get(k) for k in _ACT_KEEP}, "references": [
+                {"reference_type": r.get("reference_type"), "reference_id": r.get("reference_id"),
+                 "reference_id_withheld": r.get("reference_id_withheld", False)} for r in a.get("references") or []]}
+                for a in res.get("activities") or []]
+            self.snapshot["initiatives"].setdefault(key, []).append(page)
+        return data
+
+    def describe(self):
+        return self._inner.describe()
 
 
 class SnapshotReads(Reads):

@@ -13,7 +13,7 @@ import tempfile
 
 from . import ledger as ledger_mod
 from .report import build, render
-from .sources import McpReads, SnapshotReads, open_mcp_session
+from .sources import McpHttpClient, McpReads, RecordingReads, SnapshotReads, load_api_key
 from .worker import run
 
 
@@ -40,8 +40,11 @@ def main(argv=None):
     r.add_argument("--ledger", required=True, help="private ledger state file (read, then rewritten)")
     src = r.add_mutually_exclusive_group(required=True)
     src.add_argument("--snapshot", help="preserved/synthetic snapshot (JSON); historical")
-    src.add_argument("--mcp-url", help="consolidated MCP URL; bearer from --bearer-file")
-    r.add_argument("--bearer-file", help="0600 file holding the MCP bearer (never argv)")
+    src.add_argument("--mcp-url", help="consolidated MCP URL; key from --api-key-file")
+    r.add_argument("--api-key-file", help="0600 env-style file defining CHARLIEHUB_MCP_API_KEY (parsed, never argv)")
+    r.add_argument("--cafile", help="CA bundle for the MCP host")
+    r.add_argument("--record-snapshot", help="write a text-free snapshot of the reads (0600) for offline replay")
+    r.add_argument("--report-requests", action="store_true", help="print the MCP method/verb names used, to stderr")
     r.add_argument("--json", action="store_true", help="emit JSON instead of Markdown")
     d = sub.add_parser("decide", help="record a reviewer decision in the local ledger only")
     d.add_argument("--ledger", required=True)
@@ -60,10 +63,19 @@ def main(argv=None):
         with open(a.snapshot) as handle:
             reads = SnapshotReads(json.load(handle))
     else:
-        if not a.bearer_file:
-            ap.error("--mcp-url needs --bearer-file")
-        reads = McpReads(open_mcp_session(a.mcp_url, a.bearer_file))
+        if not a.api_key_file:
+            ap.error("--mcp-url needs --api-key-file")
+        client = McpHttpClient(a.mcp_url, load_api_key(a.api_key_file), cafile=a.cafile)
+        reads = McpReads(client)
+    if a.record_snapshot:
+        reads = RecordingReads(reads)
     state, view = run(reads, manifest, _load(a.ledger))
+    if a.record_snapshot:
+        import datetime
+        reads.snapshot["as_of"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _save(a.record_snapshot, reads.snapshot)
+    if a.report_requests and not a.snapshot:
+        sys.stderr.write("requests: " + json.dumps(sorted(set(client.requests))) + " count=%d\n" % len(client.requests))
     _save(a.ledger, state)
     proposal = build(state, view)
     sys.stdout.write(json.dumps(proposal, indent=1) + "\n" if a.json else render(proposal))

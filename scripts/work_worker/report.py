@@ -10,7 +10,7 @@ from .ledger import KINDS
 GROUP_MIN = 3     # this many open items of one systemic kind collapse into one scope-level item
 
 DISCREPANCY = {
-    "UNRECORDED_RESIDUAL": "A residual obligation named by the reviewed classification has no work item that explicitly covers it.",
+    "UNRECORDED_RESIDUAL": "Coverage unconfirmed: no work item is known to cover an obligation named by the reviewed classification. This is not evidence that no such item exists.",
     "STATE_CONTRADICTS_EVIDENCE": "A RESOLUTION activity exists but the initiative is not in a terminal state.",
     "UNACKNOWLEDGED_HANDOVER": "A handover has no explicit acknowledgement or accepting owner.",
     "ACCOUNTABILITY_UNCLEAR": "The initiative's owner is the promoting automation or missing, so accountability is not evidenced.",
@@ -19,7 +19,7 @@ DISCREPANCY = {
     "WRONG_OWNER_DOMAIN": "The record sits under an owning workstream that does not match its subject.",
 }
 ACTION = {
-    "UNRECORDED_RESIDUAL": "Record this residual as its own work item carrying the coverage reference below, or reject this proposal with evidence.",
+    "UNRECORDED_RESIDUAL": "Reviewer: if a work item already covers this obligation, resolve this proposal citing it; otherwise record the obligation as its own work item.",
     "STATE_CONTRADICTS_EVIDENCE": "Accountable owner: judge whether the RESOLUTION meets the acceptance criteria and state the result on the initiative.",
     "UNACKNOWLEDGED_HANDOVER": "Receiving owner: acknowledge the handover on the owning initiative, or name who holds it.",
     "ACCOUNTABILITY_UNCLEAR": "Coordinator: name the accountable owner for the initiative, or confirm the current one.",
@@ -35,16 +35,18 @@ def _item(key, row, view):
     meta = view["meta"].get(key, {})
     action = ACTION[row["kind"]]
     hint = meta.get("cover_hint") or []
-    if row["kind"] == "UNRECORDED_RESIDUAL" and hint:
-        action = ("Reviewer: if %s already carries this obligation, add the coverage reference below to it; "
-                  "otherwise record it as its own work item." % hint[0])
+    related = meta.get("related") or []
+    if row["kind"] == "UNRECORDED_RESIDUAL" and (hint or related):
+        target = hint[0] if hint else related[0]["initiative_id"]
+        action = ("Reviewer: check whether %s covers this obligation; if it does, resolve this proposal citing it, "
+                  "otherwise record the obligation as its own work item." % target)
     return {
         "identity": key, "kind": row["kind"], "original_record": row["subject_id"],
         "record_name": view["initiative_keys"].get(row["subject_id"]),
         "label": meta.get("label"), "discrepancy": DISCREPANCY[row["kind"]],
         "evidence": [{"record_id": e["record_id"], "version": e["version"][:20]} for e in row["evidence"]],
         "uncertainty": meta.get("uncertainty", []), "requested_action": action,
-        "coverage_reference": meta.get("token"),
+        "related_work": related,
         "reopened": bool(row["decisions"]) and row["status"] == "OPEN",
     }
 
@@ -75,8 +77,7 @@ def build(ledger, view):
     return {"source": view["source"], "scope": {"initiatives": view["scope_size"], "complete": view["scope_complete"],
                                                 "failed_reads": view["failed_initiatives"]},
             "excluded": view["excluded"], "proposals": proposals, "systemic": groups,
-            "no_longer_detected": gone, "not_reevaluated": unseen, "unchanged_decisions": quiet,
-            "covered_obligations": len(view["covered"])}
+            "no_longer_detected": gone, "not_reevaluated": unseen, "unchanged_decisions": quiet}
 
 
 def render(proposal):
@@ -101,8 +102,9 @@ def render(proposal):
                 "- Evidence: " + ", ".join("`%s`@%s" % (e["record_id"], e["version"]) for e in p["evidence"]),
                 "- Uncertainty: " + " ".join(p["uncertainty"]),
                 "- Requested action: " + p["requested_action"]]
-        if p["coverage_reference"]:
-            out.append("- Coverage reference (ARTIFACT): `%s`" % p["coverage_reference"])
+        if p["related_work"]:
+            out.append("- Related work (relationship only, not proof of coverage): " + ", ".join(
+                "`%s` %s" % (w["initiative_id"], w["work_state"]) for w in p["related_work"]))
         out.append("- Identity: `%s`" % p["identity"])
         out.append("")
     for g in proposal["systemic"]:
