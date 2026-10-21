@@ -61,6 +61,29 @@ def log_errors(config, log, fingerprints, doc):
     return errors
 
 
+def freshness_errors(doc):
+    """Later evidence linked to a concern (a FOLLOWS_UP relation into the concern's part) must inform the briefing's freshness claim:
+    one status line cites every such record and names the latest linked update as HH:MMZ. Nothing is inferred about relevance:
+    only links the interpretation itself states are checked."""
+    errors = []
+    parts = {(r["record_id"], p["part_id"]): p for r in doc.get("records", []) for p in r.get("parts", [])}
+    lines = doc.get("briefing", {}).get("status_lines", [])
+    for c in doc.get("concerns", []):
+        key = (c["record_id"], c["part_id"])
+        linked = sorted({(r["from"]["record_id"], r["from"]["part_id"]) for r in doc.get("relations", [])
+                         if r["type"] == "FOLLOWS_UP" and (r["to"]["record_id"], r["to"]["part_id"]) == key})
+        if not linked:
+            continue
+        stamps = [parts[k]["temporal"]["reported_at"] for k in linked if k in parts and parts[k]["temporal"]["reported_at"]]
+        latest = max(stamps) if stamps else None
+        cited = [x for x in lines if {k[0] for k in linked} <= {e["record_id"] for e in x["evidence"]}]
+        if not cited:
+            errors.append(f"concern {c['concern_id']}: later evidence linked to it is not cited by any briefing status line")
+        elif latest and not any(latest[11:16] + "Z" in x["text"] for x in cited):
+            errors.append(f"concern {c['concern_id']}: the briefing freshness claim must name the latest linked update ({latest[11:16]}Z)")
+    return errors
+
+
 def check_run(config, doc, log, fingerprints, *, evaluation_list=None, previous=None, registry=None):
     errors = list(runconfig.verify(config))
     errors += interpretation.validate(doc)
@@ -69,6 +92,7 @@ def check_run(config, doc, log, fingerprints, *, evaluation_list=None, previous=
     except (KeyError, TypeError):
         errors.append("the interpretation header is too malformed to compare with the run config")
     errors += log_errors(config, log, fingerprints, doc) if "records" in doc else []
+    errors += freshness_errors(doc) if not interpretation.validate(doc) else []
     if evaluation_list is not None:
         errors += ["evaluations: " + e for e in evaluations.validate_evaluations(evaluation_list, log)]
     if previous is not None:
