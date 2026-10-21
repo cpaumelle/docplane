@@ -548,6 +548,10 @@ class Interpretation(unittest.TestCase):
         self.bad(doc([], "pr8", True), "names its subject records")                                                # a subject is required
         self.bad(doc([U(77)], "pr8", True), "was not read in this run")
         self.bad(doc([U(1)], "pr8", True, with_verify=False), "held behind a verification proposal that exists")
+        d = doc([U(1)], "pr8", True); d["proposals"][0]["kind"] = "NEXT_ACTION"              # a next action whose effect is VERIFY is a verification proposal
+        self.assertEqual(interp.validate(d), [])
+        d["proposals"][0]["effect"] = "CLARIFY"; d["proposals"][0]["kind"] = "VERIFY"
+        self.assertTrue(interp.validate(d))
 
     def test_review_unread_or_withheld_records_are_undetermined_and_uncertain(self):
         def unread(purpose, disp="UNCERTAIN"):

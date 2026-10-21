@@ -452,7 +452,7 @@ def _check_organisation(doc, reads, err):
     unsure = {e["record_id"] for e in doc["intake"] if e["disposition"] == "UNCERTAIN"}
     for pr in doc["proposals"]:
         hb = pr["held_behind"]
-        if hb is not None and (hb == pr["proposal_id"] or pids.get(hb, {}).get("kind") != "VERIFY"):
+        if hb is not None and (hb == pr["proposal_id"] or pids.get(hb, {}).get("effect") != "VERIFY"):
             err(f"proposal {pr['proposal_id']}: it can only be held behind a verification proposal that exists")
         files = pr["kind"] in ("FILE", "LINK", "CONSOLIDATE") or pr["tool_name"] in new_work_tools
         subj = set(pr["subjects"]) | {e["record_id"] for e in pr["evidence"]}
