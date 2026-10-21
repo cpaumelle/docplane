@@ -6,17 +6,21 @@ from uuid import UUID
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from work_worker.ledger import reconcile, decide, identity
+from work_worker.ledger import reconcile, decide, identity, projection_version
 
 
 def uid(n):
     return str(UUID(int=n))
 
 
+def ver(n):
+    return projection_version(n=n)
+
+
 def example(n=1):
     return {"subject_id": uid(1), "kind": "UNRECORDED_RESIDUAL",
             "obligation_id": uid(n), "evidence": [
-                {"record_id": uid(2), "revision_id": uid(3)}]}
+                {"record_id": uid(2), "version": ver(3)}]}
 
 
 class LedgerTests(unittest.TestCase):
@@ -44,7 +48,7 @@ class LedgerTests(unittest.TestCase):
             repeated = reconcile(reviewed, [value], evaluated_subjects=[uid(1)])
             self.assertEqual(repeated[identity(value)]["status"], status)
             changed = deepcopy(value)
-            changed["evidence"][0]["revision_id"] = uid(9)
+            changed["evidence"][0]["version"] = ver(9)
             reopened = reconcile(repeated, [changed], evaluated_subjects=[uid(1)])
             self.assertEqual(reopened[identity(value)]["status"], "OPEN")
             self.assertEqual(len(reopened[identity(value)]["decisions"]), 1)
@@ -64,7 +68,13 @@ class LedgerTests(unittest.TestCase):
 
     def test_versioned_evidence_is_required(self):
         value = example()
-        del value["evidence"][0]["revision_id"]
+        del value["evidence"][0]["version"]
+        with self.assertRaises(ValueError):
+            reconcile({}, [value], evaluated_subjects=[uid(1)])
+
+    def test_uuid_is_not_an_acceptable_version(self):
+        value = example()
+        value["evidence"][0]["version"] = uid(3)
         with self.assertRaises(ValueError):
             reconcile({}, [value], evaluated_subjects=[uid(1)])
 

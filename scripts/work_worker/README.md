@@ -1,8 +1,10 @@
-# WORK worker: proposal-ledger foundation
+# WORK worker: read-only reconciliation proposals
 
-This is a development library, not a deployed or scheduled worker. It does
-not collect WORK, classify prose, issue credentials, call APIs, write flags
-into DocPlane or change underlying work state. The existing WORK catalogue
+This is a manually invoked, development-stage worker, not a deployed or
+scheduled one. It reads WORK through the consolidated MCP's read verbs
+(or a snapshot), applies the ledger below and prints a private proposal. It
+does not classify prose, issue credentials, call the contributor API, write to
+WORK or DocPlane, or change any record. Its only write is a local 0600 ledger file. The existing WORK catalogue
 reconciler maintains generated documentation and remains separate.
 
 The first integration should consume governed MCP safe reads on VM8555 and
@@ -37,29 +39,99 @@ The eventual report groups systemic warnings while retaining each affected ID.
 not an authenticated mutation endpoint or a complete audit log: reason, time,
 reviewer authorisation and persistence are integration work, not claimed here.
 
-## Important integration gate
+## Running it (from `scripts/`)
 
-Do not invent revision IDs when the governed read does not expose them.
-Immutable activity IDs can identify immutable evidence; mutable records need
-an actual version, or an explicitly reviewed digest of their safe projection.
-The collector must agree that versioning contract before using this library on
-the corpus. The initial UUID-only evidence contract is deliberately narrow.
-No secret-shaped free-text exception or raw-body digest is introduced.
+    python3 -m work_worker run --manifest m.json --ledger ledger.json --snapshot snap.json
+    python3 -m work_worker run --manifest m.json --ledger ledger.json \
+        --mcp-url <consolidated MCP URL> --bearer-file <0600 file>      # needs the `mcp` SDK
+    python3 -m work_worker decide --ledger ledger.json --identity <key> \
+        --status REJECTED --actor <reviewer UUID> --evidence <UUID>...  # local ledger only
 
-## Acceptance on VM8555 (not yet performed)
+The **manifest** is reviewer-supplied: `scope_initiatives` (UUIDs) and
+`obligations`, each `{subject_id, obligation_id, kind, label}` plus optional
+`evidence_ids`, `subject_activity_ids`, `candidate_cover_ids`. The obligation
+ID is assigned once and never derived from wording. The worker does not extract
+obligations from text; it consumes the reviewed classification. The label is a
+short plain phrase; secret-shaped or long text is refused.
 
-1. Replay the preserved 29-record pilot, then the VM1124 sample.
-2. Verify multiple residuals, correction links and unchanged rejection across
-   detector wording changes. Use explicit coverage references, not keywords.
-3. Inject a failed page/read and a withheld field: existing flags stay open and
-   affected subjects are not reported as fully evaluated.
-4. Change the relevant evidence version: review reopens, history stays intact.
-5. Review false positives, missed obligations and effort per proposal against
-   the preserved classification table. No aggregate accuracy claim from these
-   synthetic unit tests.
-6. No production writes or scheduling. Review these results before deciding
-   on a governed flag store or scheduled agent runtime.
+The bearer is read from a file, never argv. Only `docplane_work_get`,
+`docplane_work_capture_get`, `docplane_work_captures` and
+`docplane_work_initiatives` can be called; any other verb raises before
+leaving the process.
 
-Run local synthetic tests:
+## What it checks
 
-    python3 -m unittest discover -s scripts/tests -p test_work_worker_ledger.py -v
+* **Declared obligations** (any ledger kind): covered only when one activity in
+  a scoped, fully read initiative carries both (a) a link to the source record
+  (`source_capture_id`, an `ACTIVITY` reference, or the initiative's founding
+  capture) and (b) an `ARTIFACT` reference equal to
+  `sha256("work-worker-obligation:v1:<subject>:<obligation>")`. Activity text is
+  never read, so a record repeating an item, or a stray "06:30", cannot cover
+  it. The token convention is **proposed, not yet agreed** with WORK producers;
+  until it is, expect residuals recorded by hand to be proposed once with a
+  one-step "add this reference" action. A covering initiative that is
+  `ABANDONED` does not count; a record's own activities never cover it.
+* **`STATE_CONTRADICTS_EVIDENCE`**: a `RESOLUTION` activity on a non-terminal initiative.
+* **`ACCOUNTABILITY_UNCLEAR`**: owner missing or `AUTOMATION` (records who promoted, not who is accountable).
+  Three or more open items of this systemic kind print as one scope-level
+  decision that lists every affected record; the ledger still holds each identity.
+
+## Evidence versioning (decision for the #215 integration gate)
+
+Checked on the live consolidated MCP: `docplane_work_get` returns an integer
+initiative `version`, `owner`, per-activity `references` and `source_capture_id`,
+`founding_capture_ids`, `next_activity_offset`. Captures and individual
+activities expose **no revision**. Revisions are not invented. Evidence
+versions are `proj-v1:<sha256>` digests of a small allowlisted scalar
+projection chosen per detector (captures and activities: immutable identity
+fields; state check: `work_state` plus RESOLUTION ids; ownership: principal and
+kind). Bodies are never digested, so an unrelated initiative edit does not
+reopen a rejection and a material change does. A UUID is no longer accepted as a version.
+
+Known limits: an edited capture body would not change its version (captures
+have no edit verb in the governed surface); `docplane_work_initiatives` has a
+`truncated` flag but no cursor, so scope is an explicit initiative list.
+
+## Failure and repeat-run rules
+
+Failed, truncated (no usable cursor), count-mismatched, withheld, or
+reference-withheld reads exclude the affected subject: its flags become
+`NOT_REEVALUATED`, nothing opens or closes, and the report says so. An initiative
+read that omits `owner` is excluded rather than treated as ownerless. Uncovered
+claims need a complete scope, so one failed scope read blocks them all.
+Absence after a full read is `NOT_DETECTED`: the flag stays OPEN for a reviewer.
+Record text never reaches the output and nothing in it is acted on.
+
+## Validation on the preserved samples (aggregate; run offline, private)
+
+Replayed CT1150 (29 captures, 11 pilot initiatives) and VM1124 (8 declared
+obligations) from the preserved inventory. Truth labels are from the earlier
+classification table, so this measures coverage and ledger behaviour, **not**
+extraction accuracy (the manifest comes from that same table).
+
+| | CT1150 | VM1124 |
+|---|---|---|
+| Declared obligations | 15 | 8 |
+| Labelled true gaps proposed / missed | 9 / 0 | 4 / 0 |
+| False positives (labelled) | 4 of 13 | 0 of 4 |
+| Unlabelled proposals | 2 | 4 |
+| Review decisions (11 ownership records grouped) | 17 | 8 |
+
+The four CT1150 false positives: three were recorded under another work item
+without an explicit reference (each now a one-step "add this reference" action
+naming the candidate, not a new task); one was a proposal the pilot reviewer
+had rejected as overtaken. VM1124 had no scoped initiatives, so nothing there
+could be found covered. Obligation extraction recall and the two multi-action
+records the table does not enumerate were not tested. Effort proxy: about 85
+words and 1-3 records to open per decision. The pilot's two state flags became
+three because this run includes the pilot umbrella the pilot skipped.
+
+## Acceptance still pending
+
+Live acceptance against the consolidated MCP is not done: the `mcp` client was
+not exercised (tests inject the call function) and no live manifest exists.
+Run it once the MCP release lands, read-only, and compare with a snapshot replay.
+
+Run all synthetic tests (from the repo root):
+
+    python3 -m unittest discover -s scripts/tests -p 'test_work_worker*.py' -v
