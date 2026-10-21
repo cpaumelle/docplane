@@ -199,6 +199,7 @@ def validate(doc):
             err("status line: a read-now basis needs read_at")
         if c["basis"] == "EXTERNAL_UNVERIFIED" and not c.get("verifier_needed"):
             err("status line: external claim needs verifier_needed")
+    _check_intake(doc, obligations, reads, rel, err)
     if (doc["retrieval"]["budget_exhausted"] or not all(reads.values())) and not doc["incomplete"]:
         err("incomplete must be true when a read failed or the budget ran out")
     if doc["incomplete"] and b["ready_to_close"] == "yes":
@@ -238,3 +239,91 @@ def _check_obligation(o, record_id, obligations, registers, read, err):
         err(f"obligation {lid}: TRACKED needs an identifiable work item or register entry that states an objective and disposition")
     if t["status"] in ("TRACKED", "CANDIDATE", "MENTIONED_ONLY") and not t["targets"]:
         err(f"obligation {lid}: {t['status']} needs a target")
+
+
+def _check_intake(doc, obligations, reads, rel, err):
+    """Backlog guardianship: every incoming record is evaluated, visibly, against existing work."""
+    incoming = doc["run"]["scope"]["incoming_record_ids"]
+    entries = {}
+    for e in doc["intake"]:
+        if e["record_id"] in entries:
+            err(f"intake: record {e['record_id']} evaluated twice")
+        entries[e["record_id"]] = e
+    for rid in incoming:
+        if rid not in entries:
+            err(f"intake: incoming record {rid} has no evaluation")
+    for rid, e in entries.items():
+        if rid not in incoming and e["processing_status"] != "REEVALUATION_DUE":
+            err(f"intake: {rid} is not incoming; only a re-evaluation may be added")
+        disp, status = e["disposition"], e["processing_status"]
+        if reads.get(rid) is False and status != "READ_FAILED":
+            err(f"intake: {rid} failed to read and must say so")
+        if status == "READ_FAILED" and (disp != "UNCERTAIN" or reads.get(rid) is not False):
+            err(f"intake: {rid} READ_FAILED needs a failed read and an UNCERTAIN disposition")
+        if (disp == "UNCERTAIN") != (status in ("READ_FAILED", "UNCERTAIN_PLACEMENT")):
+            err(f"intake: {rid} an uncertain disposition and an uncertain or failed status go together")
+        if disp == "UNCERTAIN" and not e["uncertain_reason"]:
+            err(f"intake: {rid} uncertain placement must say why")
+        if e["reevaluation"]["due"] != (status == "REEVALUATION_DUE" or e["reevaluation"]["trigger"] != "NONE"):
+            err(f"intake: {rid} re-evaluation flag and trigger disagree")
+        for tg in e["targets"]:
+            if not reads.get(tg["record_id"]):
+                err(f"intake: target {tg['record_id']} was not read")
+        for lid in e["obligation_local_ids"]:
+            if lid not in obligations:
+                err(f"intake: unknown obligation {lid}")
+        same = [tg for tg in e["targets"] if tg["relation"] == "SAME_OBLIGATION"]
+        if disp == "DUPLICATES":
+            consolidated = [lid for lid in e["obligation_local_ids"] if any(r["record_id"] == rid for r in obligations[lid][1]["source_refs"])] if all(l in obligations for l in e["obligation_local_ids"]) else []
+            if not same or not consolidated:
+                err(f"intake: {rid} a duplicate needs a same-obligation target and a consolidated obligation that keeps this record as a source")
+        elif same:
+            err(f"intake: {rid} names a same-obligation target but is not a duplicate")
+        if disp == "ADDS_OBLIGATION" and not (e["obligation_local_ids"] and any(tg["relation"] == "RELATED" for tg in e["targets"])
+                                              and all(obligations[l][0] == rid for l in e["obligation_local_ids"] if l in obligations)):
+            err(f"intake: {rid} adding an obligation needs its own new obligation and a related existing work item")
+        if disp == "CONTRIBUTES_EVIDENCE" and not e["targets"]:
+            err(f"intake: {rid} evidence must name what it contributes to")
+        if disp == "WARRANTS_NEW_DELIVERABLE":
+            s = e["search"]
+            if not (s["terms"] >= 1 and s["beyond_workstream"] and s["included_completed"]):
+                err(f"intake: {rid} a new deliverable needs a search beyond the workstream that included completed work")
+        if disp in ("CORRECTS", "SUPERSEDES"):
+            want = "CORRECTS_RETRACTS" if disp == "CORRECTS" else "SUPERSEDES"
+            if not any(r["type"] == want and r["from"]["record_id"] == rid for r in rel.values()):
+                err(f"intake: {rid} {disp.lower()} needs a matching relation from this record")
+    c = doc["coverage"]
+    counts = {"incoming_total": len(incoming),
+              "evaluated": sum(1 for r in incoming if entries.get(r, {}).get("processing_status") == "EVALUATED"),
+              "uncertain_placement": sum(1 for r in incoming if entries.get(r, {}).get("processing_status") == "UNCERTAIN_PLACEMENT"),
+              "read_failed": sum(1 for r in incoming if entries.get(r, {}).get("processing_status") == "READ_FAILED"),
+              "reevaluation_due": sum(1 for r in incoming if entries.get(r, {}).get("processing_status") == "REEVALUATION_DUE")}
+    if c != counts:
+        err(f"coverage summary {c} does not match the intake entries {counts}")
+
+
+def continuity_errors(previous, new, registry):
+    """Between two interpretations: no obligation lost or duplicated, no source dropped.
+
+    ``registry`` maps each previous local_id to the id minted once for it.
+    """
+    def obs(doc):
+        return {p["obligation"]["local_id"]: (r["record_id"], p["obligation"]) for r in doc["records"] for p in r["parts"] if p["obligation"]}
+    before, after = obs(previous), obs(new)
+    errors = []
+    for lid, (rid, o) in before.items():
+        if lid not in after:
+            errors.append(f"obligation {lid} was lost")
+            continue
+        if after[lid][1]["maps_to"] != registry[lid]:
+            errors.append(f"obligation {lid} lost its minted id")
+        missing = {(x["record_id"], x["part_id"]) for x in o["source_refs"]} - {(x["record_id"], x["part_id"]) for x in after[lid][1]["source_refs"]}
+        if missing:
+            errors.append(f"obligation {lid} dropped sources")
+    seen = {}
+    for lid, (rid, o) in after.items():
+        key = " ".join(o["acceptance"].lower().split())
+        if key in seen:
+            errors.append(f"obligations {seen[key]} and {lid} share an acceptance condition (duplicate)")
+        seen[key] = lid
+    return errors

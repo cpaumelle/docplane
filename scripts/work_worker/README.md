@@ -190,6 +190,32 @@ every other place that states it (each must have been read); `adjudication_statu
 from independent review, and an obligation with a status other than NONE cannot back a FILE, LINK, METADATA or CONSOLIDATE proposal,
 only VERIFY or NEXT_ACTION; proposals carry a unique `rank` and a `confidence`.
 
+### Backlog guardianship (intake)
+
+DocPlane WORK is the master backlog. The librarian guards it: **every incoming capture and new activity gets an intake evaluation**
+against existing canonical work, with one disposition: `CONTRIBUTES_EVIDENCE` (progress or completion evidence for existing work),
+`ADDS_OBLIGATION` (a new, independently acceptable action under an existing deliverable), `WARRANTS_NEW_DELIVERABLE`,
+`DUPLICATES`, `CORRECTS`, `SUPERSEDES`, or `UNCERTAIN`. The validator enforces:
+
+* **Coverage.** Every id in `run.scope.incoming_record_ids` has exactly one intake entry, and the `coverage` totals must equal the entries,
+  so no incoming record silently escapes. A failed read is `READ_FAILED` with an `UNCERTAIN` disposition; an unsure placement is
+  `UNCERTAIN_PLACEMENT` with a stated reason. Both stay visible. An earlier record may be re-added as `REEVALUATION_DUE` when later
+  evidence changes its meaning.
+* **Lifecycle is not processing.** `lifecycle_seen` (INBOX, ATTACHED, PROMOTED, DISCARDED, ACTIVITY) is the record's own state and is
+  informational; `processing_status` is the librarian's. A discarded or attached record still needs its evaluation.
+* **Related is not the same obligation.** A target carries `RELATED` or `SAME_OBLIGATION`. `DUPLICATES` needs a same-obligation target and a
+  consolidated obligation that keeps the record in `source_refs`; `ADDS_OBLIGATION` needs the record's own new obligation and a related
+  existing work item (so a related action is kept, independently acceptable, inside the coherent group). Only duplicates may name a
+  same-obligation target.
+* **Search before "new".** `WARRANTS_NEW_DELIVERABLE` needs a recorded search that went beyond the immediate workstream and included
+  completed work, with its limits.
+* **Corrections and supersession** need the matching relation from the incoming record.
+* **No loss between runs.** `continuity_errors(previous, new, registry)` reports any obligation lost, any minted id not kept, any dropped
+  source, and any duplicate acceptance condition across the document.
+
+Private indexes, briefings and the interpretation JSON are rebuildable aids, never another authoritative list. Mutation authority is unchanged:
+proposals only for production.
+
 Changes from the frozen v1 evaluation baseline (kept privately so results stay comparable): tracking targets gained
 `kind`, `coverage` and register entries; `run.scope.authoritative_registers`; briefing obligations gained `coverage`.
 Nothing here collects, schedules, triages or writes.

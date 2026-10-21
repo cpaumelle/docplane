@@ -14,7 +14,9 @@
   "briefing",
   "proposals",
   "retrieval",
-  "incomplete"
+  "incomplete",
+  "intake",
+  "coverage"
  ],
  "properties": {
   "schema_version": {
@@ -62,6 +64,47 @@
   "incomplete": {
    "type": "boolean",
    "description": "true when any scope read failed, was withheld, or the budget ran out; absence is then never evidence"
+  },
+  "intake": {
+   "type": "array",
+   "description": "one entry per incoming record: every capture and new activity gets an intake evaluation against existing canonical work, completed work included",
+   "items": {
+    "$ref": "#/$defs/intake"
+   }
+  },
+  "coverage": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "incoming_total",
+    "evaluated",
+    "uncertain_placement",
+    "read_failed",
+    "reevaluation_due"
+   ],
+   "description": "processing coverage: no incoming record silently escapes evaluation; failed reads and uncertain placements stay visible",
+   "properties": {
+    "incoming_total": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "evaluated": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "uncertain_placement": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "read_failed": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "reevaluation_due": {
+     "type": "integer",
+     "minimum": 0
+    }
+   }
   }
  },
  "$defs": {
@@ -197,7 +240,8 @@
       "capture_statuses",
       "collected_at",
       "enumeration_limits",
-      "authoritative_registers"
+      "authoritative_registers",
+      "incoming_record_ids"
      ],
      "properties": {
       "scope_id": {
@@ -242,6 +286,14 @@
          }
         }
        }
+      },
+      "incoming_record_ids": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/uuid"
+       },
+       "uniqueItems": true,
+       "description": "records that arrived since the last processed checkpoint"
       }
      }
     },
@@ -1069,6 +1121,163 @@
     },
     "budget_exhausted": {
      "type": "boolean"
+    }
+   }
+  },
+  "intake": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "record_id",
+    "lifecycle_seen",
+    "processing_status",
+    "disposition",
+    "targets",
+    "obligation_local_ids",
+    "search",
+    "reevaluation",
+    "uncertain_reason"
+   ],
+   "description": "lifecycle_seen is the record's own state, informational only; processing_status is the librarian's, and the two never substitute for each other",
+   "properties": {
+    "record_id": {
+     "$ref": "#/$defs/uuid"
+    },
+    "lifecycle_seen": {
+     "enum": [
+      "INBOX",
+      "ATTACHED",
+      "PROMOTED",
+      "DISCARDED",
+      "ACTIVITY",
+      "UNKNOWN"
+     ]
+    },
+    "processing_status": {
+     "enum": [
+      "EVALUATED",
+      "READ_FAILED",
+      "UNCERTAIN_PLACEMENT",
+      "REEVALUATION_DUE"
+     ]
+    },
+    "disposition": {
+     "enum": [
+      "CONTRIBUTES_EVIDENCE",
+      "ADDS_OBLIGATION",
+      "WARRANTS_NEW_DELIVERABLE",
+      "DUPLICATES",
+      "CORRECTS",
+      "SUPERSEDES",
+      "UNCERTAIN"
+     ]
+    },
+    "targets": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "record_id",
+       "relation",
+       "work_state_seen",
+       "found_by"
+      ],
+      "properties": {
+       "record_id": {
+        "$ref": "#/$defs/uuid"
+       },
+       "relation": {
+        "enum": [
+         "RELATED",
+         "SAME_OBLIGATION"
+        ]
+       },
+       "work_state_seen": {
+        "enum": [
+         "BACKLOG",
+         "ACTIVE",
+         "BLOCKED",
+         "SOAKING",
+         "PAUSED",
+         "PARKED",
+         "COMPLETE",
+         "ABANDONED",
+         "NOT_A_WORK_ITEM",
+         "UNKNOWN"
+        ]
+       },
+       "found_by": {
+        "enum": [
+         "STRUCTURAL",
+         "CITED_ID",
+         "SCOPE_SEARCH"
+        ]
+       }
+      }
+     }
+    },
+    "obligation_local_ids": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ident"
+     }
+    },
+    "search": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "terms",
+      "beyond_workstream",
+      "included_completed",
+      "limits"
+     ],
+     "properties": {
+      "terms": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "beyond_workstream": {
+       "type": "boolean"
+      },
+      "included_completed": {
+       "type": "boolean"
+      },
+      "limits": {
+       "$ref": "#/$defs/text"
+      }
+     }
+    },
+    "reevaluation": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "due",
+      "trigger"
+     ],
+     "properties": {
+      "due": {
+       "type": "boolean"
+      },
+      "trigger": {
+       "enum": [
+        "NONE",
+        "LATER_EVIDENCE_CHANGES_MEANING",
+        "LINKED_RECORD_CHANGED",
+        "READ_FAILURE_RETRY"
+       ]
+      }
+     }
+    },
+    "uncertain_reason": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/text"
+      },
+      {
+       "type": "null"
+      }
+     ]
     }
    }
   }

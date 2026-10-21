@@ -35,6 +35,17 @@ def ob(lid, status="NOT_FOUND", targets=(), state="OPEN"):
             "acceptance": "synthetic acceptance for " + lid, "source_refs": [], "adjudication_status": "NONE"}
 
 
+def itarget(n, relation="RELATED", state="BACKLOG"):
+    return {"record_id": U(n), "relation": relation, "work_state_seen": state, "found_by": "STRUCTURAL"}
+
+
+def intake(n, disposition, status="EVALUATED", targets=(), obligations=(), search=None, reason=None):
+    return {"record_id": U(n), "lifecycle_seen": "INBOX", "processing_status": status, "disposition": disposition, "targets": list(targets),
+            "obligation_local_ids": list(obligations),
+            "search": search or {"terms": 1, "beyond_workstream": False, "included_completed": False, "limits": "synthetic"},
+            "reevaluation": {"due": status == "REEVALUATION_DUE", "trigger": "NONE"}, "uncertain_reason": reason}
+
+
 def loc(n, p=None):
     return {"record_id": U(n), "part_id": p}
 
@@ -42,7 +53,7 @@ def loc(n, p=None):
 def base():
     return {"schema_version": "librarian-interp-2",
             "run": {"scope": {"scope_id": "s1", "initiative_ids": [U(9)], "capture_statuses": ["INBOX"], "collected_at": "2026-01-02T00:00:00Z",
-                              "enumeration_limits": "synthetic", "authoritative_registers": [{"register_id": "prog-register", "description": "programme register kept in git"}]},
+                              "enumeration_limits": "synthetic", "incoming_record_ids": [], "authoritative_registers": [{"register_id": "prog-register", "description": "programme register kept in git"}]},
                     "budget": {"max_changed_records": 10, "max_candidates_per_record": 5, "max_extra_reads": 30}, "interpreter_version": "t1", "prompt_hash": "0" * 64},
             "records": [
                 {"record_id": U(1), "record_kind": "capture", "source_fingerprint": FP(1), "depends_on": [{"record_id": U(2), "source_fingerprint": FP(2)}],
@@ -51,7 +62,8 @@ def base():
             "mappings": [], "relations": [], "unresolved_references": [],
             "briefing": {"workstream": "synthetic", "deliverable": "synthetic deliverable", "acceptance_as_stated": None, "status_lines": [], "open_obligations": [],
                          "retractions": [], "unresolved_contradictions": [], "ready_to_close": "no", "why": "synthetic"},
-            "proposals": [], "incomplete": False,
+            "proposals": [], "incomplete": False, "intake": [],
+            "coverage": {"incoming_total": 0, "evaluated": 0, "uncertain_placement": 0, "read_failed": 0, "reevaluation_due": 0},
             "retrieval": {"reads": [{"record_id": U(n), "how_found": "SEED", "read_ok": True} for n in (1, 2, 3, 9)], "not_retrieved": [], "budget_exhausted": False}}
 
 
@@ -188,6 +200,96 @@ class Interpretation(unittest.TestCase):
             self.assertEqual(interp.validate(d), [])
         d = with_ob(ob("o1")); d["proposals"] = [prop("FILE", 1), prop("LINK", 1)]
         self.bad(d, "ranks must be unique")
+
+    def incoming(self, doc, *entries):
+        doc["run"]["scope"]["incoming_record_ids"] = [e["record_id"] for e in entries]
+        doc["intake"] = list(entries)
+        n = lambda status: sum(1 for e in entries if e["processing_status"] == status)
+        doc["coverage"] = {"incoming_total": len(entries), "evaluated": n("EVALUATED"), "uncertain_placement": n("UNCERTAIN_PLACEMENT"),
+                           "read_failed": n("READ_FAILED"), "reevaluation_due": n("REEVALUATION_DUE")}
+        return doc
+
+    def test_every_incoming_record_gets_an_evaluation_visibly(self):
+        d = self.incoming(base(), intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]))
+        self.assertEqual(interp.validate(d), [])
+        d["intake"] = []
+        self.bad(d, "has no evaluation")
+        d = self.incoming(base(), intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]))
+        d["intake"].append(copy.deepcopy(d["intake"][0]))
+        self.bad(d, "evaluated twice")
+        d = self.incoming(base(), intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]))
+        d["coverage"]["evaluated"] = 0
+        self.bad(d, "coverage summary")
+
+    def test_failed_reads_and_uncertain_placements_stay_visible(self):
+        d = base(); d["retrieval"]["reads"][0]["read_ok"] = False; d["incomplete"] = True
+        self.bad(self.incoming(d, intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)])), "failed to read and must say so")
+        d = base(); d["retrieval"]["reads"][0]["read_ok"] = False; d["incomplete"] = True
+        failed = intake(1, "UNCERTAIN", status="READ_FAILED", reason="read refused")
+        self.assertEqual([e for e in interp.validate(self.incoming(d, failed)) if "intake" in e], [])
+        self.bad(self.incoming(base(), intake(1, "UNCERTAIN", status="EVALUATED", reason="unclear")), "go together")
+        self.bad(self.incoming(base(), intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason=None)), "must say why")
+        self.assertEqual(interp.validate(self.incoming(base(), intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="two plausible homes"))), [])
+
+    def test_lifecycle_is_informational_and_never_replaces_processing(self):
+        for life in ("INBOX", "DISCARDED", "ATTACHED", "PROMOTED"):
+            d = self.incoming(base(), dict(intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]), lifecycle_seen=life))
+            self.assertEqual(interp.validate(d), [])
+        d = base(); d["run"]["scope"]["incoming_record_ids"] = [U(1)]       # an INBOX or even DISCARDED capture still needs its evaluation
+        d["coverage"]["incoming_total"] = 1
+        self.assertTrue(interp.validate(d))
+
+    def test_duplicate_means_same_obligation_consolidated_with_this_record_as_a_source(self):
+        dup = dict(ob("o1"), source_refs=[loc(2, "d")])
+        d = with_ob(dup); d["records"][1]["parts"][1]["role"] = "evidence"
+        good = intake(2, "DUPLICATES", targets=[itarget(1, "SAME_OBLIGATION")], obligations=["o1"])
+        self.assertEqual(interp.validate(self.incoming(d, good)), [])
+        d = with_ob(ob("o1"))                                           # no source_ref kept: the duplicate would be dropped
+        self.bad(self.incoming(d, good), "a duplicate needs")
+        d = with_ob(dup)
+        self.bad(self.incoming(d, intake(2, "DUPLICATES", targets=[itarget(1)], obligations=["o1"])), "a duplicate needs")
+        self.bad(self.incoming(with_ob(dup), intake(2, "CONTRIBUTES_EVIDENCE", targets=[itarget(1, "SAME_OBLIGATION")])), "not a duplicate")
+
+    def test_related_new_action_is_not_the_same_obligation(self):
+        d = base(); d["records"][1]["parts"][0]["role"] = "obligation"; d["records"][1]["parts"][0]["obligation"] = ob("o2")
+        ok = intake(2, "ADDS_OBLIGATION", targets=[itarget(3, "RELATED")], obligations=["o2"])
+        self.assertEqual(interp.validate(self.incoming(d, ok)), [])
+        self.bad(self.incoming(d, intake(2, "ADDS_OBLIGATION", targets=[itarget(3, "RELATED")], obligations=[])), "adding an obligation needs")
+        self.bad(self.incoming(d, intake(2, "ADDS_OBLIGATION", targets=[], obligations=["o2"])), "adding an obligation needs")
+        d2 = base(); d2["records"][0]["parts"][0]["obligation"] = ob("o1")
+        self.bad(self.incoming(d2, intake(2, "ADDS_OBLIGATION", targets=[itarget(3, "RELATED")], obligations=["o1"])), "its own new obligation")
+
+    def test_new_deliverable_requires_a_search_beyond_the_workstream_including_completed_work(self):
+        wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "literal key and title terms only; capture bodies not searched"}
+        self.assertEqual(interp.validate(self.incoming(base(), intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide))), [])
+        for bad in (dict(wide, beyond_workstream=False), dict(wide, included_completed=False), dict(wide, terms=0)):
+            self.bad(self.incoming(base(), intake(1, "WARRANTS_NEW_DELIVERABLE", search=bad)), "a new deliverable needs")
+
+    def test_correction_and_supersession_need_their_relation(self):
+        d = base(); d["relations"] = [rel("r1", "CORRECTS_RETRACTS")]
+        c = intake(2, "CORRECTS", targets=[itarget(1)])
+        self.assertEqual(interp.validate(self.incoming(d, c)), [])
+        self.bad(self.incoming(base(), c), "needs a matching relation")
+        self.bad(self.incoming(d, intake(2, "SUPERSEDES", targets=[itarget(1)])), "needs a matching relation")
+
+    def test_reevaluation_when_later_evidence_changes_meaning(self):
+        again = dict(intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)], status="REEVALUATION_DUE"), reevaluation={"due": True, "trigger": "LATER_EVIDENCE_CHANGES_MEANING"})
+        d = base(); d["intake"] = [again]
+        self.assertEqual(interp.validate(d), [])               # earlier record, not incoming, may be re-evaluated
+        d["intake"] = [dict(again, processing_status="EVALUATED")]
+        self.bad(d, "is not incoming")
+
+    def test_continuity_no_loss_no_duplicate_no_dropped_sources(self):
+        reg = {"o1": U(500)}
+        before = with_ob(dict(ob("o1"), source_refs=[loc(2, "d")]))
+        after = with_ob(dict(ob("o1"), maps_to=U(500), source_refs=[loc(2, "d"), loc(3, "x")]))
+        self.assertEqual(interp.continuity_errors(before, after, reg), [])
+        self.assertTrue(any("lost" in e for e in interp.continuity_errors(before, base(), reg)))
+        self.assertTrue(any("minted id" in e for e in interp.continuity_errors(before, with_ob(dict(ob("o1"), source_refs=[loc(2, "d")])), reg)))
+        self.assertTrue(any("dropped sources" in e for e in interp.continuity_errors(before, with_ob(dict(ob("o1"), maps_to=U(500))), reg)))
+        dup = copy.deepcopy(after); dup["records"][1]["parts"][0]["role"] = "obligation"
+        dup["records"][1]["parts"][0]["obligation"] = dict(ob("o2"), acceptance="synthetic acceptance for o1")
+        self.assertTrue(any("duplicate" in e for e in interp.continuity_errors(before, dup, reg)))
 
     def test_subset_validator_agrees_with_jsonschema_when_available(self):
         try:
