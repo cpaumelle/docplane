@@ -157,7 +157,7 @@ class Interpretation(unittest.TestCase):
         self.bad(d, "not a CORRECTS_RETRACTS")
 
     def test_prefix_resolution_needs_unique_confirmed_in_scope(self):
-        ref = lambda **kw: dict({"token": "5c840899", "cited_in": loc(1, "a"), "scope_id": "s1", "outcome": "UNIQUE_CONFIRMED", "candidate_count": 1,
+        ref = lambda **kw: dict({"token": "ab12cd34", "cited_in": loc(1, "a"), "scope_id": "s1", "outcome": "UNIQUE_CONFIRMED", "candidate_count": 1,
                                  "resolved_record_id": U(3), "confirmed_by_full_read": True}, **kw)
         d = base(); d["unresolved_references"] = [ref()]; d["relations"] = [rel("r1", "FOLLOWS_UP", "CITED_ID", via=0)]
         self.assertEqual(interp.validate(d), [])

@@ -39,12 +39,16 @@ The eventual report groups systemic warnings while retaining each affected ID.
 not an authenticated mutation endpoint or a complete audit log: reason, time,
 reviewer authorisation and persistence are integration work, not claimed here.
 
+## Repeatable manual run
+
+`RUN-PROCEDURE.md` documents the pin, read, check, mint and render commands (`config`, `read`, `check`, `mint`, `render`) and the authorised read configuration, including how an unavailable KNOW access limits conclusions. The interpreting agent is launched by hand.
+
 ## Running it (from `scripts/`)
 
     python3 -m work_worker run --manifest m.json --ledger ledger.json --snapshot snap.json
     python3 -m work_worker run --manifest m.json --ledger ledger.json \
-        --mcp-url <consolidated MCP URL> --api-key-file ~/.config/charliehub/mcp-client.env \
-        --cafile ~/.config/charliehub/internal-ca.crt [--record-snapshot snap.json]
+        --mcp-url <consolidated MCP URL> --api-key-file <0600 key file> \
+        --cafile <CA bundle> [--record-snapshot snap.json]
     python3 -m work_worker decide --ledger ledger.json --identity <key> \
         --status REJECTED --actor <reviewer UUID> --evidence <UUID>...  # local ledger only
 
