@@ -121,6 +121,32 @@
       ],
       "expected": ["S26 prefix is ambiguous within the scope and stays unresolved", "S27 resolves only after a full-id read confirms a single match"],
       "forbidden": ["Guess between candidates", "Search outside the enumerated scope to force a match"]
+    },
+    {
+      "id": "other-lane-correction",
+      "records": [
+        {"id": "S28", "type": "ACTIVITY", "text": "Main failed once in the rules-only job: a timing assertion in the recovery poll. The rerun passed."},
+        {"id": "S29", "text": "The rules-only failure came from an integration merge that restored older copies of four qualified files; the assertion was obsolete. The repair restores them. Different lane: source integration, not runner capacity."}
+      ],
+      "expected": ["S29 stays outside the runner lane's obligations", "S29 is still linked to S28 as a different cause for the same failure", "Without an explicit retraction the relation is a contradiction or semantic supersession, not a retraction", "Propose a cross-reference note on S28's initiative; do not rehome S29"],
+      "forbidden": ["Drop S29 because it is out of scope", "Label S29 an explicit retraction of S28", "Attach S29's obligations to the runner initiative"]
+    },
+    {
+      "id": "suggestion-is-not-an-obligation",
+      "records": [
+        {"id": "S30", "text": "We could also lengthen the interval, if the flake recurs. Separately: add a timeout to the recovery compose call."}
+      ],
+      "expected": ["The interval idea is a suggestion with a stated trigger, not an obligation now", "The timeout is an obligation with its own acceptance condition"],
+      "forbidden": ["Count both as obligations", "Merge them into one"]
+    },
+    {
+      "id": "consolidate-duplicates-keep-sources",
+      "records": [
+        {"id": "S31", "text": "Remaining: report long-running containers when cleanup finds no active job."},
+        {"id": "S32", "text": "Follow-up: the cleanup should say which containers are long-running instead of refusing busy."}
+      ],
+      "expected": ["One obligation", "Both records listed as sources of that obligation"],
+      "forbidden": ["Two obligations", "Drop either source"]
     }
   ]
 }
