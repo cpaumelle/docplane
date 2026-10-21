@@ -26,7 +26,10 @@ compose() { docker compose -p "$PROJECT" --env-file "$ENV_FILE" "$@"; }
 
 cleanup() {
   log "teardown (disposable project only)"
-  compose down -v --remove-orphans >/dev/null 2>&1 || true
+  # --rmi local: the per-run project name ($PROJECT) makes every build a new
+  # docplane_itest_<pid>-* image that nothing else reaps (hub2's image-retention
+  # reaper only matches rollback tags). Pulled images are untouched.
+  compose down -v --remove-orphans --rmi local >/dev/null 2>&1 || true
   rm -f branding/brand.css branding/logo.svg branding/favicon.svg
   rm -f "$ENV_FILE"
 }
