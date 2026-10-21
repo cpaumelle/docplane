@@ -1,0 +1,59 @@
+# Isolated, persistent DocPlane development instance (synthetic data only).
+#
+# Used only through scripts/dev/devstack.sh, which runs Compose with:
+#   -p ${DOCPLANE_DEV_PROJECT:-docplane-dev}  --project-directory <source checkout>
+#   -f <source>/docker-compose.yml  -f scripts/dev/compose.dev.yml
+#
+# Every published port is REPLACED (!override), not appended: Compose merges
+# `ports` lists additively, so a plain override would leave the base file's
+# wildcard bindings active. PostgreSQL publishes nothing. devstack.sh asserts
+# the merged configuration before every start.
+#
+# Paths here are absolute (interpolated by devstack.sh) because relative paths
+# in an overlay resolve against the project directory, not this file.
+name: ${DOCPLANE_DEV_PROJECT:-docplane-dev}
+
+services:
+  postgres:
+    ports: !reset []
+    labels:
+      org.docplane.dev-instance: "synthetic-data-only"
+
+  site-init:
+    labels:
+      org.docplane.dev-instance: "synthetic-data-only"
+
+  docs-api:
+    environment:
+      DOCPLANE_ACCESS_PROFILE: managed
+      DOCPLANE_PUBLICATION_WEBHOOKS: ""
+      DOCPLANE_SITE_NAME: ${DOCPLANE_DEV_SITE_NAME:-DocPlane DEV — synthetic data}
+      DOCPLANE_SITE_URL: ""
+    ports: !override
+      - "127.0.0.1:${DOCPLANE_DEV_API_PORT:-28010}:8010"
+    labels:
+      org.docplane.dev-instance: "synthetic-data-only"
+
+  dashboard:
+    ports: !override
+      - "127.0.0.1:${DOCPLANE_DEV_DASHBOARD_PORT:-28051}:8051"
+    labels:
+      org.docplane.dev-instance: "synthetic-data-only"
+
+  docs-web:
+    volumes: !override
+      - docs-site:/usr/share/nginx/html:ro
+      - ${DOCPLANE_SRC:?}/mkdocs/docplane-front.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${DOCPLANE_DEV_BRANDING:?}:/srv/branding:ro
+    ports: !override
+      - "127.0.0.1:${DOCPLANE_DEV_SITE_PORT:-28080}:80"
+    labels:
+      org.docplane.dev-instance: "synthetic-data-only"
+
+  docs-mcp:
+    environment:
+      MCP_PUBLIC_PORT: ${DOCPLANE_DEV_MCP_PORT:-28049}
+    ports: !override
+      - "127.0.0.1:${DOCPLANE_DEV_MCP_PORT:-28049}:8049"
+    labels:
+      org.docplane.dev-instance: "synthetic-data-only"

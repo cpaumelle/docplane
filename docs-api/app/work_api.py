@@ -1,7 +1,10 @@
 """Active-work coordination for uniform DocPlane contributors."""
 from __future__ import annotations
 
+import base64
+import binascii
 import json
+import re
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -317,9 +320,16 @@ def list_initiatives(
     key: str | None = None,
     include_closed: bool = False,
     limit: int = Query(default=100, ge=1, le=500),
+    view: str = Query(default="full", pattern="^(full|summary)$"),
+    q: str | None = Query(default=None, min_length=2, max_length=100),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     """`key` resolves a slug to an initiative without a client-side scan.
+
+    `view=summary` is the agent discovery read: allowlisted typed fields, the
+    owner's principal kind, and the title through canonical redaction (withheld
+    rather than altered). `q` matches key or title as a literal substring. The
+    default `full` view is unchanged for existing callers.
 
     GET /api/v1/initiatives/{initiative_id} takes a canonical UUID, so a caller
     holding only an initiative_key previously had to list everything with
@@ -347,7 +357,27 @@ def list_initiatives(
     if owner_principal_id:
         predicates.append("i.owner_principal_id = %s")
         params.append(str(owner_principal_id))
+    q = q if isinstance(q, str) else None              # direct calls receive Query() defaults
+    view = view if isinstance(view, str) else "full"
+    if q is not None:
+        needle = "%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        predicates.append("(i.initiative_key ILIKE %s ESCAPE '\\' OR i.title ILIKE %s ESCAPE '\\')")
+        params.extend([needle, needle])
     where = " WHERE " + " AND ".join(predicates) if predicates else ""
+    if view == "summary":
+        params.append(limit + 1)
+        with get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute(_initiative_select() + where + " ORDER BY i.updated_at DESC, i.initiative_id DESC LIMIT %s", params)
+            rows = [_initiative(row) for row in cur.fetchall()]
+            owners = sorted({r["owner_principal_id"] for r in rows if r.get("owner_principal_id")})
+            kinds: dict[str, str] = {}
+            if owners:
+                cur.execute("SELECT principal_id::text, principal_kind FROM docplane.principals WHERE principal_id = ANY(%s::uuid[])", (owners,))
+                kinds = dict(cur.fetchall())
+        summaries = [_initiative_summary_row(r, kinds) for r in rows[:limit]]
+        return {"initiatives": summaries, "count": len(summaries), "truncated": len(rows) > limit,
+                "initiative_view": "summary-v1"}
     params.append(limit)
     with get_conn() as conn:
         cur = conn.cursor()
@@ -358,6 +388,17 @@ def list_initiatives(
     return {"initiatives": values, "count": len(values)}
 
 
+_SUMMARY_FIELDS = ("initiative_id", "initiative_key", "work_state", "priority", "owner_principal_id",
+                   "target_date", "review_due_at", "updated_at")
+
+
+def _initiative_summary_row(row: dict[str, Any], kinds: dict[str, str]) -> dict[str, Any]:
+    summary = {field: row.get(field) for field in _SUMMARY_FIELDS}
+    summary["owner_principal_kind"] = kinds.get(row.get("owner_principal_id"))
+    summary["title"], summary["title_withheld"] = _redacted_short_text(row.get("title"), 300)
+    return summary
+
+
 def _redacted_activity_body(body: Any) -> tuple[str | None, bool]:
     """Pass one stored body through the canonical redaction boundary.
 
@@ -366,13 +407,81 @@ def _redacted_activity_body(body: Any) -> tuple[str | None, bool]:
     `migration.redaction.redact`; this is the same transform applied per body,
     so an agent read never shows more than a generated page did. A body the
     transform refuses is withheld, never returned unredacted.
+
+    The transform also asserts its own post-conditions (balanced braces, no
+    malformed markers in its output). Stored text with an unmatched brace trips
+    that check even though nothing was redacted. That is a refusal of this one
+    field, not a server error: the field is withheld and the read succeeds. The
+    canonical transform itself is unchanged.
     """
     if not isinstance(body, str):
         return None, True
     try:
         return redact(body, label="work-activity").sanitised, False
-    except (DocumentRefusedError, MalformedMarkerError):
+    except (DocumentRefusedError, MalformedMarkerError, AssertionError):
         return None, True
+
+
+# Agent-read allowlist for activity metadata (activity_bodies=redacted). Raw
+# metadata is free-form and predates receiver policy, so it is never returned.
+# Only these typed projections are, each string through canonical redaction:
+# - references: the typed evidence references written through ActivityCreate;
+# - source_capture_id: the capture an attached activity came from;
+# - provenance: what the capture's producer *reported* in its origin (a claim,
+#   distinct from the authenticated author_principal_id), plus capture IDs it
+#   names as corrected, superseded, resolved, closed or related.
+_ACTIVITY_REFERENCE_TYPES = frozenset({"ACTIVITY", "CONDITION", "ARTIFACT", "PR", "COMMIT"})
+_REPORTED_PRODUCER_KEYS = ("source", "agent", "producer", "author")
+_PROVENANCE_RELATIONS = {
+    "corrects": "corrects", "supersedes": "supersedes", "resolves": "resolves",
+    "closes": "closes", "relates_to": "relates_to", "related_capture": "relates_to", "relates": "relates_to",
+}
+_CAPTURE_ID_TOKEN = re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?\b")
+
+
+def _redacted_short_text(value: Any, max_chars: int) -> tuple[str | None, bool]:
+    """Identifiers and names are returned only if redaction leaves them unchanged."""
+    if not isinstance(value, str) or not value.strip() or len(value) > max_chars:
+        return None, True
+    text, withheld = _redacted_activity_body(value.strip())
+    if withheld or text != value.strip():
+        return None, True
+    return text, False
+
+
+def _canonical_uuid_or_none(value: Any) -> str | None:
+    try:
+        return str(UUID(value)) if isinstance(value, str) and str(UUID(value)) == value else None
+    except ValueError:
+        return None
+
+
+def _activity_typed_metadata(metadata: Any) -> dict[str, Any]:
+    meta = metadata if isinstance(metadata, dict) else {}
+    references = []
+    raw_refs = meta.get("references")
+    for item in raw_refs[:20] if isinstance(raw_refs, list) else []:
+        if not isinstance(item, dict) or item.get("reference_type") not in _ACTIVITY_REFERENCE_TYPES:
+            continue
+        reference_id, withheld = _redacted_short_text(item.get("reference_id"), 300)
+        references.append({"reference_type": item["reference_type"], "reference_id": reference_id,
+                           "reference_id_withheld": withheld})
+    origin = meta.get("capture_origin") if isinstance(meta.get("capture_origin"), dict) else {}
+    provenance: dict[str, Any] = {}
+    for key in _REPORTED_PRODUCER_KEYS:
+        if isinstance(origin.get(key), str):
+            provenance["reported_producer"], provenance["reported_producer_withheld"] = _redacted_short_text(origin[key], 120)
+            break
+    for key, relation in _PROVENANCE_RELATIONS.items():
+        value = origin.get(key)
+        if isinstance(value, str) and len(value) <= 2000:
+            ids = provenance.setdefault(relation, [])
+            for token in _CAPTURE_ID_TOKEN.findall(value.lower()):
+                if token not in ids and len(ids) < 20:
+                    ids.append(token)
+    return {"references": references,
+            "source_capture_id": _canonical_uuid_or_none(meta.get("capture_id")),
+            "provenance": provenance}
 
 
 @router.get("/api/v1/initiatives/{initiative_id}")
@@ -398,12 +507,20 @@ def get_initiative(
         links = [dict(zip(("relation", "resource_type", "resource_id", "created_by", "created_at"), row)) for row in cur.fetchall()]
         cur.execute("SELECT depends_on_initiative_id::text, dependency_kind FROM work.initiative_dependencies WHERE initiative_id = %s ORDER BY depends_on_initiative_id", (str(initiative_id),))
         dependencies = [{"initiative_id": row[0], "dependency_kind": row[1]} for row in cur.fetchall()]
+        owner_kind = None
+        if activity_bodies == "redacted" and value.get("owner_principal_id"):
+            cur.execute("SELECT principal_kind FROM docplane.principals WHERE principal_id = %s", (value["owner_principal_id"],))
+            rows = cur.fetchall()
+            owner_kind = rows[0][0] if rows else None
     if activity_bodies == "redacted":
         for activity in activities:
             activity["body"], activity["body_withheld"] = _redacted_activity_body(activity["body"])
-            activity.pop("metadata", None)
+            activity.update(_activity_typed_metadata(activity.pop("metadata", None)))
+        for link in links:
+            link["resource_id"], link["resource_id_withheld"] = _redacted_short_text(link["resource_id"], 1000)
         return {**value, "activities": activities, "links": links, "dependencies": dependencies,
-                "activity_bodies": "redacted"}
+                "owner_principal_kind": owner_kind, "activity_bodies": "redacted",
+                "activity_metadata": "allowlisted-v1"}
     return {**value, "activities": activities, "links": links, "dependencies": dependencies}
 
 
@@ -939,21 +1056,129 @@ def create_capture(
 def list_captures(
     status: str = Query(default="INBOX"),
     limit: int = Query(default=200, ge=1, le=1000),
+    view: str = Query(default="raw", pattern="^(raw|metadata)$"),
+    cursor: str | None = Query(default=None, max_length=1024),
     principal: Principal = Depends(require_contributor),
 ) -> dict[str, Any]:
     statuses = {"INBOX", "PROMOTED", "ATTACHED", "DISCARDED", "all"}
     if status not in statuses:
         raise HTTPException(status_code=422, detail={"code": "CAPTURE_STATUS_INVALID", "allowed": sorted(statuses)})
-    predicate = "" if status == "all" else " WHERE status = %s"
-    params: list[Any] = [] if status == "all" else [status]
+    # Keyset traversal is stable under new arrivals and does not skip rows when
+    # triage removes earlier rows from INBOX. Status is live, not a historical
+    # snapshot: enumerate status=all for an inventory, then re-read before triage.
+    boundary = None
+    before = None
+    if cursor is not None:
+        try:
+            token = json.loads(base64.b64decode(cursor.encode("ascii"), altchars=b"-_", validate=True))
+            if set(token) != {"v", "status", "boundary", "before"} or type(token["v"]) is not int or token["v"] != 1 or token["status"] != status:
+                raise ValueError()
+            boundary = _capture_position(token["boundary"])
+            before = _capture_position(token["before"])
+            if before > boundary:
+                raise ValueError()
+        except (ValueError, TypeError, KeyError, UnicodeError, binascii.Error, OverflowError):
+            raise HTTPException(status_code=422, detail={"code": "CAPTURE_CURSOR_INVALID"}) from None
     with get_conn() as conn:
         cur = conn.cursor()
+        cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        if boundary is None:
+            cur.execute("SELECT created_at, capture_id::text FROM work.captures ORDER BY created_at DESC, capture_id DESC LIMIT 1")
+            top = cur.fetchone()
+            if top is None:
+                return {"captures": [], "count": 0, "total": 0, "truncated": False,
+                        "next_cursor": None, "capture_view": view,
+                        "pagination": "keyset-v1", "status": status}
+            boundary = (top[0], str(top[1]))
+        predicates = [] if status == "all" else ["status = %s"]
+        params: list[Any] = [] if status == "all" else [status]
+        if boundary is not None:
+            predicates.append("(created_at, capture_id) <= (%s, %s::uuid)")
+            params.extend(boundary)
+        predicate = " WHERE " + " AND ".join(predicates) if predicates else ""
         cur.execute(f"SELECT count(*) FROM work.captures{predicate}", params)
         total = int(cur.fetchone()[0])
-        cur.execute(_capture_select() + predicate + " ORDER BY created_at DESC LIMIT %s", [*params, limit])
+        if before is not None:
+            predicates.append("(created_at, capture_id) < (%s, %s::uuid)")
+            params.extend(before)
+        predicate = " WHERE " + " AND ".join(predicates) if predicates else ""
+        cur.execute(_capture_select() + predicate + " ORDER BY created_at DESC, capture_id DESC LIMIT %s", [*params, limit + 1])
         rows = cur.fetchall()
-    values = [_capture(row) for row in rows]
-    return {"captures": values, "count": len(values), "total": total, "truncated": len(values) < total}
+    has_more = len(rows) > limit
+    values = [_capture(row) for row in rows[:limit]]
+    next_cursor = None
+    if has_more:
+        tail = values[-1]
+        next_cursor = base64.urlsafe_b64encode(json.dumps({
+            "v": 1, "status": status,
+            "boundary": [boundary[0].isoformat(), boundary[1]],
+            "before": [tail["created_at"].isoformat(), tail["capture_id"]],
+        }, separators=(",", ":")).encode()).decode("ascii")
+    if view == "metadata":
+        values = [{k: v[k] for k in _CAPTURE_METADATA} for v in values]
+    return {"captures": values, "count": len(values), "total": total,
+            "truncated": has_more, "next_cursor": next_cursor,
+            "capture_view": view, "pagination": "keyset-v1", "status": status}
+
+
+_CAPTURE_METADATA = ("capture_id", "kind", "status", "author_principal_id",
+                     "initiative_id", "activity_id", "created_at", "triaged_at", "uri")
+
+
+def _capture_position(value: Any) -> tuple[datetime, str]:
+    if not isinstance(value, list) or len(value) != 2 or not all(isinstance(v, str) for v in value):
+        raise ValueError()
+    stamp = datetime.fromisoformat(value[0])
+    if stamp.utcoffset() is None or str(UUID(value[1])) != value[1]:
+        raise ValueError()
+    return stamp, value[1]
+
+
+def _redacted_capture_origin(origin: Any) -> tuple[str | None, bool]:
+    """Redact decoded JSON strings before escaping can conceal credential shapes.
+
+    Reuse the canonical transform and existing key-name guard, not a parallel
+    detector. Refuse the whole origin on any unsafe field or transform failure.
+    """
+    def clean(value: Any) -> Any:
+        if isinstance(value, str):
+            return redact(value, label="work-activity").sanitised
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, dict):
+            return {clean(key): clean(item) for key, item in value.items()}
+        return value
+
+    try:
+        sanitised = clean(origin)
+        if secret_findings(sanitised):
+            return None, True
+        return _redacted_activity_body("```json\n" + json.dumps(sanitised, sort_keys=True) + "\n```")
+    except (DocumentRefusedError, MalformedMarkerError, AssertionError):
+        return None, True
+
+
+@router.get("/api/v1/work/captures/{capture_id}")
+def get_capture(
+    capture_id: UUID,
+    principal: Principal = Depends(require_contributor),
+) -> dict[str, Any]:
+    """Agent read: canonical redaction only; no raw variant or free-form metadata.
+
+    The stamp lets routed clients refuse bodies from an older/mismatched server.
+    Origin is redacted as text, not trusted structured metadata. Redaction
+    refusal withholds the whole origin just as it withholds a body.
+    """
+    with get_conn() as conn:
+        capture = _load_capture(conn, capture_id)
+    result = {k: capture[k] for k in _CAPTURE_METADATA}
+    for field in ("body", "triage_note"):
+        if capture[field] is None:
+            result[field], result[field + "_withheld"] = None, False
+        else:
+            result[field], result[field + "_withheld"] = _redacted_activity_body(capture[field])
+    result["origin_text"], result["origin_text_withheld"] = _redacted_capture_origin(capture["origin"])
+    return {**result, "capture_bodies": "redacted"}
 
 
 @router.post("/api/v1/work/captures/{capture_id}/promote")

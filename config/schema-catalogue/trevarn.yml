@@ -4,8 +4,11 @@
 # introspection. This file supplies descriptions and migration provenance; it
 # does not create or filter database structure.
 #
+# Descriptions and migration provenance below describe that historical snapshot;
+# a new runtime generation must introspect the live database before publication.
+#
 # Runtime CATALOGUE_SCHEMAS must be: platform,ingest,occupancy,analytics,parking,contact,public.
-# The verified source also has cbre_compat (3 tables and 1 view); it is an
+# The 2026-10-09 source snapshot also has cbre_compat (3 tables and 1 view); it is an
 # existing CBRE compatibility area and is excluded from this Trevarn catalogue.
 
 schemas:
@@ -22,8 +25,9 @@ schemas:
         Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
         migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
         migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
-        It additionally contains migrations 285–286 from merged PR #281
+        The 2026-10-09 comparison used trevarn-core main
+        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
+        migrations 285–286 from merged PR #281
         (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
         represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
         PR #286 updates its README; neither adds a numbered migration.
@@ -31,9 +35,9 @@ schemas:
         The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
         entries through 283, and its schema-only DDL describes that VM1124 development
         state. Its migration hashes were verified against the reviewed migration sources.
-        Current GitHub main has later schema migrations 285–286 that are not in this
-        captured database state; the current main schema has therefore not been
-        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        The compared GitHub revision included migrations 285–286 absent from this
+        captured database state. This historical comparison does not qualify today's
+        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
         not a claim about current GitHub-main schema or vps3 production parity.
         Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
         bundle is supporting provenance only.
@@ -49,8 +53,9 @@ schemas:
         Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
         migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
         migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
-        It additionally contains migrations 285–286 from merged PR #281
+        The 2026-10-09 comparison used trevarn-core main
+        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
+        migrations 285–286 from merged PR #281
         (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
         represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
         PR #286 updates its README; neither adds a numbered migration.
@@ -58,9 +63,9 @@ schemas:
         The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
         entries through 283, and its schema-only DDL describes that VM1124 development
         state. Its migration hashes were verified against the reviewed migration sources.
-        Current GitHub main has later schema migrations 285–286 that are not in this
-        captured database state; the current main schema has therefore not been
-        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        The compared GitHub revision included migrations 285–286 absent from this
+        captured database state. This historical comparison does not qualify today's
+        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
         not a claim about current GitHub-main schema or vps3 production parity.
         Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
         bundle is supporting provenance only.
@@ -77,8 +82,9 @@ schemas:
         Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
         migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
         migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
-        It additionally contains migrations 285–286 from merged PR #281
+        The 2026-10-09 comparison used trevarn-core main
+        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
+        migrations 285–286 from merged PR #281
         (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
         represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
         PR #286 updates its README; neither adds a numbered migration.
@@ -86,9 +92,9 @@ schemas:
         The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
         entries through 283, and its schema-only DDL describes that VM1124 development
         state. Its migration hashes were verified against the reviewed migration sources.
-        Current GitHub main has later schema migrations 285–286 that are not in this
-        captured database state; the current main schema has therefore not been
-        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        The compared GitHub revision included migrations 285–286 absent from this
+        captured database state. This historical comparison does not qualify today's
+        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
         not a claim about current GitHub-main schema or vps3 production parity.
         Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
         bundle is supporting provenance only.
@@ -104,8 +110,9 @@ schemas:
         Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
         migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
         migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
-        It additionally contains migrations 285–286 from merged PR #281
+        The 2026-10-09 comparison used trevarn-core main
+        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
+        migrations 285–286 from merged PR #281
         (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
         represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
         PR #286 updates its README; neither adds a numbered migration.
@@ -113,9 +120,9 @@ schemas:
         The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
         entries through 283, and its schema-only DDL describes that VM1124 development
         state. Its migration hashes were verified against the reviewed migration sources.
-        Current GitHub main has later schema migrations 285–286 that are not in this
-        captured database state; the current main schema has therefore not been
-        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        The compared GitHub revision included migrations 285–286 absent from this
+        captured database state. This historical comparison does not qualify today's
+        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
         not a claim about current GitHub-main schema or vps3 production parity.
         Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
         bundle is supporting provenance only.
@@ -131,8 +138,9 @@ schemas:
         Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
         migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
         migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
-        It additionally contains migrations 285–286 from merged PR #281
+        The 2026-10-09 comparison used trevarn-core main
+        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
+        migrations 285–286 from merged PR #281
         (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
         represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
         PR #286 updates its README; neither adds a numbered migration.
@@ -140,9 +148,9 @@ schemas:
         The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
         entries through 283, and its schema-only DDL describes that VM1124 development
         state. Its migration hashes were verified against the reviewed migration sources.
-        Current GitHub main has later schema migrations 285–286 that are not in this
-        captured database state; the current main schema has therefore not been
-        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        The compared GitHub revision included migrations 285–286 absent from this
+        captured database state. This historical comparison does not qualify today's
+        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
         not a claim about current GitHub-main schema or vps3 production parity.
         Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
         bundle is supporting provenance only.
@@ -158,8 +166,9 @@ schemas:
         Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
         migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
         migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
-        It additionally contains migrations 285–286 from merged PR #281
+        The 2026-10-09 comparison used trevarn-core main
+        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
+        migrations 285–286 from merged PR #281
         (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
         represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
         PR #286 updates its README; neither adds a numbered migration.
@@ -167,9 +176,9 @@ schemas:
         The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
         entries through 283, and its schema-only DDL describes that VM1124 development
         state. Its migration hashes were verified against the reviewed migration sources.
-        Current GitHub main has later schema migrations 285–286 that are not in this
-        captured database state; the current main schema has therefore not been
-        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        The compared GitHub revision included migrations 285–286 absent from this
+        captured database state. This historical comparison does not qualify today's
+        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
         not a claim about current GitHub-main schema or vps3 production parity.
         Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
         bundle is supporting provenance only.
@@ -187,8 +196,9 @@ schemas:
         Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
         migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
         migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        Current trevarn-core main is a83c9ef16d163229196c36420b6863abc0dac067.
-        It additionally contains migrations 285–286 from merged PR #281
+        The 2026-10-09 comparison used trevarn-core main
+        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
+        migrations 285–286 from merged PR #281
         (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
         represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
         PR #286 updates its README; neither adds a numbered migration.
@@ -196,9 +206,9 @@ schemas:
         The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
         entries through 283, and its schema-only DDL describes that VM1124 development
         state. Its migration hashes were verified against the reviewed migration sources.
-        Current GitHub main has later schema migrations 285–286 that are not in this
-        captured database state; the current main schema has therefore not been
-        qualified as the VM1124 MODEL source. This catalogue is development evidence,
+        The compared GitHub revision included migrations 285–286 absent from this
+        captured database state. This historical comparison does not qualify today's
+        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
         not a claim about current GitHub-main schema or vps3 production parity.
         Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
         bundle is supporting provenance only.
