@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly DocPlane dev instance refresh
+
+[Timer]
+# The source export runs at :05; refresh at :25 leaves time for transfer.
+OnCalendar=*-*-* *:25:00
+RandomizedDelaySec=60
+Persistent=false
+
+[Install]
+WantedBy=timers.target

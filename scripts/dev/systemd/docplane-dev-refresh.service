@@ -1,0 +1,17 @@
+# Hourly dev-instance refresh from the newest production export (scripts/dev/refresh.sh).
+# Install: copy to /etc/systemd/system/, create the EnvironmentFile below, then
+#   systemctl daemon-reload && systemctl enable --now docplane-dev-refresh.timer
+# Pause/resume with `devstack.sh refresh pause|resume`; a paused run exits 0 without changes.
+[Unit]
+Description=DocPlane dev instance refresh from production export
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+# DOCPLANE_SRC, DOCPLANE_DEV_REFRESH_INBOX and DOCPLANE_DEV_TOOLS (directory holding devstack.sh)
+EnvironmentFile=/home/ubuntu/.config/docplane-dev/refresh.env
+ExecStart=/bin/sh -c 'exec "$DOCPLANE_DEV_TOOLS/devstack.sh" refresh run --scheduled'
+TimeoutStartSec=30min
+Nice=10

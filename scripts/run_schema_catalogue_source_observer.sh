@@ -19,7 +19,7 @@ environment_uid="$(stat -Lc '%u' "$environment_file")" || fail "cannot inspect p
 environment_mode="$(stat -Lc '%a' "$environment_file")" || fail "cannot inspect protected environment"
 [[ "$environment_uid" == "$EUID" && "$environment_mode" == "600" ]] \
   || fail "protected environment must be owned by the execution identity with mode 0600"
-grep -Eq '^[[:space:]]*CATALOGUE_SOURCE_DSN=' "$environment_file" \
+grep -Eq '^[[:space:]]*CATALOGUE_SOURCE_DSN[[:space:]]*=' "$environment_file" \
   && fail "protected environment must not persist CATALOGUE_SOURCE_DSN"
 
 set -a
@@ -28,12 +28,17 @@ set -a
 set +a
 
 required_variables=(
-  DOCPLANE_API DOCPLANE_SCHEMA_OBSERVER_TOKEN CATALOGUE_DB_KEY CATALOGUE_SCHEMAS
-  CATALOGUE_SOURCE_DB CATALOGUE_SOURCE_USER CATALOGUE_SOURCE_PASSWORD
+  DOCPLANE_API CATALOGUE_DB_KEY CATALOGUE_SCHEMAS
+  CATALOGUE_SOURCE_DB CATALOGUE_SOURCE_USER
   CATALOGUE_SOURCE_PORT CATALOGUE_SOURCE_COMPOSE_PROJECT CATALOGUE_SOURCE_COMPOSE_SERVICE
 )
 for variable in "${required_variables[@]}"; do
   [[ -n "${!variable:-}" ]] || fail "required variable $variable is missing"
+done
+for secret in DOCPLANE_SCHEMA_OBSERVER_TOKEN CATALOGUE_SOURCE_PASSWORD; do
+  file_variable="${secret}_FILE"
+  [[ -n "${!file_variable:-}" || -n "${!secret:-}" ]] \
+    || fail "required secret source ${secret}_FILE or $secret is missing"
 done
 
 if ! exec 9>"$lock_file"; then fail "cannot open shared lock"; fi
@@ -56,32 +61,32 @@ container_output="$(docker ps \
 mapfile -t containers < <(printf '%s\n' "$container_output" | sed '/^$/d')
 (( ${#containers[@]} == 1 )) || fail "PostgreSQL runtime identity did not resolve uniquely"
 
-address_output="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' \
+network_output="$(docker inspect --format '{{range $name, $network := .NetworkSettings.Networks}}{{printf "%s=%s\n" $name $network.IPAddress}}{{end}}' \
   "${containers[0]}")" || fail "PostgreSQL endpoint lookup failed"
-mapfile -t addresses < <(printf '%s\n' "$address_output" | sed '/^$/d')
+mapfile -t network_rows < <(printf '%s\n' "$network_output" | sed '/^$/d')
+addresses=()
+network_names=()
+for row in "${network_rows[@]}"; do
+  network_names+=("${row%%=*}")
+  address="${row#*=}"
+  [[ -n "$address" ]] && addresses+=("$address")
+done
 (( ${#addresses[@]} == 1 )) || fail "PostgreSQL endpoint did not resolve uniquely"
 export CATALOGUE_SOURCE_HOST="${addresses[0]}"
-
-CATALOGUE_SOURCE_DSN="$(python3 - <<'PY'
+python3 - "$CATALOGUE_SOURCE_HOST" <<'PY' || fail "PostgreSQL endpoint validation failed"
 import ipaddress
-import os
-from urllib.parse import quote
-
-address = ipaddress.ip_address(os.environ["CATALOGUE_SOURCE_HOST"])
-port = int(os.environ["CATALOGUE_SOURCE_PORT"])
-if not 1 <= port <= 65535:
-    raise ValueError("invalid PostgreSQL port")
-host = f"[{address}]" if address.version == 6 else str(address)
-user = quote(os.environ["CATALOGUE_SOURCE_USER"], safe="")
-password = quote(os.environ["CATALOGUE_SOURCE_PASSWORD"], safe="")
-database = quote(os.environ["CATALOGUE_SOURCE_DB"], safe="")
-print(f"postgresql://{user}:{password}@{host}:{port}/{database}", end="")
+import sys
+ipaddress.ip_address(sys.argv[1])
 PY
-)" || fail "PostgreSQL endpoint validation failed"
-export CATALOGUE_SOURCE_DSN
-unset CATALOGUE_SOURCE_HOST
+if [[ "${CATALOGUE_SOURCE_SSLMODE:-${PGSSLMODE:-}}" == "disable" ]]; then
+  [[ "${CATALOGUE_ENVIRONMENT:-}" == "development" \
+    && "${CATALOGUE_SOURCE_IDENTITY:-}" == "VM1124/trevarn" \
+    && " ${network_names[*]} " == *" trevarn-net "* ]] \
+    || fail "sslmode=disable is allowed only for VM1124 Trevarn on trevarn-net"
+  export CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED=trevarn-net
+fi
 
 python3 "$repository_root/scripts/schema_catalogue_observer.py" "$@"
 observer_status=$?
-unset CATALOGUE_SOURCE_DSN
+unset CATALOGUE_SOURCE_HOST
 exit "$observer_status"
