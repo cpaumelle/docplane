@@ -1,0 +1,1569 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "librarian-interp-2",
+ "title": "DocPlane Librarian interpretation output, version 2",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "schema_version",
+  "run",
+  "records",
+  "mappings",
+  "relations",
+  "unresolved_references",
+  "briefing",
+  "proposals",
+  "retrieval",
+  "incomplete",
+  "intake",
+  "coverage",
+  "concerns"
+ ],
+ "properties": {
+  "schema_version": {
+   "const": "librarian-interp-2"
+  },
+  "run": {
+   "$ref": "#/$defs/run"
+  },
+  "records": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/record"
+   }
+  },
+  "mappings": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/mapping"
+   }
+  },
+  "relations": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/relation"
+   }
+  },
+  "unresolved_references": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/reference"
+   }
+  },
+  "briefing": {
+   "$ref": "#/$defs/briefing"
+  },
+  "proposals": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/proposal"
+   }
+  },
+  "retrieval": {
+   "$ref": "#/$defs/retrieval"
+  },
+  "incomplete": {
+   "type": "boolean",
+   "description": "true when any scope read failed, was withheld, or the budget ran out; absence is then never evidence"
+  },
+  "intake": {
+   "type": "array",
+   "description": "one entry per incoming record: every capture and new activity gets an intake evaluation against existing canonical work, completed work included",
+   "items": {
+    "$ref": "#/$defs/intake"
+   }
+  },
+  "coverage": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "incoming_total",
+    "evaluated",
+    "uncertain_placement",
+    "read_failed",
+    "reevaluation_due"
+   ],
+   "description": "processing coverage: no incoming record silently escapes evaluation; failed reads and uncertain placements stay visible",
+   "properties": {
+    "incoming_total": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "evaluated": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "uncertain_placement": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "read_failed": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "reevaluation_due": {
+     "type": "integer",
+     "minimum": 0
+    }
+   }
+  },
+  "concerns": {
+   "type": "array",
+   "description": "an explicit unresolved concern, with its source evidence. It records that something was raised; it never carries an invented action or acceptance condition",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "concern_id",
+     "record_id",
+     "part_id",
+     "text",
+     "status"
+    ],
+    "properties": {
+     "concern_id": {
+      "$ref": "#/$defs/ident"
+     },
+     "record_id": {
+      "$ref": "#/$defs/uuid"
+     },
+     "part_id": {
+      "$ref": "#/$defs/ident"
+     },
+     "text": {
+      "$ref": "#/$defs/text"
+     },
+     "status": {
+      "enum": [
+       "UNRESOLVED"
+      ]
+     }
+    }
+   }
+  }
+ },
+ "$defs": {
+  "uuid": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+  },
+  "sha256": {
+   "type": "string",
+   "pattern": "^[0-9a-f]{64}$"
+  },
+  "when": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9:.]+Z)?$"
+  },
+  "text": {
+   "type": "string",
+   "minLength": 1,
+   "maxLength": 300,
+   "pattern": "^[^\"`\\n\\r]*$",
+   "description": "paraphrase, at most 30 words, no quotation marks"
+  },
+  "ident": {
+   "type": "string",
+   "pattern": "^[A-Za-z0-9_.-]{1,48}$"
+  },
+  "party": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "maxLength": 80,
+   "pattern": "^[^\"`\\n\\r]*$"
+  },
+  "locator": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "record_id",
+    "part_id"
+   ],
+   "properties": {
+    "record_id": {
+     "$ref": "#/$defs/uuid"
+    },
+    "part_id": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ident"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "para": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    }
+   }
+  },
+  "fingerprint": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "projection",
+    "value"
+   ],
+   "properties": {
+    "projection": {
+     "$ref": "#/$defs/ident"
+    },
+    "value": {
+     "$ref": "#/$defs/sha256"
+    }
+   }
+  },
+  "confirmation": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "basis",
+    "read_at"
+   ],
+   "description": "WORK reads confirm what is recorded and recorded state; they never confirm that an external action ran",
+   "properties": {
+    "basis": {
+     "enum": [
+      "RECORDED_CLAIM_ONLY",
+      "WORK_STATE_READ_NOW",
+      "DOCPLANE_PAGE_READ_NOW",
+      "MODEL_READ_NOW",
+      "EXTERNAL_UNVERIFIED"
+     ]
+    },
+    "read_at": {
+     "$ref": "#/$defs/when"
+    },
+    "verifier_needed": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/text"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   }
+  },
+  "run": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "scope",
+    "budget",
+    "interpreter_version",
+    "prompt_hash"
+   ],
+   "properties": {
+    "scope": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "scope_id",
+      "initiative_ids",
+      "capture_statuses",
+      "collected_at",
+      "enumeration_limits",
+      "authoritative_registers",
+      "incoming_record_ids",
+      "librarian_authored_record_ids"
+     ],
+     "properties": {
+      "scope_id": {
+       "$ref": "#/$defs/ident"
+      },
+      "initiative_ids": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/uuid"
+       },
+       "uniqueItems": true
+      },
+      "capture_statuses": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "maxLength": 20
+       }
+      },
+      "collected_at": {
+       "$ref": "#/$defs/when"
+      },
+      "enumeration_limits": {
+       "$ref": "#/$defs/text"
+      },
+      "authoritative_registers": {
+       "type": "array",
+       "description": "registers the run was told are authoritative for tracking (for example a programme register kept in git)",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "register_id",
+         "description"
+        ],
+        "properties": {
+         "register_id": {
+          "$ref": "#/$defs/ident"
+         },
+         "description": {
+          "$ref": "#/$defs/text"
+         }
+        }
+       }
+      },
+      "incoming_record_ids": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/uuid"
+       },
+       "uniqueItems": true,
+       "description": "records that arrived since the last processed checkpoint"
+      },
+      "librarian_authored_record_ids": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/uuid"
+       },
+       "uniqueItems": true,
+       "description": "records written by the librarian's own proposed organisation (notes, captures). They are proposals: never sole evidence for a canonical fact such as an initiative's scope or state"
+      }
+     }
+    },
+    "budget": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "max_changed_records",
+      "max_candidates_per_record",
+      "max_extra_reads"
+     ],
+     "properties": {
+      "max_changed_records": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "max_candidates_per_record": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "max_extra_reads": {
+       "type": "integer",
+       "minimum": 0
+      }
+     }
+    },
+    "interpreter_version": {
+     "$ref": "#/$defs/ident"
+    },
+    "prompt_hash": {
+     "$ref": "#/$defs/sha256"
+    }
+   }
+  },
+  "record": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "record_id",
+    "record_kind",
+    "source_fingerprint",
+    "depends_on",
+    "parts"
+   ],
+   "properties": {
+    "record_id": {
+     "$ref": "#/$defs/uuid"
+    },
+    "record_kind": {
+     "enum": [
+      "capture",
+      "initiative",
+      "activity"
+     ]
+    },
+    "source_fingerprint": {
+     "$ref": "#/$defs/fingerprint"
+    },
+    "depends_on": {
+     "type": "array",
+     "description": "linked evidence this interpretation relied on; a changed fingerprint here invalidates this record's interpretation",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "record_id",
+       "source_fingerprint"
+      ],
+      "properties": {
+       "record_id": {
+        "$ref": "#/$defs/uuid"
+       },
+       "source_fingerprint": {
+        "$ref": "#/$defs/fingerprint"
+       }
+      }
+     }
+    },
+    "parts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/part"
+     }
+    }
+   }
+  },
+  "part": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "part_id",
+    "locator_para",
+    "role",
+    "interpretation",
+    "epistemic",
+    "temporal",
+    "responsibility",
+    "confirmation",
+    "obligation"
+   ],
+   "properties": {
+    "part_id": {
+     "$ref": "#/$defs/ident"
+    },
+    "locator_para": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0
+    },
+    "role": {
+     "enum": [
+      "obligation",
+      "evidence",
+      "decision",
+      "correction",
+      "handover",
+      "suggestion",
+      "context",
+      "background"
+     ]
+    },
+    "interpretation": {
+     "$ref": "#/$defs/text"
+    },
+    "epistemic": {
+     "enum": [
+      "explicit_statement",
+      "supported_inference",
+      "disputed",
+      "unknown"
+     ]
+    },
+    "temporal": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "reported_at",
+      "observed_at",
+      "valid_from",
+      "valid_until"
+     ],
+     "properties": {
+      "reported_at": {
+       "$ref": "#/$defs/when"
+      },
+      "observed_at": {
+       "$ref": "#/$defs/when"
+      },
+      "valid_from": {
+       "$ref": "#/$defs/when"
+      },
+      "valid_until": {
+       "$ref": "#/$defs/when"
+      }
+     }
+    },
+    "responsibility": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "authenticated_writer",
+      "reported_producer",
+      "claimed_accountable",
+      "acknowledgement"
+     ],
+     "properties": {
+      "authenticated_writer": {
+       "$ref": "#/$defs/party"
+      },
+      "reported_producer": {
+       "$ref": "#/$defs/party"
+      },
+      "claimed_accountable": {
+       "$ref": "#/$defs/party"
+      },
+      "acknowledgement": {
+       "$ref": "#/$defs/party"
+      }
+     }
+    },
+    "confirmation": {
+     "$ref": "#/$defs/confirmation"
+    },
+    "obligation": {
+     "anyOf": [
+      {
+       "type": "null"
+      },
+      {
+       "$ref": "#/$defs/obligation"
+      }
+     ]
+    }
+   }
+  },
+  "obligation": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "local_id",
+    "maps_to",
+    "state",
+    "due",
+    "buried",
+    "tracking",
+    "acceptance",
+    "source_refs",
+    "adjudication_status",
+    "work_kind",
+    "currency",
+    "later_evidence",
+    "scope_components"
+   ],
+   "properties": {
+    "local_id": {
+     "$ref": "#/$defs/ident"
+    },
+    "maps_to": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/uuid"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "prior obligation id when this is the same obligation re-read; null only when new"
+    },
+    "state": {
+     "enum": [
+      "OPEN",
+      "DONE_IN_RECORD",
+      "SUPERSEDED",
+      "WITHDRAWN",
+      "UNCLEAR"
+     ]
+    },
+    "due": {
+     "$ref": "#/$defs/when"
+    },
+    "buried": {
+     "type": "boolean"
+    },
+    "tracking": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "status",
+      "targets"
+     ],
+     "properties": {
+      "status": {
+       "enum": [
+        "TRACKED",
+        "CANDIDATE",
+        "MENTIONED_ONLY",
+        "NOT_FOUND",
+        "UNKNOWN"
+       ]
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "kind",
+         "record_id",
+         "register_id",
+         "entry_ref",
+         "basis",
+         "objective_stated",
+         "disposition_stated",
+         "target_state",
+         "coverage"
+        ],
+        "properties": {
+         "kind": {
+          "enum": [
+           "WORK_ITEM",
+           "AUTHORITATIVE_REGISTER",
+           "RECORD_ONLY"
+          ]
+         },
+         "record_id": {
+          "anyOf": [
+           {
+            "$ref": "#/$defs/uuid"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         },
+         "register_id": {
+          "anyOf": [
+           {
+            "$ref": "#/$defs/ident"
+           },
+           {
+            "type": "null"
+           }
+          ]
+         },
+         "entry_ref": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "maxLength": 80,
+          "pattern": "^[^\"`\\n\\r]*$"
+         },
+         "basis": {
+          "enum": [
+           "STRUCTURAL",
+           "CITED_ID",
+           "REGISTER_ENTRY",
+           "SEMANTIC"
+          ]
+         },
+         "objective_stated": {
+          "type": "boolean"
+         },
+         "disposition_stated": {
+          "enum": [
+           "ACCEPTED",
+           "PLANNED",
+           "ASSIGNED",
+           "BACKLOG",
+           "DONE",
+           "NONE"
+          ]
+         },
+         "target_state": {
+          "enum": [
+           "BACKLOG",
+           "ACTIVE",
+           "BLOCKED",
+           "SOAKING",
+           "PAUSED",
+           "PARKED",
+           "COMPLETE",
+           "ABANDONED",
+           "NOT_APPLICABLE"
+          ]
+         },
+         "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "judgment",
+           "reason"
+          ],
+          "properties": {
+           "judgment": {
+            "enum": [
+             "ACTIVELY_COVERS",
+             "DOES_NOT_ACTIVELY_COVER",
+             "UNKNOWN"
+            ]
+           },
+           "reason": {
+            "enum": [
+             "NONE",
+             "ABANDONED",
+             "COMPLETED_WITHOUT_THIS",
+             "STALE",
+             "PARTIAL_SCOPE",
+             "UNKNOWN"
+            ]
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "description": "TRACKED: an identifiable work item or declared authoritative-register entry records the obligation (objective and disposition stated). Active coverage is judged per target."
+    },
+    "acceptance": {
+     "$ref": "#/$defs/text",
+     "description": "what makes this obligation done, stated so it can be accepted or closed independently of every other obligation"
+    },
+    "source_refs": {
+     "type": "array",
+     "description": "every other place that states the same obligation; duplicates are consolidated, never dropped",
+     "items": {
+      "$ref": "#/$defs/locator"
+     }
+    },
+    "adjudication_status": {
+     "enum": [
+      "NONE",
+      "UNSETTLED",
+      "UNARBITRATED"
+     ],
+     "description": "carried from independent review: such an obligation may not feed a confident filing recommendation"
+    },
+    "work_kind": {
+     "enum": [
+      "RECOVERY",
+      "PREVENTION",
+      "DELIVERY",
+      "DECISION",
+      "OTHER"
+     ],
+     "description": "prevention work is kept independently of recovery work, even when one record carries both"
+    },
+    "currency": {
+     "enum": [
+      "AS_OF_RECORD",
+      "RECONCILED_CURRENT",
+      "UNCERTAIN_CURRENT"
+     ],
+     "description": "AS_OF_RECORD: a historical action nothing later bears on. RECONCILED_CURRENT: reconciled against later evidence. UNCERTAIN_CURRENT: later evidence exists but the current status is not established"
+    },
+    "later_evidence": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "$ref": "#/$defs/locator"
+       },
+       {
+        "$ref": "#/$defs/register_row_ref"
+       }
+      ]
+     },
+     "description": "later records already retrieved that bear on this obligation's current status; a pinned authoritative-register row may be cited"
+    },
+    "scope_components": {
+     "type": "array",
+     "description": "each source's own scope (repository, lane, fixtures) so a consolidated obligation keeps its full cross-repository scope",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "text",
+       "source_record_id"
+      ],
+      "properties": {
+       "text": {
+        "$ref": "#/$defs/text"
+       },
+       "source_record_id": {
+        "$ref": "#/$defs/uuid"
+       }
+      }
+     }
+    }
+   }
+  },
+  "mapping": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind",
+    "prior_ids",
+    "new_local_ids"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "SPLIT",
+      "MERGE",
+      "RENAME"
+     ]
+    },
+    "prior_ids": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/uuid"
+     },
+     "minItems": 1
+    },
+    "new_local_ids": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ident"
+     },
+     "minItems": 1
+    }
+   }
+  },
+  "relation": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "relation_id",
+    "type",
+    "from",
+    "to",
+    "basis",
+    "confidence",
+    "evidence",
+    "via_reference"
+   ],
+   "description": "CORRECTS_RETRACTS: a later part explicitly withdraws or fixes a named earlier part. CONTRADICTS_UNRESOLVED: two parts conflict and nothing resolves them. Both records are always kept.",
+   "properties": {
+    "relation_id": {
+     "$ref": "#/$defs/ident"
+    },
+    "type": {
+     "enum": [
+      "CORRECTS_RETRACTS",
+      "CONTRADICTS_UNRESOLVED",
+      "SUPERSEDES",
+      "DEPENDS_ON",
+      "ACCEPTS",
+      "BLOCKS",
+      "DUPLICATES",
+      "CAUSES",
+      "PREVENTS",
+      "FOLLOWS_UP",
+      "SAME_DELIVERABLE"
+     ]
+    },
+    "from": {
+     "$ref": "#/$defs/locator"
+    },
+    "to": {
+     "$ref": "#/$defs/locator"
+    },
+    "basis": {
+     "enum": [
+      "STRUCTURAL",
+      "EXPLICIT_STATEMENT",
+      "CITED_ID",
+      "SEMANTIC"
+     ]
+    },
+    "confidence": {
+     "enum": [
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "evidence": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/locator"
+     },
+     "minItems": 1
+    },
+    "via_reference": {
+     "type": [
+      "integer",
+      "null"
+     ],
+     "minimum": 0,
+     "description": "index into unresolved_references when the cited id was a prefix"
+    }
+   }
+  },
+  "reference": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "token",
+    "cited_in",
+    "scope_id",
+    "outcome",
+    "candidate_count",
+    "resolved_record_id",
+    "confirmed_by_full_read"
+   ],
+   "properties": {
+    "token": {
+     "type": "string",
+     "maxLength": 40,
+     "pattern": "^[A-Za-z0-9#/_.-]+$"
+    },
+    "cited_in": {
+     "$ref": "#/$defs/locator"
+    },
+    "scope_id": {
+     "$ref": "#/$defs/ident"
+    },
+    "outcome": {
+     "enum": [
+      "UNIQUE_CONFIRMED",
+      "AMBIGUOUS",
+      "NO_MATCH_IN_SCOPE",
+      "NOT_ATTEMPTED"
+     ]
+    },
+    "candidate_count": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "resolved_record_id": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/uuid"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "confirmed_by_full_read": {
+     "type": "boolean"
+    }
+   }
+  },
+  "briefing": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "workstream",
+    "deliverable",
+    "acceptance_as_stated",
+    "status_lines",
+    "open_obligations",
+    "retractions",
+    "unresolved_contradictions",
+    "ready_to_close",
+    "why",
+    "completeness",
+    "omitted"
+   ],
+   "properties": {
+    "workstream": {
+     "$ref": "#/$defs/text"
+    },
+    "deliverable": {
+     "$ref": "#/$defs/text"
+    },
+    "acceptance_as_stated": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/text"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "status_lines": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "text",
+       "confirmation",
+       "evidence"
+      ],
+      "properties": {
+       "text": {
+        "$ref": "#/$defs/text"
+       },
+       "confirmation": {
+        "$ref": "#/$defs/confirmation"
+       },
+       "evidence": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/locator"
+        },
+        "minItems": 1
+       }
+      }
+     }
+    },
+    "open_obligations": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "local_id",
+       "original_record",
+       "text",
+       "tracking_status",
+       "coverage"
+      ],
+      "properties": {
+       "local_id": {
+        "$ref": "#/$defs/ident"
+       },
+       "original_record": {
+        "$ref": "#/$defs/uuid"
+       },
+       "text": {
+        "$ref": "#/$defs/text"
+       },
+       "tracking_status": {
+        "enum": [
+         "TRACKED",
+         "CANDIDATE",
+         "MENTIONED_ONLY",
+         "NOT_FOUND",
+         "UNKNOWN"
+        ]
+       },
+       "coverage": {
+        "enum": [
+         "ACTIVELY_COVERS",
+         "DOES_NOT_ACTIVELY_COVER",
+         "UNKNOWN",
+         "NO_TARGET"
+        ]
+       }
+      }
+     }
+    },
+    "retractions": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ident"
+     }
+    },
+    "unresolved_contradictions": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ident"
+     }
+    },
+    "ready_to_close": {
+     "enum": [
+      "yes",
+      "no",
+      "unknown"
+     ]
+    },
+    "why": {
+     "$ref": "#/$defs/text"
+    },
+    "completeness": {
+     "enum": [
+      "COMPLETE",
+      "INCOMPLETE"
+     ],
+     "description": "a shorter briefing must not imply completeness: INCOMPLETE whenever the run is incomplete or anything was not retrieved"
+    },
+    "omitted": {
+     "type": "array",
+     "description": "unresolved scope and omitted history, shown prominently with where the detailed backlog is",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "what",
+       "why"
+      ],
+      "properties": {
+       "what": {
+        "$ref": "#/$defs/text"
+       },
+       "why": {
+        "$ref": "#/$defs/text"
+       }
+      }
+     }
+    }
+   }
+  },
+  "proposal": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "proposal_id",
+    "kind",
+    "target",
+    "change",
+    "why",
+    "alternatives",
+    "evidence",
+    "confidence_reason",
+    "authority_stage",
+    "capability",
+    "tool_name",
+    "rank",
+    "confidence",
+    "effect",
+    "provisional",
+    "provisional_reason",
+    "held_behind",
+    "subjects"
+   ],
+   "properties": {
+    "proposal_id": {
+     "$ref": "#/$defs/ident"
+    },
+    "kind": {
+     "enum": [
+      "FILE",
+      "METADATA",
+      "LINK",
+      "CONSOLIDATE",
+      "NEXT_ACTION",
+      "VERIFY",
+      "CAPABILITY_GAP"
+     ]
+    },
+    "target": {
+     "type": "string",
+     "maxLength": 80,
+     "pattern": "^[^\"`\\n\\r]*$"
+    },
+    "change": {
+     "$ref": "#/$defs/text"
+    },
+    "why": {
+     "$ref": "#/$defs/text"
+    },
+    "alternatives": {
+     "$ref": "#/$defs/text"
+    },
+    "evidence": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/locator"
+     },
+     "minItems": 1
+    },
+    "confidence_reason": {
+     "$ref": "#/$defs/text"
+    },
+    "authority_stage": {
+     "enum": [
+      "PROPOSE_ONLY",
+      "DELEGATED_REVERSIBLE",
+      "SEPARATE_APPROVAL"
+     ]
+    },
+    "capability": {
+     "enum": [
+      "EXISTING_TOOL",
+      "CAPABILITY_GAP"
+     ]
+    },
+    "tool_name": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "maxLength": 60
+    },
+    "rank": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "priority by usefulness, 1 first; unique within the run"
+    },
+    "confidence": {
+     "enum": [
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "effect": {
+     "enum": [
+      "REHOME",
+      "CROSS_REFERENCE_ONLY",
+      "RECORD_NEW",
+      "VERIFY",
+      "CLARIFY"
+     ],
+     "description": "what applying the proposal would do; REHOME is allowed only where the intake placement is HOME_FOUND"
+    },
+    "provisional": {
+     "type": "boolean",
+     "description": "true when relevant captures were not inspected before proposing new work or duplicate disposal"
+    },
+    "provisional_reason": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/text"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "held_behind": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ident"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "a filing, linking or new-work proposal that rests on an uncertain current status waits behind this verification proposal"
+    },
+    "subjects": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/uuid"
+     },
+     "uniqueItems": true,
+     "description": "the records the proposal would file, link, consolidate or create work from. Safety checks apply to these, not only to whichever evidence ids are listed"
+    }
+   }
+  },
+  "retrieval": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "reads",
+    "not_retrieved",
+    "budget_exhausted"
+   ],
+   "properties": {
+    "reads": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "record_id",
+       "how_found",
+       "read_ok"
+      ],
+      "properties": {
+       "record_id": {
+        "$ref": "#/$defs/uuid"
+       },
+       "how_found": {
+        "enum": [
+         "SEED",
+         "STRUCTURAL",
+         "CITED_ID",
+         "SCOPE_ENUMERATION",
+         "ADJACENCY",
+         "SEARCH"
+        ]
+       },
+       "read_ok": {
+        "type": "boolean"
+       }
+      }
+     }
+    },
+    "not_retrieved": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "what",
+       "why"
+      ],
+      "properties": {
+       "what": {
+        "$ref": "#/$defs/text"
+       },
+       "why": {
+        "$ref": "#/$defs/text"
+       }
+      }
+     }
+    },
+    "budget_exhausted": {
+     "type": "boolean"
+    }
+   }
+  },
+  "intake": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "record_id",
+    "lifecycle_seen",
+    "processing_status",
+    "disposition",
+    "targets",
+    "obligation_local_ids",
+    "search",
+    "reevaluation",
+    "uncertain_reason",
+    "concern_ids",
+    "placement",
+    "purpose"
+   ],
+   "description": "lifecycle_seen is the record's own state, informational only; processing_status is the librarian's, and the two never substitute for each other",
+   "properties": {
+    "record_id": {
+     "$ref": "#/$defs/uuid"
+    },
+    "lifecycle_seen": {
+     "enum": [
+      "INBOX",
+      "ATTACHED",
+      "PROMOTED",
+      "DISCARDED",
+      "ACTIVITY",
+      "UNKNOWN"
+     ]
+    },
+    "processing_status": {
+     "enum": [
+      "EVALUATED",
+      "READ_FAILED",
+      "UNCERTAIN_PLACEMENT",
+      "REEVALUATION_DUE"
+     ]
+    },
+    "disposition": {
+     "enum": [
+      "CONTRIBUTES_EVIDENCE",
+      "ADDS_OBLIGATION",
+      "WARRANTS_NEW_DELIVERABLE",
+      "DUPLICATES",
+      "CORRECTS",
+      "SUPERSEDES",
+      "UNCERTAIN"
+     ]
+    },
+    "targets": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "record_id",
+       "kind",
+       "register_id",
+       "entry_ref",
+       "relation",
+       "work_state_seen",
+       "found_by"
+      ],
+      "properties": {
+       "record_id": {
+        "anyOf": [
+         {
+          "$ref": "#/$defs/uuid"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "relation": {
+        "enum": [
+         "RELATED",
+         "SAME_OBLIGATION"
+        ]
+       },
+       "work_state_seen": {
+        "enum": [
+         "BACKLOG",
+         "ACTIVE",
+         "BLOCKED",
+         "SOAKING",
+         "PAUSED",
+         "PARKED",
+         "COMPLETE",
+         "ABANDONED",
+         "NOT_A_WORK_ITEM",
+         "UNKNOWN"
+        ]
+       },
+       "found_by": {
+        "enum": [
+         "STRUCTURAL",
+         "CITED_ID",
+         "SCOPE_SEARCH"
+        ]
+       },
+       "kind": {
+        "enum": [
+         "WORK_RECORD",
+         "REGISTER_ROW"
+        ],
+        "description": "REGISTER_ROW: a row of a declared authoritative register (pinned) as the evidence target"
+       },
+       "register_id": {
+        "anyOf": [
+         {
+          "$ref": "#/$defs/ident"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "entry_ref": {
+        "type": [
+         "string",
+         "null"
+        ],
+        "maxLength": 80,
+        "pattern": "^[^\"`\\n\\r]*$"
+       }
+      }
+     }
+    },
+    "obligation_local_ids": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ident"
+     }
+    },
+    "search": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "terms",
+      "beyond_workstream",
+      "included_completed",
+      "limits",
+      "captures_inspected",
+      "initiatives_inspected",
+      "know_access"
+     ],
+     "properties": {
+      "terms": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "beyond_workstream": {
+       "type": "boolean"
+      },
+      "included_completed": {
+       "type": "boolean"
+      },
+      "limits": {
+       "$ref": "#/$defs/text"
+      },
+      "captures_inspected": {
+       "type": "integer",
+       "minimum": 0,
+       "description": "relevant captures other than the record itself that were actually opened"
+      },
+      "initiatives_inspected": {
+       "type": "integer",
+       "minimum": 0,
+       "description": "initiative histories actually opened"
+      },
+      "know_access": {
+       "enum": [
+        "SEARCHED",
+        "NOT_SEARCHED_NO_CREDENTIAL",
+        "NOT_SEARCHED_OTHER"
+       ],
+       "description": "always explicit; anything but SEARCHED must appear in the briefing's omitted list"
+      }
+     }
+    },
+    "reevaluation": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "due",
+      "trigger"
+     ],
+     "properties": {
+      "due": {
+       "type": "boolean"
+      },
+      "trigger": {
+       "enum": [
+        "NONE",
+        "LATER_EVIDENCE_CHANGES_MEANING",
+        "LINKED_RECORD_CHANGED",
+        "READ_FAILURE_RETRY"
+       ]
+      }
+     }
+    },
+    "uncertain_reason": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/text"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "concern_ids": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ident"
+     }
+    },
+    "placement": {
+     "enum": [
+      "HOME_FOUND",
+      "CROSS_REFERENCE_ONLY",
+      "NO_HOME",
+      "UNDECIDED"
+     ],
+     "description": "HOME_FOUND: an existing work item should carry the record or its obligation. CROSS_REFERENCE_ONLY: relate it but do not rehome it. NO_HOME: nothing existing fits (new deliverable). UNDECIDED: uncertain"
+    },
+    "purpose": {
+     "enum": [
+      "COMPLETED_EVIDENCE",
+      "PROGRESS_EVIDENCE",
+      "OBLIGATION",
+      "DECISION",
+      "CORRECTION",
+      "HANDOVER",
+      "BACKGROUND",
+      "UNDETERMINED"
+     ],
+     "description": "what the record is, kept separate from its obligation state (on the obligation) and its filing destination (placement and targets)"
+    }
+   }
+  },
+  "register_row_ref": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "register_id",
+    "entry_ref"
+   ],
+   "properties": {
+    "register_id": {
+     "$ref": "#/$defs/ident"
+    },
+    "entry_ref": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 80,
+     "pattern": "^[^\"`\\n\\r]*$"
+    }
+   }
+  }
+ },
+ "description": "v2 corrects v1: TRACKED means an identifiable work item or authoritative-register entry records the obligation; whether it actively covers it is a separate judgment and the target's state (including ABANDONED or COMPLETE) stays visible."
+}

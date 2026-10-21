@@ -1,0 +1,101 @@
+"""Synthetic lifecycle scenarios; no production content or access."""
+from copy import deepcopy
+import sys
+from pathlib import Path
+from uuid import UUID
+import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from work_worker.ledger import reconcile, decide, identity, projection_version, semantic_version
+
+
+def uid(n):
+    return str(UUID(int=n))
+
+
+def ver(n):
+    return projection_version(n=n)
+
+
+def example(n=1):
+    return {"subject_id": uid(1), "kind": "UNRECORDED_RESIDUAL",
+            "obligation_id": uid(n), "evidence": [
+                {"record_id": uid(2), "version": ver(3)}]}
+
+
+class LedgerTests(unittest.TestCase):
+    def test_distinct_residuals_and_idempotent_repeat(self):
+        values = [example(4), example(5), example(6)]
+        state = reconcile({}, values, evaluated_subjects=[uid(1)])
+        self.assertEqual(len(state), 3)
+        self.assertEqual(reconcile(state, values, evaluated_subjects=[uid(1)]), state)
+
+    def test_partial_scan_and_absence_never_close(self):
+        state = reconcile({}, [example()], evaluated_subjects=[uid(1)])
+        partial = reconcile(state, [], evaluated_subjects=[])
+        self.assertEqual(partial[identity(example())]["detection"], "NOT_REEVALUATED")
+        absent = reconcile(partial, [], evaluated_subjects=[uid(1)])
+        self.assertEqual(absent[identity(example())]["detection"], "NOT_DETECTED")
+        self.assertEqual(absent[identity(example())]["status"], "OPEN")
+        self.assertEqual(state[identity(example())]["detection"], "DETECTED")
+
+    def test_review_sticks_until_evidence_revision_changes(self):
+        for status in ("REJECTED", "RESOLVED"):
+            value = example()
+            state = reconcile({}, [value], evaluated_subjects=[uid(1)])
+            reviewed = decide(state, identity(value), status=status,
+                              actor_id=uid(7), evidence=[uid(8)])
+            repeated = reconcile(reviewed, [value], evaluated_subjects=[uid(1)])
+            self.assertEqual(repeated[identity(value)]["status"], status)
+            changed = deepcopy(value)
+            changed["evidence"][0]["version"] = ver(9)
+            reopened = reconcile(repeated, [changed], evaluated_subjects=[uid(1)])
+            self.assertEqual(reopened[identity(value)]["status"], "OPEN")
+            self.assertEqual(len(reopened[identity(value)]["decisions"]), 1)
+
+    def test_refuses_uncovered_and_duplicate_candidates(self):
+        with self.assertRaises(ValueError):
+            reconcile({}, [example()], evaluated_subjects=[])
+        with self.assertRaises(ValueError):
+            reconcile({}, [example(), example()], evaluated_subjects=[uid(1)])
+
+    def test_no_unvalidated_text_is_copied(self):
+        for field in ("body", "origin", "metadata", "requested_action"):
+            value = example()
+            value[field] = "untrusted upstream text"
+            with self.assertRaises(ValueError):
+                reconcile({}, [value], evaluated_subjects=[uid(1)])
+
+    def test_versioned_evidence_is_required(self):
+        value = example()
+        del value["evidence"][0]["version"]
+        with self.assertRaises(ValueError):
+            reconcile({}, [value], evaluated_subjects=[uid(1)])
+
+    def test_uuid_is_not_an_acceptable_version(self):
+        value = example()
+        value["evidence"][0]["version"] = uid(3)
+        with self.assertRaises(ValueError):
+            reconcile({}, [value], evaluated_subjects=[uid(1)])
+
+    def test_semantic_versions_are_accepted_stable_and_sensitive(self):
+        value = example()
+        value["evidence"][0]["version"] = semantic_version("Remaining:   do the thing", state="open")
+        state = reconcile({}, [value], evaluated_subjects=[uid(1)])
+        self.assertEqual(semantic_version("Remaining: do the thing", state="open"), value["evidence"][0]["version"])  # whitespace only
+        self.assertNotEqual(semantic_version("Remaining: do the other thing", state="open"), value["evidence"][0]["version"])
+        self.assertNotEqual(semantic_version("Remaining: do the thing", state="done"), value["evidence"][0]["version"])
+        changed = deepcopy(value)
+        changed["evidence"][0]["version"] = semantic_version("Remaining: do the other thing", state="open")
+        reviewed = decide(state, identity(value), status="REJECTED", actor_id=uid(7), evidence=[uid(8)])
+        self.assertEqual(reconcile(reviewed, [value], evaluated_subjects=[uid(1)])[identity(value)]["status"], "REJECTED")
+        self.assertEqual(reconcile(reviewed, [changed], evaluated_subjects=[uid(1)])[identity(value)]["status"], "OPEN")
+
+    def test_semantic_version_refuses_empty_or_structured_input(self):
+        for args, kw in (("", {}), ("   ", {}), ("text", {"state": ["x"]})):
+            with self.assertRaises(ValueError):
+                semantic_version(args, **kw)
+
+
+if __name__ == "__main__":
+    unittest.main()
