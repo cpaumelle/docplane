@@ -360,6 +360,7 @@
       "decision",
       "correction",
       "handover",
+      "suggestion",
       "context",
       "background"
      ]
@@ -447,7 +448,10 @@
     "state",
     "due",
     "buried",
-    "tracking"
+    "tracking",
+    "acceptance",
+    "source_refs",
+    "adjudication_status"
    ],
    "properties": {
     "local_id": {
@@ -614,6 +618,25 @@
       }
      },
      "description": "TRACKED: an identifiable work item or declared authoritative-register entry records the obligation (objective and disposition stated). Active coverage is judged per target."
+    },
+    "acceptance": {
+     "$ref": "#/$defs/text",
+     "description": "what makes this obligation done, stated so it can be accepted or closed independently of every other obligation"
+    },
+    "source_refs": {
+     "type": "array",
+     "description": "every other place that states the same obligation; duplicates are consolidated, never dropped",
+     "items": {
+      "$ref": "#/$defs/locator"
+     }
+    },
+    "adjudication_status": {
+     "enum": [
+      "NONE",
+      "UNSETTLED",
+      "UNARBITRATED"
+     ],
+     "description": "carried from independent review: such an obligation may not feed a confident filing recommendation"
     }
    }
   },
@@ -909,7 +932,9 @@
     "confidence_reason",
     "authority_stage",
     "capability",
-    "tool_name"
+    "tool_name",
+    "rank",
+    "confidence"
    ],
    "properties": {
     "proposal_id": {
@@ -969,6 +994,18 @@
       "null"
      ],
      "maxLength": 60
+    },
+    "rank": {
+     "type": "integer",
+     "minimum": 1,
+     "description": "priority by usefulness, 1 first; unique within the run"
+    },
+    "confidence": {
+     "enum": [
+      "high",
+      "medium",
+      "low"
+     ]
     }
    }
   },

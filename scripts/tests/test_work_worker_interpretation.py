@@ -31,7 +31,8 @@ def target(n=3, kind="WORK_ITEM", basis="STRUCTURAL", obj=True, disp="ACCEPTED",
 
 
 def ob(lid, status="NOT_FOUND", targets=(), state="OPEN"):
-    return {"local_id": lid, "maps_to": None, "state": state, "due": None, "buried": True, "tracking": {"status": status, "targets": list(targets)}}
+    return {"local_id": lid, "maps_to": None, "state": state, "due": None, "buried": True, "tracking": {"status": status, "targets": list(targets)},
+            "acceptance": "synthetic acceptance for " + lid, "source_refs": [], "adjudication_status": "NONE"}
 
 
 def loc(n, p=None):
@@ -157,6 +158,36 @@ class Interpretation(unittest.TestCase):
         self.bad(d, "iff")
         d = base(); d["records"][1]["parts"][0]["role"] = "obligation"; d["records"][1]["parts"][0]["obligation"] = ob("o1")
         self.bad(d, "duplicate obligation")
+
+    def test_split_only_independently_acceptable_actions(self):
+        d = base(); d["records"][1]["parts"][0]["role"] = "obligation"; d["records"][1]["parts"][0]["obligation"] = dict(ob("o2"), acceptance="synthetic acceptance for o1")
+        self.assertEqual(interp.validate(d), [])        # different records may share wording
+        d = base(); d["records"][0]["parts"][1]["role"] = "obligation"; d["records"][0]["parts"][1]["obligation"] = dict(ob("o2"), acceptance="Synthetic   Acceptance for o1")
+        self.bad(d, "share an acceptance condition")
+
+    def test_duplicates_are_consolidated_keeping_every_source_reference(self):
+        d = with_ob(dict(ob("o1"), source_refs=[loc(2, "d")]))
+        self.assertEqual(interp.validate(d), [])
+        d = with_ob(dict(ob("o1"), source_refs=[loc(77, "d")]))
+        self.bad(d, "was not read")
+
+    def test_suggestions_are_a_role_but_not_an_obligation(self):
+        d = base(); d["records"][1]["parts"][1]["role"] = "suggestion"
+        self.assertEqual(interp.validate(d), [])
+        d["records"][1]["parts"][1]["obligation"] = ob("o9")
+        self.bad(d, "iff")
+
+    def test_uncertain_obligations_cannot_back_confident_filing(self):
+        prop = lambda kind, rank=1: {"proposal_id": "p%d" % rank, "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
+                                     "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low"}
+        for status in ("UNSETTLED", "UNARBITRATED"):
+            for kind in ("FILE", "LINK", "METADATA", "CONSOLIDATE"):
+                d = with_ob(dict(ob("o1"), adjudication_status=status)); d["proposals"] = [prop(kind)]
+                self.bad(d, "cannot back a filing")
+            d = with_ob(dict(ob("o1"), adjudication_status=status)); d["proposals"] = [prop("VERIFY")]
+            self.assertEqual(interp.validate(d), [])
+        d = with_ob(ob("o1")); d["proposals"] = [prop("FILE", 1), prop("LINK", 1)]
+        self.bad(d, "ranks must be unique")
 
     def test_subset_validator_agrees_with_jsonschema_when_available(self):
         try:

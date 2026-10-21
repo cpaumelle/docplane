@@ -130,6 +130,28 @@ def validate(doc):
             o = p["obligation"]
             if o:
                 _check_obligation(o, rec["record_id"], obligations, registers, read, err)
+    uncertain = {(rid, p["part_id"]) for (rid, _), p in parts.items() if p["obligation"] and p["obligation"]["adjudication_status"] != "NONE"}
+    for (rid, _), p in parts.items():
+        o = p["obligation"]
+        if o:
+            for ref in o["source_refs"]:
+                read(ref["record_id"], "source_refs")
+    seen_accept = {}
+    for (rid, pid), p in parts.items():
+        o = p["obligation"]
+        if o:
+            key = (rid, " ".join(o["acceptance"].lower().split()))
+            if key in seen_accept:
+                err(f"obligations {seen_accept[key]} and {o['local_id']} share an acceptance condition: split only independently acceptable actions, otherwise consolidate")
+            seen_accept[key] = o["local_id"]
+    ranks = [pr["rank"] for pr in doc["proposals"]]
+    if len(ranks) != len(set(ranks)):
+        err("proposal ranks must be unique")
+    for pr in doc["proposals"]:
+        if pr["kind"] in ("FILE", "LINK", "METADATA", "CONSOLIDATE") and any((e["record_id"], e["part_id"]) in uncertain for e in pr["evidence"]):
+            err(f"proposal {pr['proposal_id']}: an unsettled or unarbitrated obligation cannot back a filing, linking, metadata or consolidation proposal")
+        for e in pr["evidence"]:
+            read(e["record_id"], "proposal evidence")
     for m in doc["mappings"]:
         for n in m["new_local_ids"]:
             if n not in obligations:

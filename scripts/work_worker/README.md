@@ -183,6 +183,13 @@ of the canonical redacted text actually used plus scalar state. It never accepts
 interpretation is the record's version plus the versions of its dependencies and the interpreter, prompt and schema
 versions; a changed dependency invalidates an unchanged record.
 
+Tightening after independent review (still librarian-interp-2): a part may have the role `suggestion` (an idea nobody committed to,
+never an obligation); every obligation states its own `acceptance`, and two obligations of one record may not share one (split only
+independently acceptable actions, otherwise consolidate); duplicates are consolidated into one obligation whose `source_refs` keep
+every other place that states it (each must have been read); `adjudication_status` (NONE, UNSETTLED, UNARBITRATED) carries uncertainty
+from independent review, and an obligation with a status other than NONE cannot back a FILE, LINK, METADATA or CONSOLIDATE proposal,
+only VERIFY or NEXT_ACTION; proposals carry a unique `rank` and a `confidence`.
+
 Changes from the frozen v1 evaluation baseline (kept privately so results stay comparable): tracking targets gained
 `kind`, `coverage` and register entries; `run.scope.authoritative_registers`; briefing obligations gained `coverage`.
 Nothing here collects, schedules, triages or writes.
