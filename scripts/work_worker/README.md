@@ -216,6 +216,19 @@ against existing canonical work, with one disposition: `CONTRIBUTES_EVIDENCE` (p
 Private indexes, briefings and the interpretation JSON are rebuildable aids, never another authoritative list. Mutation authority is unchanged:
 proposals only for production.
 
+Corrections after the filing rehearsal (each is a validator rule with tests; the rehearsal's own results were produced under the earlier rules and are preserved):
+
+* **A new deliverable never exists only as an intake line.** `WARRANTS_NEW_DELIVERABLE` must reference at least one extracted obligation, or an explicit
+  unresolved concern in `concerns` that points at source evidence (a part of the incoming record, never an obligation). A concern has no action or
+  acceptance field, so nothing is manufactured. The disposition also requires placement `NO_HOME` and a recorded search beyond the workstream that included completed work.
+* **Proposed organisation is separate from canonical facts.** `run.scope.librarian_authored_record_ids` names records the librarian itself wrote (notes,
+  captures). A briefing status line or a relation that rests only on such records is refused, so a note we wrote cannot redefine an initiative's scope or override its history.
+* **A cross-reference is not a rehoming.** Each intake entry has a `placement` (HOME_FOUND, CROSS_REFERENCE_ONLY, NO_HOME, UNDECIDED) and each proposal an `effect`
+  (REHOME, CROSS_REFERENCE_ONLY, RECORD_NEW, VERIFY, CLARIFY). A REHOME proposal needs every evidence record's placement to be HOME_FOUND; FILE means rehoming or a
+  new record; a cross-reference cannot be an attachment.
+* **A shorter briefing cannot imply completeness.** The briefing carries `completeness` and an `omitted` list (unresolved scope, omitted history). Any incomplete run or
+  anything not retrieved forces INCOMPLETE with the omissions listed; COMPLETE with omissions is refused. The detailed backlog stays in the appendix.
+
 Changes from the frozen v1 evaluation baseline (kept privately so results stay comparable): tracking targets gained
 `kind`, `coverage` and register entries; `run.scope.authoritative_registers`; briefing obligations gained `coverage`.
 Nothing here collects, schedules, triages or writes.

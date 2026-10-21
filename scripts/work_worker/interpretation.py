@@ -199,7 +199,8 @@ def validate(doc):
             err("status line: a read-now basis needs read_at")
         if c["basis"] == "EXTERNAL_UNVERIFIED" and not c.get("verifier_needed"):
             err("status line: external claim needs verifier_needed")
-    _check_intake(doc, obligations, reads, rel, err)
+    _check_intake(doc, obligations, reads, rel, err, parts)
+    _check_organisation(doc, reads, err)
     if (doc["retrieval"]["budget_exhausted"] or not all(reads.values())) and not doc["incomplete"]:
         err("incomplete must be true when a read failed or the budget ran out")
     if doc["incomplete"] and b["ready_to_close"] == "yes":
@@ -241,9 +242,20 @@ def _check_obligation(o, record_id, obligations, registers, read, err):
         err(f"obligation {lid}: {t['status']} needs a target")
 
 
-def _check_intake(doc, obligations, reads, rel, err):
+def _check_intake(doc, obligations, reads, rel, err, parts):
     """Backlog guardianship: every incoming record is evaluated, visibly, against existing work."""
     incoming = doc["run"]["scope"]["incoming_record_ids"]
+    concerns = {}
+    for c in doc["concerns"]:
+        if c["concern_id"] in concerns:
+            err(f"concern {c['concern_id']} defined twice")
+        concerns[c["concern_id"]] = c
+        if (c["record_id"], c["part_id"]) not in parts:
+            err(f"concern {c['concern_id']}: its source evidence part does not exist")
+        elif parts[(c["record_id"], c["part_id"])]["obligation"] is not None:
+            err(f"concern {c['concern_id']}: a concern points at evidence, not at an extracted obligation")
+        if not reads.get(c["record_id"]):
+            err(f"concern {c['concern_id']}: source record was not read")
     entries = {}
     for e in doc["intake"]:
         if e["record_id"] in entries:
@@ -260,6 +272,8 @@ def _check_intake(doc, obligations, reads, rel, err):
             err(f"intake: {rid} failed to read and must say so")
         if status == "READ_FAILED" and (disp != "UNCERTAIN" or reads.get(rid) is not False):
             err(f"intake: {rid} READ_FAILED needs a failed read and an UNCERTAIN disposition")
+        if disp == "UNCERTAIN" and e["placement"] != "UNDECIDED":
+            err(f"intake: {rid} an uncertain disposition leaves the placement undecided")
         if (disp == "UNCERTAIN") != (status in ("READ_FAILED", "UNCERTAIN_PLACEMENT")):
             err(f"intake: {rid} an uncertain disposition and an uncertain or failed status go together")
         if disp == "UNCERTAIN" and not e["uncertain_reason"]:
@@ -284,7 +298,15 @@ def _check_intake(doc, obligations, reads, rel, err):
             err(f"intake: {rid} adding an obligation needs its own new obligation and a related existing work item")
         if disp == "CONTRIBUTES_EVIDENCE" and not e["targets"]:
             err(f"intake: {rid} evidence must name what it contributes to")
+        for cid in e["concern_ids"]:
+            c = concerns.get(cid)
+            if not c or c["record_id"] != rid:
+                err(f"intake: {rid} names concern {cid} that is not an explicit concern raised by this record")
         if disp == "WARRANTS_NEW_DELIVERABLE":
+            if not (e["obligation_local_ids"] or e["concern_ids"]):
+                err(f"intake: {rid} a new deliverable must reference an extracted obligation or an explicit unresolved concern with source evidence")
+            if e["placement"] != "NO_HOME":
+                err(f"intake: {rid} a new deliverable means no existing home (placement NO_HOME)")
             s = e["search"]
             if not (s["terms"] >= 1 and s["beyond_workstream"] and s["included_completed"]):
                 err(f"intake: {rid} a new deliverable needs a search beyond the workstream that included completed work")
@@ -327,3 +349,36 @@ def continuity_errors(previous, new, registry):
             errors.append(f"obligations {seen[key]} and {lid} share an acceptance condition (duplicate)")
         seen[key] = lid
     return errors
+
+
+def _check_organisation(doc, reads, err):
+    """Proposed organisation stays separate from canonical facts, and a cross-reference is not a rehoming."""
+    mine = set(doc["run"]["scope"]["librarian_authored_record_ids"])
+    for rid in mine:
+        if not reads.get(rid):
+            err(f"librarian-authored record {rid} was not read")
+    for s in doc["briefing"]["status_lines"]:
+        if all(e["record_id"] in mine for e in s["evidence"]):
+            err("status line rests only on records the librarian wrote: proposed organisation cannot establish a canonical fact")
+    for r in doc["relations"]:
+        if all(e["record_id"] in mine for e in r["evidence"]):
+            err(f"relation {r['relation_id']} rests only on records the librarian wrote")
+    placement = {e["record_id"]: e["placement"] for e in doc["intake"]}
+    for pr in doc["proposals"]:
+        eff, kind = pr["effect"], pr["kind"]
+        if kind == "FILE" and eff not in ("REHOME", "RECORD_NEW"):
+            err(f"proposal {pr['proposal_id']}: FILE means rehoming or a new record")
+        if kind == "VERIFY" and eff != "VERIFY":
+            err(f"proposal {pr['proposal_id']}: a verification proposal has effect VERIFY")
+        if eff == "REHOME":
+            homes = [placement.get(e["record_id"]) for e in pr["evidence"] if e["record_id"] in placement]
+            if not homes or any(h != "HOME_FOUND" for h in homes):
+                err(f"proposal {pr['proposal_id']}: rehoming is not supported where the disposition is only a cross-reference or has no found home")
+        if eff == "CROSS_REFERENCE_ONLY" and kind in ("FILE", "CONSOLIDATE"):
+            err(f"proposal {pr['proposal_id']}: a cross-reference is not an attachment")
+    b = doc["briefing"]
+    incomplete = doc["incomplete"] or bool(doc["retrieval"]["not_retrieved"]) or doc["retrieval"]["budget_exhausted"]
+    if incomplete and (b["completeness"] != "INCOMPLETE" or not b["omitted"]):
+        err("the briefing must say INCOMPLETE and list what was omitted whenever the run is incomplete or anything was not retrieved")
+    if b["completeness"] == "COMPLETE" and (incomplete or b["omitted"]):
+        err("a briefing cannot be COMPLETE while anything is omitted")

@@ -39,8 +39,9 @@ def itarget(n, relation="RELATED", state="BACKLOG"):
     return {"record_id": U(n), "relation": relation, "work_state_seen": state, "found_by": "STRUCTURAL"}
 
 
-def intake(n, disposition, status="EVALUATED", targets=(), obligations=(), search=None, reason=None):
-    return {"record_id": U(n), "lifecycle_seen": "INBOX", "processing_status": status, "disposition": disposition, "targets": list(targets),
+def intake(n, disposition, status="EVALUATED", targets=(), obligations=(), search=None, reason=None, concerns=()):
+    placement = {"WARRANTS_NEW_DELIVERABLE": "NO_HOME", "UNCERTAIN": "UNDECIDED", "CORRECTS": "CROSS_REFERENCE_ONLY", "SUPERSEDES": "CROSS_REFERENCE_ONLY"}.get(disposition, "HOME_FOUND")
+    return {"record_id": U(n), "lifecycle_seen": "INBOX", "processing_status": status, "disposition": disposition, "targets": list(targets), "concern_ids": list(concerns), "placement": placement,
             "obligation_local_ids": list(obligations),
             "search": search or {"terms": 1, "beyond_workstream": False, "included_completed": False, "limits": "synthetic"},
             "reevaluation": {"due": status == "REEVALUATION_DUE", "trigger": "NONE"}, "uncertain_reason": reason}
@@ -53,7 +54,7 @@ def loc(n, p=None):
 def base():
     return {"schema_version": "librarian-interp-2",
             "run": {"scope": {"scope_id": "s1", "initiative_ids": [U(9)], "capture_statuses": ["INBOX"], "collected_at": "2026-01-02T00:00:00Z",
-                              "enumeration_limits": "synthetic", "incoming_record_ids": [], "authoritative_registers": [{"register_id": "prog-register", "description": "programme register kept in git"}]},
+                              "enumeration_limits": "synthetic", "incoming_record_ids": [], "librarian_authored_record_ids": [], "authoritative_registers": [{"register_id": "prog-register", "description": "programme register kept in git"}]},
                     "budget": {"max_changed_records": 10, "max_candidates_per_record": 5, "max_extra_reads": 30}, "interpreter_version": "t1", "prompt_hash": "0" * 64},
             "records": [
                 {"record_id": U(1), "record_kind": "capture", "source_fingerprint": FP(1), "depends_on": [{"record_id": U(2), "source_fingerprint": FP(2)}],
@@ -61,8 +62,8 @@ def base():
                 {"record_id": U(2), "record_kind": "capture", "source_fingerprint": FP(2), "depends_on": [], "parts": [part("c", "correction"), part("d", "decision")]}],
             "mappings": [], "relations": [], "unresolved_references": [],
             "briefing": {"workstream": "synthetic", "deliverable": "synthetic deliverable", "acceptance_as_stated": None, "status_lines": [], "open_obligations": [],
-                         "retractions": [], "unresolved_contradictions": [], "ready_to_close": "no", "why": "synthetic"},
-            "proposals": [], "incomplete": False, "intake": [],
+                         "retractions": [], "unresolved_contradictions": [], "ready_to_close": "no", "why": "synthetic", "completeness": "COMPLETE", "omitted": []},
+            "proposals": [], "incomplete": False, "intake": [], "concerns": [],
             "coverage": {"incoming_total": 0, "evaluated": 0, "uncertain_placement": 0, "read_failed": 0, "reevaluation_due": 0},
             "retrieval": {"reads": [{"record_id": U(n), "how_found": "SEED", "read_ok": True} for n in (1, 2, 3, 9)], "not_retrieved": [], "budget_exhausted": False}}
 
@@ -191,7 +192,8 @@ class Interpretation(unittest.TestCase):
 
     def test_uncertain_obligations_cannot_back_confident_filing(self):
         prop = lambda kind, rank=1: {"proposal_id": "p%d" % rank, "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
-                                     "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low"}
+                                     "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low",
+                                     "effect": {"FILE": "RECORD_NEW", "LINK": "CROSS_REFERENCE_ONLY", "METADATA": "CLARIFY", "CONSOLIDATE": "CLARIFY", "VERIFY": "VERIFY"}.get(kind, "CLARIFY")}
         for status in ("UNSETTLED", "UNARBITRATED"):
             for kind in ("FILE", "LINK", "METADATA", "CONSOLIDATE"):
                 d = with_ob(dict(ob("o1"), adjudication_status=status)); d["proposals"] = [prop(kind)]
@@ -261,9 +263,12 @@ class Interpretation(unittest.TestCase):
 
     def test_new_deliverable_requires_a_search_beyond_the_workstream_including_completed_work(self):
         wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "literal key and title terms only; capture bodies not searched"}
-        self.assertEqual(interp.validate(self.incoming(base(), intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide))), [])
+        def doc(search):
+            d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "b", "text": "synthetic raised risk", "status": "UNRESOLVED"}]
+            return self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=search, concerns=["c1"]))
+        self.assertEqual(interp.validate(doc(wide)), [])
         for bad in (dict(wide, beyond_workstream=False), dict(wide, included_completed=False), dict(wide, terms=0)):
-            self.bad(self.incoming(base(), intake(1, "WARRANTS_NEW_DELIVERABLE", search=bad)), "a new deliverable needs")
+            self.bad(doc(bad), "a new deliverable needs")
 
     def test_correction_and_supersession_need_their_relation(self):
         d = base(); d["relations"] = [rel("r1", "CORRECTS_RETRACTS")]
@@ -290,6 +295,67 @@ class Interpretation(unittest.TestCase):
         dup = copy.deepcopy(after); dup["records"][1]["parts"][0]["role"] = "obligation"
         dup["records"][1]["parts"][0]["obligation"] = dict(ob("o2"), acceptance="synthetic acceptance for o1")
         self.assertTrue(any("duplicate" in e for e in interp.continuity_errors(before, dup, reg)))
+
+    def test_new_deliverable_must_reference_an_obligation_or_an_explicit_concern_with_evidence(self):
+        wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "key and title only"}
+        d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "b", "text": "synthetic raised risk", "status": "UNRESOLVED"}]
+        self.assertEqual(interp.validate(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, concerns=["c1"]))), [])
+        self.bad(self.incoming(base(), intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide)), "must reference an extracted obligation or an explicit unresolved concern")
+        d = with_ob(ob("o1"))                                      # an extracted obligation is also acceptable
+        self.assertEqual(interp.validate(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, obligations=["o1"]))), [])
+        d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(2), "part_id": "c", "text": "synthetic", "status": "UNRESOLVED"}]
+        self.bad(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, concerns=["c1"])), "not an explicit concern raised by this record")
+        d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "zz", "text": "synthetic", "status": "UNRESOLVED"}]
+        self.bad(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, concerns=["c1"])), "source evidence part does not exist")
+        d = with_ob(ob("o1")); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "a", "text": "synthetic", "status": "UNRESOLVED"}]
+        self.bad(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, concerns=["c1"])), "points at evidence")
+        d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "b", "text": "synthetic", "status": "UNRESOLVED"}]
+        e = dict(intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, concerns=["c1"]), placement="HOME_FOUND")
+        self.bad(self.incoming(d, e), "no existing home")
+
+    def test_no_action_or_acceptance_can_be_attached_to_a_concern(self):
+        d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "b", "text": "synthetic", "status": "UNRESOLVED", "acceptance": "invented"}]
+        self.assertTrue(interp.validate(d))
+
+    def test_the_librarians_own_notes_cannot_establish_canonical_facts(self):
+        d = base(); d["run"]["scope"]["librarian_authored_record_ids"] = [U(2)]
+        line = lambda *ids: {"text": "scope claim", "confirmation": CONF, "evidence": [loc(i) for i in ids]}
+        d["briefing"]["status_lines"] = [line(2)]
+        self.bad(d, "rests only on records the librarian wrote")
+        d["briefing"]["status_lines"] = [line(2, 3)]
+        self.assertEqual(interp.validate(d), [])
+        d["relations"] = [dict(rel("r1", "SUPERSEDES", "SEMANTIC"), evidence=[loc(2, "c")])]
+        self.bad(d, "relation r1 rests only on records the librarian wrote")
+        d = base(); d["run"]["scope"]["librarian_authored_record_ids"] = [U(77)]
+        self.bad(d, "was not read")
+
+    def test_a_cross_reference_is_not_a_rehoming(self):
+        prop = lambda kind, effect, ev: {"proposal_id": "p1", "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(ev)],
+            "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": 1, "confidence": "medium", "effect": effect}
+        cross = intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]); cross["placement"] = "CROSS_REFERENCE_ONLY"
+        d = self.incoming(base(), cross); d["proposals"] = [prop("LINK", "REHOME", 1)]
+        self.bad(d, "rehoming is not supported")
+        d["proposals"] = [prop("FILE", "REHOME", 1)]
+        self.bad(d, "rehoming is not supported")
+        d["proposals"] = [prop("FILE", "CROSS_REFERENCE_ONLY", 1)]
+        self.bad(d, "FILE means rehoming or a new record")
+        d["proposals"] = [prop("LINK", "CROSS_REFERENCE_ONLY", 1)]
+        self.assertEqual(interp.validate(d), [])
+        home = self.incoming(base(), intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]))
+        home["proposals"] = [prop("FILE", "REHOME", 1)]
+        self.assertEqual(interp.validate(home), [])
+        d["proposals"] = [prop("VERIFY", "CLARIFY", 1)]
+        self.bad(d, "has effect VERIFY")
+
+    def test_a_shorter_briefing_cannot_imply_completeness(self):
+        d = base(); d["retrieval"]["not_retrieved"] = [{"what": "older history", "why": "outside the window"}]
+        self.bad(d, "must say INCOMPLETE")
+        d["briefing"]["completeness"] = "INCOMPLETE"
+        self.bad(d, "must say INCOMPLETE")                       # still needs the omitted list
+        d["briefing"]["omitted"] = [{"what": "older history", "why": "outside the window"}]
+        self.assertEqual(interp.validate(d), [])
+        d2 = base(); d2["briefing"]["omitted"] = [{"what": "x", "why": "y"}]
+        self.bad(d2, "cannot be COMPLETE")
 
     def test_subset_validator_agrees_with_jsonschema_when_available(self):
         try:

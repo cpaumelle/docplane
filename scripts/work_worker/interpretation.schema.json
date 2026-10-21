@@ -16,7 +16,8 @@
   "retrieval",
   "incomplete",
   "intake",
-  "coverage"
+  "coverage",
+  "concerns"
  ],
  "properties": {
   "schema_version": {
@@ -103,6 +104,40 @@
     "reevaluation_due": {
      "type": "integer",
      "minimum": 0
+    }
+   }
+  },
+  "concerns": {
+   "type": "array",
+   "description": "an explicit unresolved concern, with its source evidence. It records that something was raised; it never carries an invented action or acceptance condition",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "concern_id",
+     "record_id",
+     "part_id",
+     "text",
+     "status"
+    ],
+    "properties": {
+     "concern_id": {
+      "$ref": "#/$defs/ident"
+     },
+     "record_id": {
+      "$ref": "#/$defs/uuid"
+     },
+     "part_id": {
+      "$ref": "#/$defs/ident"
+     },
+     "text": {
+      "$ref": "#/$defs/text"
+     },
+     "status": {
+      "enum": [
+       "UNRESOLVED"
+      ]
+     }
     }
    }
   }
@@ -241,7 +276,8 @@
       "collected_at",
       "enumeration_limits",
       "authoritative_registers",
-      "incoming_record_ids"
+      "incoming_record_ids",
+      "librarian_authored_record_ids"
      ],
      "properties": {
       "scope_id": {
@@ -294,6 +330,14 @@
        },
        "uniqueItems": true,
        "description": "records that arrived since the last processed checkpoint"
+      },
+      "librarian_authored_record_ids": {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/uuid"
+       },
+       "uniqueItems": true,
+       "description": "records written by the librarian's own proposed organisation (notes, captures). They are proposals: never sole evidence for a canonical fact such as an initiative's scope or state"
       }
      }
     },
@@ -858,7 +902,9 @@
     "retractions",
     "unresolved_contradictions",
     "ready_to_close",
-    "why"
+    "why",
+    "completeness",
+    "omitted"
    ],
    "properties": {
     "workstream": {
@@ -967,6 +1013,33 @@
     },
     "why": {
      "$ref": "#/$defs/text"
+    },
+    "completeness": {
+     "enum": [
+      "COMPLETE",
+      "INCOMPLETE"
+     ],
+     "description": "a shorter briefing must not imply completeness: INCOMPLETE whenever the run is incomplete or anything was not retrieved"
+    },
+    "omitted": {
+     "type": "array",
+     "description": "unresolved scope and omitted history, shown prominently with where the detailed backlog is",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "what",
+       "why"
+      ],
+      "properties": {
+       "what": {
+        "$ref": "#/$defs/text"
+       },
+       "why": {
+        "$ref": "#/$defs/text"
+       }
+      }
+     }
     }
    }
   },
@@ -986,7 +1059,8 @@
     "capability",
     "tool_name",
     "rank",
-    "confidence"
+    "confidence",
+    "effect"
    ],
    "properties": {
     "proposal_id": {
@@ -1058,6 +1132,16 @@
       "medium",
       "low"
      ]
+    },
+    "effect": {
+     "enum": [
+      "REHOME",
+      "CROSS_REFERENCE_ONLY",
+      "RECORD_NEW",
+      "VERIFY",
+      "CLARIFY"
+     ],
+     "description": "what applying the proposal would do; REHOME is allowed only where the intake placement is HOME_FOUND"
     }
    }
   },
@@ -1136,7 +1220,9 @@
     "obligation_local_ids",
     "search",
     "reevaluation",
-    "uncertain_reason"
+    "uncertain_reason",
+    "concern_ids",
+    "placement"
    ],
    "description": "lifecycle_seen is the record's own state, informational only; processing_status is the librarian's, and the two never substitute for each other",
    "properties": {
@@ -1278,6 +1364,21 @@
        "type": "null"
       }
      ]
+    },
+    "concern_ids": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/ident"
+     }
+    },
+    "placement": {
+     "enum": [
+      "HOME_FOUND",
+      "CROSS_REFERENCE_ONLY",
+      "NO_HOME",
+      "UNDECIDED"
+     ],
+     "description": "HOME_FOUND: an existing work item should carry the record or its obligation. CROSS_REFERENCE_ONLY: relate it but do not rehome it. NO_HOME: nothing existing fits (new deliverable). UNDECIDED: uncertain"
     }
    }
   }
