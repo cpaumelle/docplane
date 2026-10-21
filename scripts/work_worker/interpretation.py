@@ -236,6 +236,18 @@ def _check_obligation(o, record_id, obligations, registers, read, err):
             err(f"obligation {lid}: a completed item does not actively cover an obligation still open")
         if kind != "RECORD_ONLY" and tg["basis"] != "SEMANTIC" and tg["objective_stated"] and tg["disposition_stated"] != "NONE":
             identified.append(tg)
+    for ref in o["later_evidence"]:
+        read(ref["record_id"], "later evidence")
+    if o["later_evidence"] and o["currency"] == "AS_OF_RECORD":
+        err(f"obligation {lid}: later evidence was retrieved, so its status cannot be presented as plainly as-of-record")
+    if o["currency"] == "UNCERTAIN_CURRENT" and t["status"] == "TRACKED":
+        err(f"obligation {lid}: while the current status is uncertain a home is only a candidate, not TRACKED")
+    srcs = {record_id} | {x["record_id"] for x in o["source_refs"]}
+    comp = {c["source_record_id"] for c in o["scope_components"]}
+    if o["source_refs"] and not srcs <= comp:
+        err(f"obligation {lid}: a consolidated obligation must keep each source's own scope (components missing for {len(srcs - comp)} source(s))")
+    if not comp <= srcs:
+        err(f"obligation {lid}: a scope component names a record that is not a source of this obligation")
     if t["status"] == "TRACKED" and not identified:
         err(f"obligation {lid}: TRACKED needs an identifiable work item or register entry that states an objective and disposition")
     if t["status"] in ("TRACKED", "CANDIDATE", "MENTIONED_ONLY") and not t["targets"]:
@@ -280,9 +292,29 @@ def _check_intake(doc, obligations, reads, rel, err, parts):
             err(f"intake: {rid} uncertain placement must say why")
         if e["reevaluation"]["due"] != (status == "REEVALUATION_DUE" or e["reevaluation"]["trigger"] != "NONE"):
             err(f"intake: {rid} re-evaluation flag and trigger disagree")
+        registers = {r["register_id"] for r in doc["run"]["scope"]["authoritative_registers"]}
         for tg in e["targets"]:
-            if not reads.get(tg["record_id"]):
-                err(f"intake: target {tg['record_id']} was not read")
+            if tg["kind"] == "WORK_RECORD":
+                if not tg["record_id"] or tg["register_id"] or tg["entry_ref"]:
+                    err(f"intake: {rid} a work-record target names a record and no register row")
+                elif not reads.get(tg["record_id"]):
+                    err(f"intake: target {tg['record_id']} was not read")
+            elif tg["record_id"] or tg["register_id"] not in registers or not tg["entry_ref"] or tg["work_state_seen"] != "NOT_A_WORK_ITEM":
+                err(f"intake: {rid} a register-row target needs a declared authoritative register and an entry, and is not a work item")
+        purpose = e["purpose"]
+        if disp == "ADDS_OBLIGATION" and purpose != "OBLIGATION":
+            err(f"intake: {rid} adding an obligation means the record states an action (purpose OBLIGATION)")
+        if disp == "CONTRIBUTES_EVIDENCE" and purpose in ("OBLIGATION", "CORRECTION"):
+            err(f"intake: {rid} evidence cannot have purpose {purpose}")
+        if purpose == "COMPLETED_EVIDENCE" and disp == "UNCERTAIN" and status != "READ_FAILED":
+            err(f"intake: {rid} completed evidence stays completed evidence even without a home; it is not uncertain")
+        if purpose != "OBLIGATION" and e["placement"] in ("NO_HOME", "UNDECIDED") or purpose == "COMPLETED_EVIDENCE":
+            live = [l for l in e["obligation_local_ids"] if l in obligations and obligations[l][1]["state"] in ("OPEN", "UNCLEAR")]
+            if live:
+                err(f"intake: {rid} missing placement or completed evidence must not manufacture an open obligation ({', '.join(live)})")
+        s = e["search"]
+        if s["know_access"] != "SEARCHED" and not any("know" in x["what"].lower() for x in doc["briefing"]["omitted"]):
+            err(f"intake: {rid} KNOW was not searched ({s['know_access']}): the briefing must list it as omitted")
         for lid in e["obligation_local_ids"]:
             if lid not in obligations:
                 err(f"intake: unknown obligation {lid}")
@@ -291,13 +323,24 @@ def _check_intake(doc, obligations, reads, rel, err, parts):
             consolidated = [lid for lid in e["obligation_local_ids"] if any(r["record_id"] == rid for r in obligations[lid][1]["source_refs"])] if all(l in obligations for l in e["obligation_local_ids"]) else []
             if not same or not consolidated:
                 err(f"intake: {rid} a duplicate needs a same-obligation target and a consolidated obligation that keeps this record as a source")
-        elif same:
+            for lid in consolidated:
+                home = obligations[lid][0]
+                if home in incoming and home != rid and not any(r["type"] == "DUPLICATES" and {r["from"]["record_id"], r["to"]["record_id"]} == {rid, home} for r in rel.values()):
+                    err(f"intake: {rid} consolidated into an obligation of another incoming record {home}: a DUPLICATES relation between them is required")
+        elif [tg for tg in same if not (disp == "CONTRIBUTES_EVIDENCE" and tg["kind"] == "REGISTER_ROW") and disp != "ADDS_OBLIGATION"]:
             err(f"intake: {rid} names a same-obligation target but is not a duplicate")
-        if disp == "ADDS_OBLIGATION" and not (e["obligation_local_ids"] and any(tg["relation"] == "RELATED" for tg in e["targets"])
-                                              and all(obligations[l][0] == rid for l in e["obligation_local_ids"] if l in obligations)):
-            err(f"intake: {rid} adding an obligation needs its own new obligation and a related existing work item")
-        if disp == "CONTRIBUTES_EVIDENCE" and not e["targets"]:
-            err(f"intake: {rid} evidence must name what it contributes to")
+        if disp == "ADDS_OBLIGATION":
+            ids = [l for l in e["obligation_local_ids"] if l in obligations]
+            own = [l for l in ids if obligations[l][0] == rid]
+            merged = [l for l in ids if obligations[l][0] != rid and any(x["record_id"] == rid for x in obligations[l][1]["source_refs"])]
+            if not own or len(own) + len(merged) != len(ids) or not any(tg["relation"] == "RELATED" for tg in e["targets"]):
+                err(f"intake: {rid} adding an obligation needs its own new obligation and a related existing work item (other obligations here must be consolidated ones that keep this record as a source)")
+            homes = {obligations[l][0] for l in merged}
+            for tg in same:
+                if tg["record_id"] not in homes:
+                    err(f"intake: {rid} names a same-obligation target that is not the home of an obligation consolidated here")
+        if disp == "CONTRIBUTES_EVIDENCE" and not e["targets"] and not (purpose == "COMPLETED_EVIDENCE" and e["placement"] == "NO_HOME"):
+            err(f"intake: {rid} evidence must name what it contributes to (a work record or a register row), unless it is completed evidence with no home")
         for cid in e["concern_ids"]:
             c = concerns.get(cid)
             if not c or c["record_id"] != rid:
@@ -342,6 +385,11 @@ def continuity_errors(previous, new, registry):
         missing = {(x["record_id"], x["part_id"]) for x in o["source_refs"]} - {(x["record_id"], x["part_id"]) for x in after[lid][1]["source_refs"]}
         if missing:
             errors.append(f"obligation {lid} dropped sources")
+    for lid, (rid, o) in before.items():
+        if lid in after and o["work_kind"] == "RECOVERY" and o["state"] in ("OPEN", "UNCLEAR") and after[lid][1]["state"] in ("DONE_IN_RECORD", "SUPERSEDED", "WITHDRAWN"):
+            for lid2, (rid2, o2) in before.items():
+                if rid2 == rid and o2["work_kind"] == "PREVENTION" and lid2 in after and after[lid2][1]["state"] != o2["state"] and not after[lid2][1]["later_evidence"]:
+                    errors.append(f"prevention obligation {lid2} changed state because recovery {lid} finished; prevention needs its own evidence")
     seen = {}
     for lid, (rid, o) in after.items():
         key = " ".join(o["acceptance"].lower().split())
@@ -376,6 +424,27 @@ def _check_organisation(doc, reads, err):
                 err(f"proposal {pr['proposal_id']}: rehoming is not supported where the disposition is only a cross-reference or has no found home")
         if eff == "CROSS_REFERENCE_ONLY" and kind in ("FILE", "CONSOLIDATE"):
             err(f"proposal {pr['proposal_id']}: a cross-reference is not an attachment")
+    entries = {e["record_id"]: e for e in doc["intake"]}
+    new_work_tools = {"docplane_work_capture", "docplane_work_triage_promote", "docplane_work_triage_discard"}
+    for pr in doc["proposals"]:
+        if pr["provisional"] != (pr["provisional_reason"] is not None):
+            err(f"proposal {pr['proposal_id']}: a provisional proposal states why, and only a provisional one does")
+        creates = (pr["kind"] == "FILE" and pr["effect"] == "RECORD_NEW") or pr["kind"] == "CONSOLIDATE" or pr["tool_name"] in new_work_tools
+        if creates and not pr["provisional"]:
+            backing = [entries[e["record_id"]] for e in pr["evidence"] if e["record_id"] in entries] or list(entries.values())
+            if not backing or any(x["search"]["captures_inspected"] < 1 or x["search"]["initiatives_inspected"] < 1 for x in backing):
+                err(f"proposal {pr['proposal_id']}: new work or duplicate disposal needs relevant captures and initiatives inspected first; otherwise it is provisional")
+    pids = {pr["proposal_id"]: pr for pr in doc["proposals"]}
+    shaky = {(r["record_id"], p["part_id"]) for r in doc["records"] for p in r["parts"] if p["obligation"] and p["obligation"]["currency"] == "UNCERTAIN_CURRENT"}
+    unsure = {e["record_id"] for e in doc["intake"] if e["disposition"] == "UNCERTAIN"}
+    for pr in doc["proposals"]:
+        hb = pr["held_behind"]
+        if hb is not None and (hb == pr["proposal_id"] or pids.get(hb, {}).get("kind") != "VERIFY"):
+            err(f"proposal {pr['proposal_id']}: it can only be held behind a verification proposal that exists")
+        files = pr["kind"] in ("FILE", "LINK", "CONSOLIDATE") or pr["tool_name"] in new_work_tools
+        rests = any((e["record_id"], e["part_id"]) in shaky or e["record_id"] in unsure for e in pr["evidence"])
+        if files and rests and not (hb is not None and pr["provisional"]):
+            err(f"proposal {pr['proposal_id']}: it rests on an uncertain current status, so it must be provisional and held behind a verification proposal")
     b = doc["briefing"]
     incomplete = doc["incomplete"] or bool(doc["retrieval"]["not_retrieved"]) or doc["retrieval"]["budget_exhausted"]
     if incomplete and (b["completeness"] != "INCOMPLETE" or not b["omitted"]):

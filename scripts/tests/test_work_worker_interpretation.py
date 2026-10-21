@@ -32,18 +32,33 @@ def target(n=3, kind="WORK_ITEM", basis="STRUCTURAL", obj=True, disp="ACCEPTED",
 
 def ob(lid, status="NOT_FOUND", targets=(), state="OPEN"):
     return {"local_id": lid, "maps_to": None, "state": state, "due": None, "buried": True, "tracking": {"status": status, "targets": list(targets)},
-            "acceptance": "synthetic acceptance for " + lid, "source_refs": [], "adjudication_status": "NONE"}
+            "acceptance": "synthetic acceptance for " + lid, "source_refs": [], "adjudication_status": "NONE",
+            "work_kind": "DELIVERY", "currency": "AS_OF_RECORD", "later_evidence": [], "scope_components": []}
 
 
 def itarget(n, relation="RELATED", state="BACKLOG"):
-    return {"record_id": U(n), "relation": relation, "work_state_seen": state, "found_by": "STRUCTURAL"}
+    return {"record_id": U(n), "kind": "WORK_RECORD", "register_id": None, "entry_ref": None, "relation": relation, "work_state_seen": state, "found_by": "STRUCTURAL"}
+
+
+def rowtarget(entry="K8", relation="SAME_OBLIGATION", register="prog-register"):
+    return {"record_id": None, "kind": "REGISTER_ROW", "register_id": register, "entry_ref": entry, "relation": relation, "work_state_seen": "NOT_A_WORK_ITEM", "found_by": "CITED_ID"}
+
+
+def comps(*ns):
+    return [{"text": "synthetic scope of source %d" % n, "source_record_id": U(n)} for n in ns]
+
+
+def consolidated(lid, home, *refs, **kw):
+    """An obligation of record `home` that also keeps sources `refs` (record numbers), with each source's scope."""
+    return dict(ob(lid), source_refs=[loc(r, "d") for r in refs], scope_components=comps(home, *refs), **kw)
 
 
 def intake(n, disposition, status="EVALUATED", targets=(), obligations=(), search=None, reason=None, concerns=()):
     placement = {"WARRANTS_NEW_DELIVERABLE": "NO_HOME", "UNCERTAIN": "UNDECIDED", "CORRECTS": "CROSS_REFERENCE_ONLY", "SUPERSEDES": "CROSS_REFERENCE_ONLY"}.get(disposition, "HOME_FOUND")
-    return {"record_id": U(n), "lifecycle_seen": "INBOX", "processing_status": status, "disposition": disposition, "targets": list(targets), "concern_ids": list(concerns), "placement": placement,
+    purpose = {"ADDS_OBLIGATION": "OBLIGATION", "DUPLICATES": "OBLIGATION", "CONTRIBUTES_EVIDENCE": "PROGRESS_EVIDENCE", "CORRECTS": "CORRECTION", "SUPERSEDES": "CORRECTION"}.get(disposition, "BACKGROUND")
+    return {"record_id": U(n), "lifecycle_seen": "INBOX", "processing_status": status, "disposition": disposition, "targets": list(targets), "concern_ids": list(concerns), "placement": placement, "purpose": purpose,
             "obligation_local_ids": list(obligations),
-            "search": search or {"terms": 1, "beyond_workstream": False, "included_completed": False, "limits": "synthetic"},
+            "search": search or {"terms": 1, "beyond_workstream": False, "included_completed": False, "limits": "synthetic", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": "SEARCHED"},
             "reevaluation": {"due": status == "REEVALUATION_DUE", "trigger": "NONE"}, "uncertain_reason": reason}
 
 
@@ -179,9 +194,9 @@ class Interpretation(unittest.TestCase):
         self.bad(d, "share an acceptance condition")
 
     def test_duplicates_are_consolidated_keeping_every_source_reference(self):
-        d = with_ob(dict(ob("o1"), source_refs=[loc(2, "d")]))
+        d = with_ob(consolidated("o1", 1, 2))
         self.assertEqual(interp.validate(d), [])
-        d = with_ob(dict(ob("o1"), source_refs=[loc(77, "d")]))
+        d = with_ob(dict(ob("o1"), source_refs=[loc(77, "d")], scope_components=comps(1, 77)))
         self.bad(d, "was not read")
 
     def test_suggestions_are_a_role_but_not_an_obligation(self):
@@ -192,7 +207,7 @@ class Interpretation(unittest.TestCase):
 
     def test_uncertain_obligations_cannot_back_confident_filing(self):
         prop = lambda kind, rank=1: {"proposal_id": "p%d" % rank, "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
-                                     "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low",
+                                     "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low", "provisional": False, "provisional_reason": None, "held_behind": None,
                                      "effect": {"FILE": "RECORD_NEW", "LINK": "CROSS_REFERENCE_ONLY", "METADATA": "CLARIFY", "CONSOLIDATE": "CLARIFY", "VERIFY": "VERIFY"}.get(kind, "CLARIFY")}
         for status in ("UNSETTLED", "UNARBITRATED"):
             for kind in ("FILE", "LINK", "METADATA", "CONSOLIDATE"):
@@ -242,7 +257,7 @@ class Interpretation(unittest.TestCase):
         self.assertTrue(interp.validate(d))
 
     def test_duplicate_means_same_obligation_consolidated_with_this_record_as_a_source(self):
-        dup = dict(ob("o1"), source_refs=[loc(2, "d")])
+        dup = consolidated("o1", 1, 2)
         d = with_ob(dup); d["records"][1]["parts"][1]["role"] = "evidence"
         good = intake(2, "DUPLICATES", targets=[itarget(1, "SAME_OBLIGATION")], obligations=["o1"])
         self.assertEqual(interp.validate(self.incoming(d, good)), [])
@@ -262,7 +277,7 @@ class Interpretation(unittest.TestCase):
         self.bad(self.incoming(d2, intake(2, "ADDS_OBLIGATION", targets=[itarget(3, "RELATED")], obligations=["o1"])), "its own new obligation")
 
     def test_new_deliverable_requires_a_search_beyond_the_workstream_including_completed_work(self):
-        wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "literal key and title terms only; capture bodies not searched"}
+        wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "literal key and title terms only; capture bodies not searched", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": "SEARCHED"}
         def doc(search):
             d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "b", "text": "synthetic raised risk", "status": "UNRESOLVED"}]
             return self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=search, concerns=["c1"]))
@@ -286,23 +301,23 @@ class Interpretation(unittest.TestCase):
 
     def test_continuity_no_loss_no_duplicate_no_dropped_sources(self):
         reg = {"o1": U(500)}
-        before = with_ob(dict(ob("o1"), source_refs=[loc(2, "d")]))
-        after = with_ob(dict(ob("o1"), maps_to=U(500), source_refs=[loc(2, "d"), loc(3, "x")]))
+        before = with_ob(consolidated("o1", 1, 2))
+        after = with_ob(dict(consolidated("o1", 1, 2, 3), maps_to=U(500)))
         self.assertEqual(interp.continuity_errors(before, after, reg), [])
         self.assertTrue(any("lost" in e for e in interp.continuity_errors(before, base(), reg)))
-        self.assertTrue(any("minted id" in e for e in interp.continuity_errors(before, with_ob(dict(ob("o1"), source_refs=[loc(2, "d")])), reg)))
-        self.assertTrue(any("dropped sources" in e for e in interp.continuity_errors(before, with_ob(dict(ob("o1"), maps_to=U(500))), reg)))
+        self.assertTrue(any("minted id" in e for e in interp.continuity_errors(before, with_ob(consolidated("o1", 1, 2)), reg)))
+        self.assertTrue(any("dropped sources" in e for e in interp.continuity_errors(before, with_ob(dict(ob("o1"), maps_to=U(500), scope_components=comps(1, 2))), reg)))
         dup = copy.deepcopy(after); dup["records"][1]["parts"][0]["role"] = "obligation"
         dup["records"][1]["parts"][0]["obligation"] = dict(ob("o2"), acceptance="synthetic acceptance for o1")
         self.assertTrue(any("duplicate" in e for e in interp.continuity_errors(before, dup, reg)))
 
     def test_new_deliverable_must_reference_an_obligation_or_an_explicit_concern_with_evidence(self):
-        wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "key and title only"}
+        wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "key and title only", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": "SEARCHED"}
         d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "b", "text": "synthetic raised risk", "status": "UNRESOLVED"}]
         self.assertEqual(interp.validate(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, concerns=["c1"]))), [])
         self.bad(self.incoming(base(), intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide)), "must reference an extracted obligation or an explicit unresolved concern")
         d = with_ob(ob("o1"))                                      # an extracted obligation is also acceptable
-        self.assertEqual(interp.validate(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, obligations=["o1"]))), [])
+        self.assertEqual(interp.validate(self.incoming(d, dict(intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, obligations=["o1"]), purpose="OBLIGATION"))), [])
         d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(2), "part_id": "c", "text": "synthetic", "status": "UNRESOLVED"}]
         self.bad(self.incoming(d, intake(1, "WARRANTS_NEW_DELIVERABLE", search=wide, concerns=["c1"])), "not an explicit concern raised by this record")
         d = base(); d["concerns"] = [{"concern_id": "c1", "record_id": U(1), "part_id": "zz", "text": "synthetic", "status": "UNRESOLVED"}]
@@ -331,7 +346,7 @@ class Interpretation(unittest.TestCase):
 
     def test_a_cross_reference_is_not_a_rehoming(self):
         prop = lambda kind, effect, ev: {"proposal_id": "p1", "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(ev)],
-            "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": 1, "confidence": "medium", "effect": effect}
+            "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": 1, "confidence": "medium", "effect": effect, "provisional": False, "provisional_reason": None, "held_behind": None}
         cross = intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]); cross["placement"] = "CROSS_REFERENCE_ONLY"
         d = self.incoming(base(), cross); d["proposals"] = [prop("LINK", "REHOME", 1)]
         self.bad(d, "rehoming is not supported")
@@ -356,6 +371,132 @@ class Interpretation(unittest.TestCase):
         self.assertEqual(interp.validate(d), [])
         d2 = base(); d2["briefing"]["omitted"] = [{"what": "x", "why": "y"}]
         self.bad(d2, "cannot be COMPLETE")
+
+    # ---- regression tests from the held-out scoring (synthetic fixtures; regression evidence, not held-out validation)
+
+    def test_regression_completed_evidence_keeps_its_purpose_without_an_initiative_home(self):
+        reg_evidence = dict(intake(1, "CONTRIBUTES_EVIDENCE", targets=[rowtarget("K8")]), purpose="COMPLETED_EVIDENCE")
+        self.assertEqual(interp.validate(self.incoming(base(), reg_evidence)), [])                    # a pinned register row is an evidence target
+        no_home = dict(intake(1, "CONTRIBUTES_EVIDENCE"), purpose="COMPLETED_EVIDENCE", placement="NO_HOME")
+        self.assertEqual(interp.validate(self.incoming(base(), no_home)), [])                         # completed evidence needs no home
+        self.bad(self.incoming(base(), dict(no_home, placement="HOME_FOUND")), "evidence must name what it contributes to")
+        self.bad(self.incoming(base(), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="no initiative"), purpose="COMPLETED_EVIDENCE")), "stays completed evidence")
+        d = with_ob(ob("o1"))                                                                        # missing placement must not manufacture an open obligation
+        self.bad(self.incoming(d, dict(intake(1, "CONTRIBUTES_EVIDENCE", obligations=["o1"], targets=[rowtarget("K8")]), purpose="COMPLETED_EVIDENCE")), "must not manufacture an open obligation")
+        bad_row = dict(rowtarget("K8"), register_id="undeclared-register")
+        self.bad(self.incoming(base(), dict(intake(1, "CONTRIBUTES_EVIDENCE", targets=[bad_row]), purpose="COMPLETED_EVIDENCE")), "declared authoritative register")
+        self.assertEqual(interp.validate(self.incoming(with_ob(ob("o1", state="DONE_IN_RECORD")), dict(intake(1, "CONTRIBUTES_EVIDENCE", obligations=["o1"], targets=[rowtarget("K8")]), purpose="COMPLETED_EVIDENCE"))), [])
+
+    def test_regression_a_historical_action_is_reconciled_against_later_evidence_already_retrieved(self):
+        stale = dict(ob("o1"), later_evidence=[loc(3, "x")])                                        # later evidence retrieved, still presented as plainly open
+        self.bad(with_ob(stale), "cannot be presented as plainly as-of-record")
+        uncertain = dict(ob("o1"), later_evidence=[loc(3, "x")], currency="UNCERTAIN_CURRENT", tracking={"status": "CANDIDATE", "targets": [target(3, basis="SEMANTIC", state="BACKLOG")]})
+        self.assertEqual(interp.validate(with_ob(uncertain)), [])                                    # status stays uncertain; the home is a candidate
+        claimed_home = dict(uncertain, tracking={"status": "TRACKED", "targets": [target(3)]})
+        self.bad(with_ob(claimed_home), "only a candidate, not TRACKED")
+        self.bad(with_ob(dict(ob("o1"), later_evidence=[loc(77, "x")], currency="UNCERTAIN_CURRENT")), "was not read")
+
+    def test_regression_prevention_work_stays_independent_of_recovery(self):
+        def two(recovery_state, prevention_state, prevention_later=()):
+            d = base()
+            d["records"][0]["parts"][1]["role"] = "obligation"
+            d["records"][0]["parts"][0]["obligation"] = dict(ob("rec", state=recovery_state), work_kind="RECOVERY")
+            d["records"][0]["parts"][1]["obligation"] = dict(ob("prev", state=prevention_state), work_kind="PREVENTION", acceptance="synthetic prevention acceptance", later_evidence=list(prevention_later),
+                                                              currency="UNCERTAIN_CURRENT" if prevention_later else "AS_OF_RECORD")
+            return d
+        before = two("OPEN", "OPEN"); reg = {"rec": U(501), "prev": U(502)}
+        after = two("DONE_IN_RECORD", "OPEN")
+        for d in (before, after):
+            for p in d["records"][0]["parts"]: p["obligation"]["maps_to"] = reg[p["obligation"]["local_id"]]
+        self.assertEqual(interp.continuity_errors(before, after, reg), [])                           # recovery done, prevention untouched
+        wrongly = two("DONE_IN_RECORD", "SUPERSEDED")
+        for p in wrongly["records"][0]["parts"]: p["obligation"]["maps_to"] = reg[p["obligation"]["local_id"]]
+        self.assertTrue(any("prevention obligation prev" in e for e in interp.continuity_errors(before, wrongly, reg)))
+        own = two("DONE_IN_RECORD", "SUPERSEDED", prevention_later=[loc(3, "x")])
+        for p in own["records"][0]["parts"]: p["obligation"]["maps_to"] = reg[p["obligation"]["local_id"]]
+        self.assertEqual(interp.continuity_errors(before, own, reg), [])                             # prevention may change with its own evidence
+
+    def test_regression_two_captures_named_one_preventive_obligation_keep_both_sources_and_the_cross_repo_scope(self):
+        d = base()
+        d["records"][1]["parts"][0]["role"] = "obligation"
+        d["records"][1]["parts"][0]["obligation"] = dict(ob("prev"), work_kind="PREVENTION", source_refs=[loc(1, "b")], scope_components=comps(2, 1))
+        both = [intake(2, "ADDS_OBLIGATION", targets=[itarget(3)], obligations=["prev"]), intake(1, "DUPLICATES", targets=[itarget(2, "SAME_OBLIGATION")], obligations=["prev"])]
+        d = self.incoming(d, *both)
+        self.bad(d, "a DUPLICATES relation between them is required")
+        d["relations"] = [dict(rel("r1", "DUPLICATES", "STRUCTURAL"), **{"from": loc(1), "to": loc(2), "evidence": [loc(3)]})]
+        self.assertEqual(interp.validate(d), [])
+        lost = copy.deepcopy(d); lost["records"][1]["parts"][0]["obligation"]["scope_components"] = comps(2)
+        self.bad(lost, "must keep each source's own scope")
+        self.bad(self.incoming(base(), intake(1, "DUPLICATES", targets=[itarget(2, "SAME_OBLIGATION")])), "a duplicate needs")
+
+    def test_regression_new_work_or_duplicate_disposal_needs_captures_inspected_or_is_provisional(self):
+        def doc(captures, provisional=False, kind="CAPABILITY_GAP"):
+            search = {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "synthetic", "captures_inspected": captures, "initiatives_inspected": 4, "know_access": "SEARCHED"}
+            d = with_ob(ob("o1")); d["records"][0]["parts"][0]["obligation"]["tracking"] = {"status": "NOT_FOUND", "targets": []}
+            e = dict(intake(1, "ADDS_OBLIGATION", targets=[itarget(3)], obligations=["o1"], search=search))
+            d = self.incoming(d, e)
+            d["proposals"] = [{"proposal_id": "p1", "kind": "FILE", "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
+                               "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "EXISTING_TOOL", "tool_name": "docplane_work_capture", "rank": 1, "confidence": "medium",
+                               "effect": "RECORD_NEW", "provisional": provisional, "provisional_reason": "captures were not searched" if provisional else None, "held_behind": None}]
+            return d
+        self.assertEqual(interp.validate(doc(2)), [])
+        self.bad(doc(0), "needs relevant captures and initiatives inspected first")
+        self.assertEqual(interp.validate(doc(0, provisional=True)), [])
+        d = doc(2); d["proposals"][0]["provisional_reason"] = "stated without being provisional"
+        self.bad(d, "states why, and only a provisional one does")
+
+    def test_regression_missing_know_access_stays_explicit(self):
+        search = lambda know: {"terms": 1, "beyond_workstream": False, "included_completed": False, "limits": "synthetic", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": know}
+        d = self.incoming(base(), intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)], search=search("NOT_SEARCHED_NO_CREDENTIAL")))
+        self.bad(d, "KNOW was not searched")
+        d["briefing"]["completeness"] = "INCOMPLETE"; d["briefing"]["omitted"] = [{"what": "KNOW pages were not searched", "why": "no docs credential on this path"}]
+        self.assertEqual([e for e in interp.validate(d) if "KNOW" in e], [])
+        bad = self.incoming(base(), intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)], search=search("MAYBE")))
+        self.assertTrue(interp.validate(bad))
+
+    def test_regression_scoring_c3_a_record_may_carry_one_consolidated_action_and_one_distinct_action(self):
+        # record 2 = the earlier preventive item (its home); record 1 (incoming) restates its first action and adds a distinct second action
+        d = base()
+        d["records"][1]["parts"][0]["role"] = "obligation"
+        d["records"][1]["parts"][0]["obligation"] = dict(ob("prev-a"), work_kind="PREVENTION", source_refs=[loc(1, "a")], scope_components=comps(2, 1))
+        d["records"][0]["parts"][0]["obligation"] = dict(ob("prev-b"), work_kind="PREVENTION", acceptance="synthetic distinct second action")
+        e = intake(1, "ADDS_OBLIGATION", targets=[itarget(2, "SAME_OBLIGATION"), itarget(3, "RELATED")], obligations=["prev-a", "prev-b"])
+        self.assertEqual(interp.validate(self.incoming(d, e)), [])
+        self.bad(self.incoming(d, intake(1, "ADDS_OBLIGATION", targets=[itarget(3, "SAME_OBLIGATION"), itarget(3, "RELATED")], obligations=["prev-a", "prev-b"])), "not the home of an obligation consolidated here")
+        only_merged = intake(1, "ADDS_OBLIGATION", targets=[itarget(2, "SAME_OBLIGATION"), itarget(3, "RELATED")], obligations=["prev-a"])
+        self.bad(self.incoming(d, only_merged), "needs its own new obligation")
+        stray = copy.deepcopy(d); stray["records"][1]["parts"][0]["obligation"]["source_refs"] = []; stray["records"][1]["parts"][0]["obligation"]["scope_components"] = []
+        self.bad(self.incoming(stray, e), "other obligations here must be consolidated ones")
+
+    def test_regression_scoring_c2_filing_on_an_uncertain_current_status_waits_behind_verification(self):
+        uncertain = dict(ob("o1"), currency="UNCERTAIN_CURRENT", later_evidence=[loc(3, "x")], tracking={"status": "CANDIDATE", "targets": [target(3, basis="SEMANTIC", state="BACKLOG")]})
+        def doc(held=None, provisional=True, verify=True):
+            d = with_ob(uncertain)
+            d = self.incoming(d, dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="later cleanups may have changed the state", obligations=["o1"]), purpose="OBLIGATION"))
+            mk = lambda pid, kind, effect, rank, **kw: dict({"proposal_id": pid, "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
+                "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low", "effect": effect,
+                "provisional": False, "provisional_reason": None, "held_behind": None}, **kw)
+            filing = mk("filing", "FILE", "REHOME", 2, provisional=provisional, provisional_reason="status unverified" if provisional else None, held_behind=held)
+            d["proposals"] = ([mk("verify", "VERIFY", "VERIFY", 1)] if verify else []) + [filing]
+            return d
+        # a rehoming proposal also needs HOME_FOUND; this record is UNDECIDED, so the held filing is refused for that reason too: use a clarifying next action instead
+        d = doc(held="verify"); d["proposals"][1]["kind"] = "NEXT_ACTION"; d["proposals"][1]["effect"] = "CLARIFY"
+        self.assertEqual(interp.validate(d), [])
+        d = doc(); d["proposals"][1]["kind"] = "LINK"; d["proposals"][1]["effect"] = "CROSS_REFERENCE_ONLY"
+        self.bad(d, "must be provisional and held behind a verification proposal")
+        d = doc(held="verify", provisional=False); d["proposals"][1]["kind"] = "LINK"; d["proposals"][1]["effect"] = "CROSS_REFERENCE_ONLY"
+        self.bad(d, "must be provisional and held behind a verification proposal")
+        d = doc(held="nowhere"); d["proposals"][1]["kind"] = "LINK"; d["proposals"][1]["effect"] = "CROSS_REFERENCE_ONLY"
+        self.bad(d, "held behind a verification proposal that exists")
+        d = doc(held="filing"); d["proposals"][1]["kind"] = "LINK"; d["proposals"][1]["effect"] = "CROSS_REFERENCE_ONLY"
+        self.bad(d, "held behind a verification proposal that exists")
+
+    def test_regression_scoring_c1_done_in_the_register_is_completion_evidence_not_an_open_obligation(self):
+        done = with_ob(dict(ob("o1", state="DONE_IN_RECORD"), currency="RECONCILED_CURRENT", later_evidence=[loc(3, "x")]))
+        e = dict(intake(1, "CONTRIBUTES_EVIDENCE", obligations=["o1"], targets=[rowtarget("K8")]), purpose="COMPLETED_EVIDENCE")
+        self.assertEqual(interp.validate(self.incoming(done, e)), [])
+        listed_open = copy.deepcopy(done); listed_open["briefing"]["open_obligations"] = [{"local_id": "o1", "original_record": U(1), "text": "x", "tracking_status": "NOT_FOUND", "coverage": "NO_TARGET"}]
+        self.bad(self.incoming(listed_open, e), "disagrees with its extraction")           # the briefing cannot list a done obligation as open
 
     def test_subset_validator_agrees_with_jsonschema_when_available(self):
         try:

@@ -229,6 +229,16 @@ Corrections after the filing rehearsal (each is a validator rule with tests; the
 * **A shorter briefing cannot imply completeness.** The briefing carries `completeness` and an `omitted` list (unresolved scope, omitted history). Any incomplete run or
   anything not retrieved forces INCOMPLETE with the omissions listed; COMPLETE with omissions is refused. The detailed backlog stays in the appendix.
 
+### Regression work after the independent held-out scoring (labelled regression, not a new independent evaluation)
+
+The held-out output was scored independently; it is preserved unchanged and its scoring stands. The tests below reproduce the faulted patterns on synthetic fixtures. They are regression tests and must not be cited as held-out validation.
+
+* **Purpose, obligation state and filing destination are separate** (scoring C1). `intake.purpose` says what the record is (completed evidence, progress evidence, obligation, ...). A pinned authoritative-register row is a valid evidence target (`kind REGISTER_ROW`), so completed evidence with only a register home, or no home at all, stays completed evidence. A missing home never manufactures an open obligation, and a done obligation is not listed open in the briefing.
+* **Historical actions are reconciled against later evidence already retrieved** (C2). `obligation.currency` and `later_evidence`: with later evidence the status cannot be presented as plainly as-of-record; while it is uncertain a home is only a candidate. A filing, linking or new-work proposal resting on an uncertain current status must be provisional and `held_behind` an existing verification proposal. Prevention work (`work_kind PREVENTION`) is kept independently of recovery: finishing recovery does not change prevention without its own evidence.
+* **Consolidation keeps every source and the cross-repository scope** (C3). `scope_components` must cover each source of a consolidated obligation. A record may carry one consolidated action and one distinct new action (`ADDS_OBLIGATION` with a same-obligation target that is the home of the consolidated one), so the distinct action survives later triage of the other source.
+* **Search scope comes from the read log, not from the agent** (scope finding). `work_worker/evaluations.py` derives each input's scope from the log and always includes the input itself; it refuses a claimed capture or history the log does not show, a generic scope copied across inputs, and an unstated KNOW access.
+* **Inspect captures before proposing new work or duplicate disposal.** `search.captures_inspected` and `know_access` are explicit; a proposal that creates work or disposes of a duplicate is provisional unless relevant captures and initiatives were inspected, and a KNOW search that did not happen must be listed as omitted.
+
 Changes from the frozen v1 evaluation baseline (kept privately so results stay comparable): tracking targets gained
 `kind`, `coverage` and register entries; `run.scope.authoritative_registers`; briefing obligations gained `coverage`.
 Nothing here collects, schedules, triages or writes.

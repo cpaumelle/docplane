@@ -547,7 +547,11 @@
     "tracking",
     "acceptance",
     "source_refs",
-    "adjudication_status"
+    "adjudication_status",
+    "work_kind",
+    "currency",
+    "later_evidence",
+    "scope_components"
    ],
    "properties": {
     "local_id": {
@@ -733,6 +737,51 @@
       "UNARBITRATED"
      ],
      "description": "carried from independent review: such an obligation may not feed a confident filing recommendation"
+    },
+    "work_kind": {
+     "enum": [
+      "RECOVERY",
+      "PREVENTION",
+      "DELIVERY",
+      "DECISION",
+      "OTHER"
+     ],
+     "description": "prevention work is kept independently of recovery work, even when one record carries both"
+    },
+    "currency": {
+     "enum": [
+      "AS_OF_RECORD",
+      "RECONCILED_CURRENT",
+      "UNCERTAIN_CURRENT"
+     ],
+     "description": "AS_OF_RECORD: a historical action nothing later bears on. RECONCILED_CURRENT: reconciled against later evidence. UNCERTAIN_CURRENT: later evidence exists but the current status is not established"
+    },
+    "later_evidence": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/locator"
+     },
+     "description": "later records already retrieved that bear on this obligation's current status"
+    },
+    "scope_components": {
+     "type": "array",
+     "description": "each source's own scope (repository, lane, fixtures) so a consolidated obligation keeps its full cross-repository scope",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "text",
+       "source_record_id"
+      ],
+      "properties": {
+       "text": {
+        "$ref": "#/$defs/text"
+       },
+       "source_record_id": {
+        "$ref": "#/$defs/uuid"
+       }
+      }
+     }
     }
    }
   },
@@ -1060,7 +1109,10 @@
     "tool_name",
     "rank",
     "confidence",
-    "effect"
+    "effect",
+    "provisional",
+    "provisional_reason",
+    "held_behind"
    ],
    "properties": {
     "proposal_id": {
@@ -1142,6 +1194,31 @@
       "CLARIFY"
      ],
      "description": "what applying the proposal would do; REHOME is allowed only where the intake placement is HOME_FOUND"
+    },
+    "provisional": {
+     "type": "boolean",
+     "description": "true when relevant captures were not inspected before proposing new work or duplicate disposal"
+    },
+    "provisional_reason": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/text"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "held_behind": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ident"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "a filing, linking or new-work proposal that rests on an uncertain current status waits behind this verification proposal"
     }
    }
   },
@@ -1222,7 +1299,8 @@
     "reevaluation",
     "uncertain_reason",
     "concern_ids",
-    "placement"
+    "placement",
+    "purpose"
    ],
    "description": "lifecycle_seen is the record's own state, informational only; processing_status is the librarian's, and the two never substitute for each other",
    "properties": {
@@ -1265,13 +1343,23 @@
       "additionalProperties": false,
       "required": [
        "record_id",
+       "kind",
+       "register_id",
+       "entry_ref",
        "relation",
        "work_state_seen",
        "found_by"
       ],
       "properties": {
        "record_id": {
-        "$ref": "#/$defs/uuid"
+        "anyOf": [
+         {
+          "$ref": "#/$defs/uuid"
+         },
+         {
+          "type": "null"
+         }
+        ]
        },
        "relation": {
         "enum": [
@@ -1299,6 +1387,31 @@
          "CITED_ID",
          "SCOPE_SEARCH"
         ]
+       },
+       "kind": {
+        "enum": [
+         "WORK_RECORD",
+         "REGISTER_ROW"
+        ],
+        "description": "REGISTER_ROW: a row of a declared authoritative register (pinned) as the evidence target"
+       },
+       "register_id": {
+        "anyOf": [
+         {
+          "$ref": "#/$defs/ident"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
+       "entry_ref": {
+        "type": [
+         "string",
+         "null"
+        ],
+        "maxLength": 80,
+        "pattern": "^[^\"`\\n\\r]*$"
        }
       }
      }
@@ -1316,7 +1429,10 @@
       "terms",
       "beyond_workstream",
       "included_completed",
-      "limits"
+      "limits",
+      "captures_inspected",
+      "initiatives_inspected",
+      "know_access"
      ],
      "properties": {
       "terms": {
@@ -1331,6 +1447,24 @@
       },
       "limits": {
        "$ref": "#/$defs/text"
+      },
+      "captures_inspected": {
+       "type": "integer",
+       "minimum": 0,
+       "description": "relevant captures other than the record itself that were actually opened"
+      },
+      "initiatives_inspected": {
+       "type": "integer",
+       "minimum": 0,
+       "description": "initiative histories actually opened"
+      },
+      "know_access": {
+       "enum": [
+        "SEARCHED",
+        "NOT_SEARCHED_NO_CREDENTIAL",
+        "NOT_SEARCHED_OTHER"
+       ],
+       "description": "always explicit; anything but SEARCHED must appear in the briefing's omitted list"
       }
      }
     },
@@ -1379,6 +1513,18 @@
       "UNDECIDED"
      ],
      "description": "HOME_FOUND: an existing work item should carry the record or its obligation. CROSS_REFERENCE_ONLY: relate it but do not rehome it. NO_HOME: nothing existing fits (new deliverable). UNDECIDED: uncertain"
+    },
+    "purpose": {
+     "enum": [
+      "COMPLETED_EVIDENCE",
+      "PROGRESS_EVIDENCE",
+      "OBLIGATION",
+      "DECISION",
+      "CORRECTION",
+      "HANDOVER",
+      "BACKGROUND"
+     ],
+     "description": "what the record is, kept separate from its obligation state (on the obligation) and its filing destination (placement and targets)"
     }
    }
   }
