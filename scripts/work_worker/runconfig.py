@@ -62,7 +62,11 @@ def create(spec):
             raise ValueError("a register names a pinned file label that exists")
         regs.append(r)
     prompts = [{"path": os.path.abspath(p), "sha256": sha256_file(p)} for p in spec["prompt_files"]]
-    bundle = hashlib.sha256(b"".join(open(p["path"], "rb").read() for p in prompts)).hexdigest()
+    chunks = []
+    for p in prompts:
+        with open(p["path"], "rb") as handle:
+            chunks.append(handle.read())
+    bundle = hashlib.sha256(b"".join(chunks)).hexdigest()
     body = {"scope_id": spec["scope_id"], "snapshot_cutoff": spec["snapshot_cutoff"], "instance": inst, "know_access": spec["know_access"], "know_reason": spec["know_reason"].strip(),
             "incoming_record_ids": incoming, "initiative_ids": init_ids, "pinned_files": pinned, "authoritative_registers": regs,
             "prompts": prompts, "prompt_bundle_sha256": bundle, "model_configuration": str(spec["model_configuration"])[:300], "read_budget": int(spec["read_budget"]),

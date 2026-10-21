@@ -168,7 +168,10 @@ def _harness(a):
         print("\n".join(errors), file=sys.stderr)
         return 1
     ledger = render_mod.build_ledger([(a.run_label, doc)], _json(a.ledger_in) if a.ledger_in else None, _json(a.applied) if a.applied else None)
-    ops = [json.loads(line) for line in open(a.ops_log)] if a.ops_log else None
+    ops = None
+    if a.ops_log:
+        with open(a.ops_log) as handle:
+            ops = [json.loads(line) for line in handle]
     render_mod.write_all(out, render_mod.render(config, doc, ledger, ops))
     print(f"rendered into {out}: {ledger['count']} proposals retained, {ledger['pending']} pending")
     return 0

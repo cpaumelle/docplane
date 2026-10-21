@@ -387,9 +387,11 @@ class EndToEnd(Workdir):
         self.assertIn("K17", text)
         with self.assertRaises(PermissionError):
             self.cli(*base, "docplane_work_note", "{}")
-        config = json.load(open(self.d / "config.json"))
+        with open(self.d / "config.json") as handle:
+            config = json.load(handle)
         doc = T.Interpretation("test_baseline_and_rich_example_are_valid").incoming(T.base(), T.intake(1, "CONTRIBUTES_EVIDENCE", targets=[T.itarget(3)]))
-        fps = json.load(open(self.d / "fingerprints.json"))
+        with open(self.d / "fingerprints.json") as handle:
+            fps = json.load(handle)
         doc["run"]["prompt_hash"] = config["prompt_bundle_sha256"]
         for rec in doc["records"]:
             rec["source_fingerprint"] = fps[rec["record_id"]]

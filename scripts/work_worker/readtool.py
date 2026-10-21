@@ -88,7 +88,10 @@ class ReadTool:
     def _fingerprints(self, update):
         if not update:
             return
-        data = json.load(open(self.fp_path)) if os.path.exists(self.fp_path) else {}
+        data = {}
+        if os.path.exists(self.fp_path):
+            with open(self.fp_path) as handle:
+                data = json.load(handle)
         data.update(update)
         with open(self.fp_path, "w") as handle:
             json.dump(data, handle)
@@ -159,7 +162,8 @@ class ReadTool:
         path = runconfig.pinned_path(self.config, label)
         if runconfig.sha256_file(path) != next(p["sha256"] for p in self.config["pinned_files"] if p["label"] == label):
             raise ConfigConflict(f"pinned file {label} changed since the config was created")
-        text = open(path).read().splitlines()
+        with open(path) as handle:
+            text = handle.read().splitlines()
         if grep:
             rx = re.compile(grep, re.I)
             out = [f"{i + 1}: {line}" for i, line in enumerate(text) if rx.search(line)]
