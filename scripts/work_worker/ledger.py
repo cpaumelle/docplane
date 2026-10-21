@@ -9,6 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 from hashlib import sha256
 import json
+import re
 from uuid import UUID
 
 KINDS = frozenset({
@@ -24,6 +25,41 @@ def record_id(value):
     return value
 
 
+VERSION = re.compile(r"(proj-v1|sem-v1):[0-9a-f]{64}")
+
+
+def projection_version(**fields):
+    """Reviewed evidence version: digest of an allowlisted scalar projection.
+
+    The governed reads expose no revision for captures or single activities and
+    only an integer ``version`` for initiatives. Callers pass just the fields
+    whose change should reopen review; text bodies are never part of it.
+    """
+    if not fields or any(v is not None and not isinstance(v, (str, int, bool))
+                         for v in fields.values()):
+        raise ValueError("projection takes non-empty scalar fields only")
+    blob = json.dumps(fields, sort_keys=True, separators=(",", ":"))
+    return "proj-v1:" + sha256(blob.encode()).hexdigest()
+
+
+def semantic_version(redacted_text, **state):
+    """Evidence version for an interpreted record: digest of the canonical redacted text actually used.
+
+    ``redacted_text`` must be text already returned through the canonical redaction
+    boundary; raw or unredacted content is never hashed. State fields (scalars) are
+    covered too, so a state change with identical text still moves the version. The
+    canonicalisation is versioned by the ``sem-v1`` prefix: changing it is a new scheme.
+    """
+    import unicodedata
+    if not isinstance(redacted_text, str) or not redacted_text.strip():
+        raise ValueError("semantic version needs redacted text")
+    if any(v is not None and not isinstance(v, (str, int, bool)) for v in state.values()):
+        raise ValueError("state fields must be scalars")
+    canon = " ".join(unicodedata.normalize("NFC", redacted_text).split())
+    blob = json.dumps({"text": canon, "state": state}, sort_keys=True, separators=(",", ":"))
+    return "sem-v1:" + sha256(blob.encode()).hexdigest()
+
+
 def candidate(value):
     """Accept identities only; never persist arbitrary upstream metadata/text."""
     if set(value) != {"subject_id", "kind", "obligation_id", "evidence"}:
@@ -37,9 +73,11 @@ def candidate(value):
         raise ValueError("versioned evidence required")
     result = []
     for item in evidence:
-        if set(item) != {"record_id", "revision_id"}:
+        if set(item) != {"record_id", "version"}:
             raise ValueError("versioned evidence identities required")
-        result.append({k: record_id(v) for k, v in item.items()})
+        if not isinstance(item["version"], str) or not VERSION.fullmatch(item["version"]):
+            raise ValueError("evidence version must be a projection or semantic digest")
+        result.append({"record_id": record_id(item["record_id"]), "version": item["version"]})
     if len({item["record_id"] for item in result}) != len(result):
         raise ValueError("duplicate evidence record")
     return {**value, "evidence": sorted(result, key=lambda x: x["record_id"])}
