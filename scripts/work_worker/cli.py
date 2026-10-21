@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -113,6 +114,31 @@ def _write_new(path, data):
     os.chmod(path, 0o444)
 
 
+def mcp_tool_call(client):
+    """The read tool's transport callback. An MCP isError result is checked first and becomes a bare error code
+    (never upstream text); otherwise structured content, JSON text, or plain text (KNOW pages are markdown)."""
+    def call(verb, args):
+        res = client._rpc("tools/call", {"name": verb, "arguments": args})
+        if res.get("isError"):
+            body = res.get("structuredContent")
+            if body is None:
+                try:
+                    body = json.loads("\n".join(c.get("text", "") for c in res.get("content", []) if isinstance(c, dict)))
+                except ValueError:
+                    body = None
+            code = body.get("code") if isinstance(body, dict) else None
+            code = code if isinstance(code, str) and re.fullmatch(r"[A-Z0-9_]{1,64}", code) else "TOOL_ERROR"
+            return {"error": code, "code": code}
+        if res.get("structuredContent") is not None:
+            return res["structuredContent"]
+        text = "\n".join(c.get("text", "") for c in res.get("content", []) if isinstance(c, dict))
+        try:
+            return json.loads(text)
+        except ValueError:
+            return {"text": text}
+    return call
+
+
 def _harness(a):
     if a.cmd == "config":
         if a.action == "verify":
@@ -138,15 +164,7 @@ def _harness(a):
             from .sources import McpHttpClient, load_api_key
             client = McpHttpClient(config["instance"]["url"], load_api_key(a.key_file), cafile=a.cafile, allow_loopback_http=a.allow_loopback_http)
             client.open()
-            def call(verb, args):
-                res = client._rpc("tools/call", {"name": verb, "arguments": args})
-                if res.get("structuredContent") is not None:
-                    return res["structuredContent"]
-                text = "\n".join(c.get("text", "") for c in res.get("content", []) if isinstance(c, dict))
-                try:
-                    return json.loads(text)
-                except ValueError:                           # KNOW page reads return markdown, not JSON
-                    return {"error": "TOOL_ERROR", "code": "TOOL_ERROR"} if res.get("isError") else {"text": text}
+            call = mcp_tool_call(client)
         tool = readtool.ReadTool(config, a.log, call)
         args = json.loads(a.args)
         if a.verb == "MARK":

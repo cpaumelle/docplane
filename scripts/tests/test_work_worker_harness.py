@@ -177,6 +177,33 @@ class ReadTool(Workdir):
         self.assertEqual(t.call("read_doc", {"path": "p"})["text"], "page text mentioning an error in passing")
         self.assertTrue(all(r["ok"] for r in self.log("know-shapes.jsonl") if r.get("tool") in ("search_docs", "read_doc")))
 
+    def test_mcp_is_error_is_checked_before_parsing_through_the_transport_callback(self):
+        from work_worker import cli
+        shapes = {
+            "structured": {"isError": True, "structuredContent": {"error": "x", "code": "NOT_FOUND", "detail": "upstream words"}, "content": []},
+            "json-text": {"isError": True, "content": [{"type": "text", "text": '{"detail": "upstream words"}'}]},
+            "plain-text": {"isError": True, "content": [{"type": "text", "text": "Error: upstream words"}]},
+            "json-list-text": {"isError": True, "content": [{"type": "text", "text": '[{"path": "p"}]'}]},
+            "structured-list": {"isError": True, "structuredContent": {"result": [{"path": "p"}]}, "content": []},
+        }
+        for name, reply in shapes.items():
+            class Client:
+                def _rpc(self, method, params, reply=reply):
+                    return reply
+            t = self.tool(name="err-%s.jsonl" % name)
+            t._call = cli.mcp_tool_call(Client())
+            for verb, args in (("docplane_work_capture_get", {"capture_id": U(1)}), ("search_docs", {"query": "q"})):
+                res = t.call(verb, args)
+                self.assertEqual(res["error"], res["code"], (name, verb))
+                self.assertNotIn("upstream", json.dumps(res), (name, verb))
+                self.assertNotIn("results", res)
+            rows = [r for r in self.log("err-%s.jsonl" % name) if r.get("tool") in ("docplane_work_capture_get", "search_docs")]
+            self.assertEqual([r["ok"] for r in rows], [False, False], name)
+            self.assertNotIn("upstream", json.dumps(rows), name)
+        self.assertEqual(cli.mcp_tool_call(type("C", (), {"_rpc": lambda s, m, p: shapes["structured"]})())("x", {})["code"], "NOT_FOUND")
+        ok = {"content": [{"type": "text", "text": "# page\nmentions an error in passing"}]}
+        self.assertEqual(cli.mcp_tool_call(type("C", (), {"_rpc": lambda s, m, p: ok})())("read_doc", {})["text"], "# page\nmentions an error in passing")
+
     def test_no_write_verb_and_know_only_when_configured(self):
         t = self.tool()
         for verb in ("docplane_work_note", "docplane_work_capture", "docplane_work_triage_discard", "write_doc"):
