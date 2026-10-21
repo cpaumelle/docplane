@@ -288,3 +288,26 @@ Everything above stays. These points were added to the validator after an indepe
 * **Inspect captures before new work or duplicate disposal.** A proposal that creates work or disposes of a duplicate is provisional unless relevant captures and initiatives were inspected.
 
 Four synthetic scenarios were added for these points (`completed-evidence-register-row`, `uncertain-current-status-held-filing`, `mixed-record-consolidated-and-distinct`, `search-scope-from-the-read-log`); earlier scenarios are unchanged.
+
+### Contract as of #216 bfe9a491 (additions from the bounded review of bc6a3d26)
+
+Everything above stays. These are validator rules in #216 with synthetic tests; they are regression fixes, not validation.
+
+* **A completed tracker cannot back a confident open claim.** An open or unclear obligation that is `TRACKED` while every identified tracker states done or complete is refused, unless each such tracker is marked as not covering the whole obligation (`PARTIAL_SCOPE` or `COMPLETED_WITHOUT_THIS`) and the added scope is stated in `scope_components`. The honest alternatives are a done-in-record obligation reconciled to later evidence, or an uncertain-current candidate. The check does not depend on the purpose label.
+* **Missing placement does not reject a genuine decision or uncertain concern.** Only completed evidence is barred from carrying an open obligation.
+* **`UNDETERMINED` purpose.** An unread or withheld record must have this purpose and an `UNCERTAIN` disposition; `UNDETERMINED` is allowed only with `UNCERTAIN`. The evaluations validator requires a non-`READ` input to be `UNCERTAIN` with low confidence.
+* **Inspection counts must agree with reads.** Claimed captures and initiatives inspected cannot exceed the other records read in the document, nor what the read log shows opened.
+* **Proposals carry structured `subjects`.** The records a proposal would file, link, consolidate or create work from. Filing, linking and consolidation checks apply to the subjects, not only to the evidence ids the agent lists: a subject that is uncertain or has an uncertain-current obligation makes the proposal provisional and held behind a proposal whose effect is `VERIFY`. Every subject must have been read.
+* **Later evidence may cite a pinned authoritative-register row** (`register_id` plus `entry_ref`), only for a register the run declares.
+* **Unavailable KNOW access needs a reason.** The run config requires `know_reason`; the briefing's omitted entry and the evaluations' "not searched: <reason>" statement must carry it.
+
+**Known limits (unchanged or new).** KNOW is unreadable without a docs credential, so nothing may be said to be absent from it. A "same obligation" target must point at the home of a consolidated obligation; a record that owns no extracted obligation is expressed through the owning obligation's sources and per-source scope instead. Extraction recall is unmeasured. Structural checks do not show semantic accuracy.
+
+### Run procedure: original logs and derived regression fixtures
+
+The run procedure in #216 (`RUN-PROCEDURE.md`) is unchanged while #216 is pinned for review; this section is the authority for the distinction until it is folded in.
+
+* **Original logs are evidence.** A run's output directory (interpretation, evaluations, read log, fingerprints, config, verification records, checksums) is written once, made read-only and never edited, even when a later contract rejects it.
+* **Derived regression fixtures are separate.** Anything produced by migrating or correcting an original (a corrected interpretation, view or evaluations) goes in a new directory, labelled as derived regression work, naming the original it came from and the contract head that checks it. It is not a rerun, is not independent validation, and does not demonstrate interpreter accuracy.
+* **A derived read log is the original's rows plus a config header** and the config hash on each row. Original rows are never changed or reordered, and the derived config records that it is derived.
+* **Neither kind contains production content or credentials in Git.** Repository fixtures are synthetic only; private bundles stay outside the repository with a checksum file.
