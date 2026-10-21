@@ -263,3 +263,16 @@ another authoritative list, and the librarian's intake-processing status is kept
 
 One synthetic scenario (`mixed-intake-batch`) exercises all five kinds in a single batch: restated existing obligation, related new action,
 duplicate, completion evidence and a genuinely new concern, checking each disposition and that no obligation is lost or duplicated.
+
+### Corrections after the first filing rehearsal (as implemented in the #216 validator)
+
+A filing rehearsal on a disposable copy exposed four defects. Each is now a validator rule with tests in #216. The rehearsal's own results were produced under the earlier rules and are kept unchanged.
+
+1. **A new deliverable is never only an intake line.** `WARRANTS_NEW_DELIVERABLE` must reference at least one extracted obligation, or an explicit unresolved concern that points at source evidence in the incoming record. A concern has no action and no acceptance field, so nothing is manufactured. The disposition also requires placement `NO_HOME` and a recorded search beyond the workstream that included completed work.
+2. **Proposed organisation is separate from canonical fact.** Records the librarian's own proposals wrote (a cross-reference note, a derived capture) are named in the run. A briefing status line or a relation that rests only on such records is refused, and the interpreter must not write scope claims of its own about an initiative: scope, objective and state come only from the initiative's own history.
+3. **A cross-reference is not a rehoming.** Each intake entry has a placement (`HOME_FOUND`, `CROSS_REFERENCE_ONLY`, `NO_HOME`, `UNDECIDED`) and each proposal an effect (`REHOME`, `CROSS_REFERENCE_ONLY`, `RECORD_NEW`, `VERIFY`, `CLARIFY`). A rehoming proposal requires every evidence record's placement to be `HOME_FOUND`; a filing proposal means rehoming or a new record; a cross-reference cannot be an attachment.
+4. **A shorter briefing must not imply completeness.** The briefing states `INCOMPLETE` and lists unresolved scope and omitted history whenever the run is incomplete or anything was not retrieved, shows that notice first, and links to the detailed backlog. A briefing cannot be `COMPLETE` while anything is omitted.
+
+**Evidence status.** The reruns that check these fixes are regression evidence, not independent validation: the mixed-intake oracle was revised after its failure to accept an explicit concern in place of an obligation (the original result is kept), and the scope and rehoming rerun used a counterfactual input in which the cross-reference note carries the corrected wording.
+
+**Known recall limitation (not fixed).** When the only record that states an action as an action is one the librarian itself wrote, the corrected rule leaves the interpreter with no obligation to extract. In the rerun this reduced the extracted obligations from seven to six: the follow-up was reported as an uncertain placement rather than lost silently. The cause is upstream: the original record had put that follow-up among suggestions. Other open limits: the briefing trades breadth for precision (a successor can miss older related items), there is no way to retire a proposal explicitly, and extraction recall is unmeasured.
