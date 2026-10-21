@@ -145,6 +145,8 @@ class ReadTool:
             res = self._call(verb, args)
             if isinstance(res, dict) and set(res) == {"result"}:
                 res = res["result"]
+            if verb in KNOW_READS and not isinstance(res, dict):     # KNOW verbs return lists (search/list) or page text
+                res = {"results": res} if isinstance(res, list) else {"text": str(res)}
             ok = not (isinstance(res, dict) and "error" in res)
         except PermissionError:
             raise

@@ -168,6 +168,15 @@ class ReadTool(Workdir):
         for fps in (with_a, with_b):
             self.assertEqual(fps[U(1)]["projection"], "sem-v1")
 
+    def test_know_results_that_are_lists_or_text_are_wrapped_not_crashes(self):
+        def call(verb, args):
+            return [{"path": "p", "snippet": "s"}] if verb == "search_docs" else "page text mentioning an error in passing"
+        t = self.tool(name="know-shapes.jsonl")
+        t._call = call
+        self.assertEqual(t.call("search_docs", {"query": "q"})["results"][0]["path"], "p")
+        self.assertEqual(t.call("read_doc", {"path": "p"})["text"], "page text mentioning an error in passing")
+        self.assertTrue(all(r["ok"] for r in self.log("know-shapes.jsonl") if r.get("tool") in ("search_docs", "read_doc")))
+
     def test_no_write_verb_and_know_only_when_configured(self):
         t = self.tool()
         for verb in ("docplane_work_note", "docplane_work_capture", "docplane_work_triage_discard", "write_doc"):

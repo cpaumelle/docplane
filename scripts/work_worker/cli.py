@@ -142,7 +142,11 @@ def _harness(a):
                 res = client._rpc("tools/call", {"name": verb, "arguments": args})
                 if res.get("structuredContent") is not None:
                     return res["structuredContent"]
-                return json.loads(res["content"][0]["text"])
+                text = "\n".join(c.get("text", "") for c in res.get("content", []) if isinstance(c, dict))
+                try:
+                    return json.loads(text)
+                except ValueError:                           # KNOW page reads return markdown, not JSON
+                    return {"error": "TOOL_ERROR", "code": "TOOL_ERROR"} if res.get("isError") else {"text": text}
         tool = readtool.ReadTool(config, a.log, call)
         args = json.loads(a.args)
         if a.verb == "MARK":
