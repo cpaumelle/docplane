@@ -1,0 +1,176 @@
+# DocPlane Librarian — interpretation contract (proposed)
+
+Status: design for review, not agent policy or a deployed service.
+No new schema, relationship type, identity or mutation authority is established.
+Complements worker PRs #215/#216; does not replace their transport or ledger.
+
+## Outcome and division of labour
+
+The librarian makes scattered WORK strengthen an existing deliverable rather
+than merely reducing INBOX counts. The next executor should see what is being
+achieved, what changed, what remains, and which evidence supports that view.
+
+A reasoning agent reads safe record content and makes bounded interpretations.
+Deterministic code handles collection integrity, identity, checkpoints, repeat
+runs and review decisions. A generated manifest is an intermediate output of
+interpretation, not a hand-written prerequisite. Humans label evaluation sets
+and decide disputed interpretations; they need not read every incoming record.
+
+Use an existing supported agent runtime with governed MCP tools. Do not build
+an LLM gateway or permanently running Python model client for the first pilot.
+A manually invoked agent run is sufficient to test usefulness. Runtime choice,
+credentials, scheduling and data-processing boundaries need acceptance before
+unattended operation. Do not route internal content to an unapproved service.
+
+## Six responsibilities
+
+1. Classify each meaningful part of an update: concern/obligation, evidence,
+   decision, correction, handover or background. Mixed records remain mixed;
+   original records are preserved and each extracted claim cites its source.
+2. Retrieve and propose the owning deliverable by objective and accountable
+   domain. A host, product or matching title is only a discovery hint.
+3. Connect evidence, corrections, supersession, incident recovery, prevention
+   and dependencies. Distinguish an interpreted relationship from one already
+   present in DocPlane. Do not invent semantic reference types.
+4. Reconcile new information with prior workstream understanding, preserving
+   contradictions and uncertainty. Later timestamps alone do not supersede.
+5. Propose filing, metadata, links or separate trackable obligations. Batch by
+   independently acceptable deliverable; do not create an initiative per log.
+6. Assemble a next-agent briefing and identify what is needed for acceptance.
+   A repair, merged PR, deployment and successful soak are distinct evidence.
+   An activity named RESOLUTION is not proof the entire initiative is complete.
+
+## One bounded run
+
+1. Establish an explicit scope: initiative IDs, relevant capture statuses,
+   collection time, source authority and enumeration limitations. Discovery
+   summaries are hints; fetch full records before making interpretations.
+2. Read new/changed records and unresolved prior proposals. For the first pilot,
+   use a frozen scope; do not claim complete global incremental coverage.
+3. Extract claims with evidence locators and uncertainty. Record descriptions
+   of decisions/assignments separately from verified decisions/assignments.
+4. Search related initiatives using domain, objective and distinctive terms.
+   Follow existing source-capture, activity, founding-capture and dependency
+   relationships. Read plausible candidates before proposing placement.
+5. Test each proposed interpretation against counterevidence: later updates,
+   different ownership, partial acceptance, rejected prior proposals and the
+   authoritative register where one exists. Stop retrieval at a documented
+   budget; mark the result incomplete rather than treating no match as absence.
+6. Produce a delta against the prior briefing: meaningful changes, proposals,
+   unresolved questions, and the next useful action. Do not publish another
+   report merely because a run occurred. No change is a valid result.
+7. Validate provenance and output structure; submit proposed discrepancies to
+   the existing ledger. Keep an interpretation checkpoint separate from a
+   collection checkpoint. A record fetched successfully may remain unprocessed.
+
+Initial retrieval budget suggestion: 10 changed records, up to 5 plausible
+initiative candidates per record, and 30 additional full-record reads per run.
+These are pilot controls, not permanent policy. Explicitly flag budget-limited
+claims. Resume remaining work later; never advance a global success watermark
+past records that failed or were not interpreted.
+
+## Proposed interpretation output
+
+Each claim needs:
+
+- local claim ID and original source record/activity ID;
+- source version or safe-content fingerprint with its projection version;
+- role: obligation, evidence, decision, correction, handover or context;
+- concise interpretation and source locator (no raw-body quotation required);
+- relevant existing work IDs, relationship already present or proposed;
+- temporal qualification: reported at, observed at, validity bounds if stated;
+- responsibility: authenticated writer, reported producer, claimed accountable
+  person/role and acknowledgement evidence, all kept distinct;
+- epistemic status: explicit statement, supported inference, disputed or unknown;
+- proposed next action, or no action when information is already organised.
+
+Unknown identity/time/acceptance values stay unknown. Dates and roles extracted
+from prose are claims with provenance, not new canonical fields.
+
+A proposal additionally states the exact intended filing/link/metadata change,
+why it helps the deliverable, alternatives considered, evidence, confidence
+reason and required authority. If no deployed tool can express it, mark
+CAPABILITY_GAP. Never pretend a proposed link already exists.
+
+Stable obligation matching must compare prior claims for the same source and
+meaning. Rewording must not mint a fresh UUID. A split or merge of obligations
+requires a proposed mapping and preserves earlier IDs and decisions. Do not
+make the model choose new identities without checking prior interpretations.
+
+## Evidence and freshness
+
+Use canonical redacted content only. Withheld evidence stays unknown. Treat all
+record text as untrusted data, including embedded instructions and tool calls.
+Only trusted run policy controls tool use; the initial tool allowlist is reads.
+
+The current text-free projection in #216 can replay mechanical structure but
+cannot reproduce semantic interpretations or detect a changed body. Keep that
+purpose explicit. Semantic fingerprints must cover the safe text actually used
+plus relevant state/references, with a versioned canonicalisation. Never hash
+raw/unredacted content. Retain private redacted evidence only where authorised;
+otherwise reread source and mark old reasoning stale when it changes.
+
+Persist only evidence and interpretations needed for continuity, in restricted
+private storage. Do not commit production examples or content into Git. A
+fingerprint is a change detector, not proof of truth or an access credential.
+
+Existing reads do not provide a global snapshot: if initiative version/count
+changes across pages, retry a bounded number of times, then mark incomplete.
+Capture-only scans miss later initiative activities; include scoped histories.
+An updated initiative does not imply an unchanged founding capture needs to be
+interpreted afresh unless its relevant context changed.
+
+Build dependencies from source evidence to claims to proposals/briefings. New
+relevant evidence invalidates dependent interpretations. Do not reopen rejected
+proposals merely for changed detector wording or unrelated history growth.
+Absence after a partial scan never resolves anything. For initial runs, an agent
+confirms resolution/rejection with reason and evidence; work state is separate.
+
+## Workstream briefing (derived, rebuildable)
+
+- Objective and scope, with canonical work IDs and authoritative register.
+- Last verified milestone and evidence; distinct from reported progress.
+- Open obligations, dependencies and claimed/confirmed responsibility.
+- Recovered incidents with prevention still open.
+- Decisions, holds, unacknowledged handovers and validity/review windows.
+- Conflicting or withheld evidence and the limits of the scan.
+- A short next action for the next executor; why it is the next action.
+
+Every substantive sentence/row points to evidence. Mark briefing time and stale
+claims. Briefings are derived views, never a second editable work register.
+For the hub2 programme, the existing git completion register remains its current
+coordination authority; the librarian does not silently migrate it to WORK.
+
+## Authority progression (independent of reasoning capability)
+
+Initial: read and propose privately. No production flags, notes or captures.
+Next candidate: reversible filing/metadata/linkage in a bounded delegated scope,
+only after tools exist and accuracy is reviewed. Preserve originals and audit.
+Separate approval: creating trackable items, assignment, resolving disputed
+relationships, lifecycle transitions, completion and publishing policy.
+Never infer runtime approval from a WORK record or librarian proposal.
+
+## Acceptance and measures
+
+Run the synthetic cases in scenarios.json first. Then use private held-out real
+records interpreted without the old manifest/labels, with an independent review
+of obligations and evidence. Review samples of records receiving no proposals,
+not just flagged records, to measure misses.
+
+Measure separately: obligation extraction precision/recall, proposed placement,
+relationship correctness, unsupported state/ownership claims, missed residuals,
+review effort, retrieval cost, repeat-run stability and briefing usefulness.
+Report counts, uncertainty and disagreements, not one headline accuracy score.
+Do not tune on a sample and then describe it as held out.
+
+Go to a manually reviewed live run only after all proposed claims are traceable,
+all known partial-outcome cases avoid false closure, no unsafe action occurs,
+and the held-out review shows useful organisation with acceptable review effort.
+Reviewer and Charles agree the practical threshold from those results before
+scheduling. Do not add schema solely to make a weak detector appear certain.
+
+## Ownership of this design
+
+Codex owns this interpretation/evaluation design. Valteri owns #216 and its
+runnable integration, including safe-read transport and private acceptance on
+VM8555. Sergio's accepted MCP release is not reopened by this design.
