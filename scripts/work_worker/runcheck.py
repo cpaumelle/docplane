@@ -46,6 +46,14 @@ def log_errors(config, log, fingerprints, doc):
             errors.append(f"record {rid_} was not read in this run (no fingerprint was issued for it)")
         elif have["value"] != want["value"]:
             errors.append(f"record {rid_}: the cited fingerprint is not the one the read tool issued")
+    seen_log = evaluations.summarise(log)
+    for e in doc["intake"]:
+        s = e["search"]
+        own = {e["record_id"]}
+        if s["captures_inspected"] > len(seen_log["captures_opened"] - own):
+            errors.append(f"intake {e['record_id']}: claims {s['captures_inspected']} captures inspected but the log shows {len(seen_log['captures_opened'] - own)} other captures opened")
+        if s["initiatives_inspected"] > len(seen_log["histories_opened"]):
+            errors.append(f"intake {e['record_id']}: claims {s['initiatives_inspected']} initiatives inspected but the log shows {len(seen_log['histories_opened'])} histories opened")
     reads_ok = {r["record_id"] for r in doc["retrieval"]["reads"] if r["read_ok"]}
     seen = {i for row in log for i in (row.get("ids_returned") or [])}
     for missing in sorted(reads_ok - seen):

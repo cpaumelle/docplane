@@ -10,7 +10,7 @@ against WORK. Fixtures in the tests are synthetic; this package contains no prod
 * Verify the instance's identity before the run (for a frozen copy: the pinned dump hash and source commit) and record what you verified in `instance.expected_identity`; verify it
   again after the run and keep both records. Any difference invalidates the run.
 * **KNOW access.** KNOW verbs are available only when the config says `know_access: SEARCHED`, which needs a docs credential for the same instance. Otherwise set
-  `NOT_SEARCHED_NO_CREDENTIAL` (or `NOT_SEARCHED_OTHER`): the read tool refuses KNOW reads, every intake entry must say so, and the briefing must list KNOW as omitted. It limits
+  `NOT_SEARCHED_NO_CREDENTIAL` (or `NOT_SEARCHED_OTHER`) **with a reason in `know_reason`** (required): the read tool refuses KNOW reads (quoting the reason), every intake entry must say so, and the briefing must list KNOW as omitted. It limits
   conclusions: nothing may be said to be absent from KNOW; any input whose home or evidence could be a KNOW page stays uncertain or provisional; WORK-only coverage must be stated as such.
 
 ## 1. Pin the run (once)
@@ -18,7 +18,8 @@ Write `spec.json` (all keys required):
 ```
 {"scope_id": "run-1", "snapshot_cutoff": "2026-01-01T00:00:00Z",
  "instance": {"label": "frozen copy", "url": "http://127.0.0.1:PORT/mcp", "expected_identity": {"dump_sha256": "...", "source_commit": "..."}},
- "know_access": "NOT_SEARCHED_NO_CREDENTIAL", "incoming_record_ids": ["<uuid>", ...], "initiative_ids": ["<uuid>", ...],
+ "know_access": "NOT_SEARCHED_NO_CREDENTIAL", "know_reason": "the frozen copy has no docs credential",
+ "incoming_record_ids": ["<uuid>", ...], "initiative_ids": ["<uuid>", ...],
  "pinned_files": [{"label": "register", "path": "register-at-commit.md"}], "prompt_files": ["rules.md", "task.md"],
  "model_configuration": "agent type, model, effort", "read_budget": 250,
  "authoritative_registers": [{"register_id": "programme-register", "description": "...", "pinned_file_label": "register"}]}

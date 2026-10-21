@@ -759,9 +759,16 @@
     "later_evidence": {
      "type": "array",
      "items": {
-      "$ref": "#/$defs/locator"
+      "anyOf": [
+       {
+        "$ref": "#/$defs/locator"
+       },
+       {
+        "$ref": "#/$defs/register_row_ref"
+       }
+      ]
      },
-     "description": "later records already retrieved that bear on this obligation's current status"
+     "description": "later records already retrieved that bear on this obligation's current status; a pinned authoritative-register row may be cited"
     },
     "scope_components": {
      "type": "array",
@@ -1112,7 +1119,8 @@
     "effect",
     "provisional",
     "provisional_reason",
-    "held_behind"
+    "held_behind",
+    "subjects"
    ],
    "properties": {
     "proposal_id": {
@@ -1219,6 +1227,14 @@
       }
      ],
      "description": "a filing, linking or new-work proposal that rests on an uncertain current status waits behind this verification proposal"
+    },
+    "subjects": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/uuid"
+     },
+     "uniqueItems": true,
+     "description": "the records the proposal would file, link, consolidate or create work from. Safety checks apply to these, not only to whichever evidence ids are listed"
     }
    }
   },
@@ -1522,9 +1538,29 @@
       "DECISION",
       "CORRECTION",
       "HANDOVER",
-      "BACKGROUND"
+      "BACKGROUND",
+      "UNDETERMINED"
      ],
      "description": "what the record is, kept separate from its obligation state (on the obligation) and its filing destination (placement and targets)"
+    }
+   }
+  },
+  "register_row_ref": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "register_id",
+    "entry_ref"
+   ],
+   "properties": {
+    "register_id": {
+     "$ref": "#/$defs/ident"
+    },
+    "entry_ref": {
+     "type": "string",
+     "minLength": 1,
+     "maxLength": 80,
+     "pattern": "^[^\"`\\n\\r]*$"
     }
    }
   }

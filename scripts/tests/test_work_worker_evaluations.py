@@ -80,6 +80,22 @@ class SearchScope(unittest.TestCase):
         self.assertEqual(ev.validate_evaluations([inspected], self.LOG), [])
         self.assertTrue(any("states why" in e for e in ev.validate_evaluations([evaluation(1, A, [A, B], provisional=True)], self.LOG)))
 
+    def test_review_unread_or_withheld_inputs_get_a_low_confidence_uncertain_disposition(self):
+        withheld = evaluation(1, A, [A], read_status="WITHHELD", proposed_disposition="CONTRIBUTES_EVIDENCE", confidence="high")
+        errors = ev.validate_evaluations([withheld], self.LOG)
+        self.assertTrue(any("low-confidence UNCERTAIN" in e for e in errors), errors)
+        good = evaluation(1, A, [A], read_status="WITHHELD", proposed_disposition="UNCERTAIN", confidence="low", purpose="UNDETERMINED")
+        self.assertEqual(ev.validate_evaluations([good], self.LOG), [])
+        self.assertTrue(any("UNDETERMINED purpose" in e for e in ev.validate_evaluations([dict(good, purpose="BACKGROUND")], self.LOG)))
+
+    def test_review_know_not_searched_needs_a_reason(self):
+        e = evaluation(1, A, [A]); e["search_scope"]["know"] = "not searched"
+        self.assertTrue(any("no reason is given" in x for x in ev.validate_evaluations([e], self.LOG)))
+        e["search_scope"]["know"] = "not searched: no docs credential on this path"
+        self.assertEqual(ev.validate_evaluations([e], self.LOG), [])
+        e["search_scope"]["know"] = "unknown"
+        self.assertTrue(any("must be stated explicitly" in x for x in ev.validate_evaluations([e], self.LOG)))
+
     def test_failed_or_refused_reads_do_not_count_as_opened(self):
         failed = log(dict(cap(A), ok=False), cap(B))
         self.assertEqual(ev.summarise(failed)["captures_opened"], {B})

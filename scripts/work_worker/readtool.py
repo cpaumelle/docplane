@@ -106,7 +106,7 @@ class ReadTool:
         if verb in KNOW_READS:
             if self.config["know_access"] != "SEARCHED":
                 self._log({"tool": verb, "refused": True, "reason": "KNOW access is " + self.config["know_access"]})
-                raise PermissionError(f"KNOW is not available in this run ({self.config['know_access']}); conclusions depending on KNOW cannot be drawn")
+                raise PermissionError(f"KNOW is not available in this run ({self.config['know_access']}: {self.config['know_reason']}); conclusions depending on KNOW cannot be drawn")
         elif verb not in READ_VERBS:
             self._log({"tool": verb, "refused": True, "reason": "not a read verb"})
             raise PermissionError("not a read verb: " + verb)

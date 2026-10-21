@@ -56,6 +56,8 @@ def consolidated(lid, home, *refs, **kw):
 def intake(n, disposition, status="EVALUATED", targets=(), obligations=(), search=None, reason=None, concerns=()):
     placement = {"WARRANTS_NEW_DELIVERABLE": "NO_HOME", "UNCERTAIN": "UNDECIDED", "CORRECTS": "CROSS_REFERENCE_ONLY", "SUPERSEDES": "CROSS_REFERENCE_ONLY"}.get(disposition, "HOME_FOUND")
     purpose = {"ADDS_OBLIGATION": "OBLIGATION", "DUPLICATES": "OBLIGATION", "CONTRIBUTES_EVIDENCE": "PROGRESS_EVIDENCE", "CORRECTS": "CORRECTION", "SUPERSEDES": "CORRECTION"}.get(disposition, "BACKGROUND")
+    if status == "READ_FAILED":
+        purpose = "UNDETERMINED"
     return {"record_id": U(n), "lifecycle_seen": "INBOX", "processing_status": status, "disposition": disposition, "targets": list(targets), "concern_ids": list(concerns), "placement": placement, "purpose": purpose,
             "obligation_local_ids": list(obligations),
             "search": search or {"terms": 1, "beyond_workstream": False, "included_completed": False, "limits": "synthetic", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": "SEARCHED"},
@@ -124,7 +126,8 @@ class Interpretation(unittest.TestCase):
         self.bad(with_ob(ob("o1", "TRACKED", [target(state="ABANDONED", cov=cover("DOES_NOT_ACTIVELY_COVER", "STALE"))])), "abandoned target stays visible")
         self.bad(with_ob(ob("o1", "TRACKED", [target(state="COMPLETE")])), "completed item does not actively cover")
         done = target(state="COMPLETE", cov=cover("DOES_NOT_ACTIVELY_COVER", "COMPLETED_WITHOUT_THIS"))
-        self.assertEqual(interp.validate(with_ob(ob("o1", "TRACKED", [done]))), [])
+        self.bad(with_ob(ob("o1", "TRACKED", [done])), "cannot back an open TRACKED claim unless it explains the mismatch")   # B1: needs the uncovered part stated
+        self.assertEqual(interp.validate(with_ob(dict(ob("o1", "TRACKED", [done]), scope_components=comps(1)))), [])
 
     def test_authoritative_register_entries_can_track_only_when_declared(self):
         reg = target(kind="AUTHORITATIVE_REGISTER", basis="REGISTER_ENTRY", state="NOT_APPLICABLE", register="prog-register", entry="item 7")
@@ -207,7 +210,7 @@ class Interpretation(unittest.TestCase):
 
     def test_uncertain_obligations_cannot_back_confident_filing(self):
         prop = lambda kind, rank=1: {"proposal_id": "p%d" % rank, "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
-                                     "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low", "provisional": False, "provisional_reason": None, "held_behind": None,
+                                     "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low", "provisional": False, "provisional_reason": None, "held_behind": None, "subjects": [U(1)],
                                      "effect": {"FILE": "RECORD_NEW", "LINK": "CROSS_REFERENCE_ONLY", "METADATA": "CLARIFY", "CONSOLIDATE": "CLARIFY", "VERIFY": "VERIFY"}.get(kind, "CLARIFY")}
         for status in ("UNSETTLED", "UNARBITRATED"):
             for kind in ("FILE", "LINK", "METADATA", "CONSOLIDATE"):
@@ -346,7 +349,7 @@ class Interpretation(unittest.TestCase):
 
     def test_a_cross_reference_is_not_a_rehoming(self):
         prop = lambda kind, effect, ev: {"proposal_id": "p1", "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(ev)],
-            "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": 1, "confidence": "medium", "effect": effect, "provisional": False, "provisional_reason": None, "held_behind": None}
+            "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": 1, "confidence": "medium", "effect": effect, "provisional": False, "provisional_reason": None, "held_behind": None, "subjects": [U(ev)]}
         cross = intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]); cross["placement"] = "CROSS_REFERENCE_ONLY"
         d = self.incoming(base(), cross); d["proposals"] = [prop("LINK", "REHOME", 1)]
         self.bad(d, "rehoming is not supported")
@@ -380,9 +383,9 @@ class Interpretation(unittest.TestCase):
         no_home = dict(intake(1, "CONTRIBUTES_EVIDENCE"), purpose="COMPLETED_EVIDENCE", placement="NO_HOME")
         self.assertEqual(interp.validate(self.incoming(base(), no_home)), [])                         # completed evidence needs no home
         self.bad(self.incoming(base(), dict(no_home, placement="HOME_FOUND")), "evidence must name what it contributes to")
-        self.bad(self.incoming(base(), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="no initiative"), purpose="COMPLETED_EVIDENCE")), "stays completed evidence")
+        self.assertEqual(interp.validate(self.incoming(base(), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="completion claimed, not yet verified"), purpose="COMPLETED_EVIDENCE"))), [])   # P3: genuinely unverified stays uncertain
         d = with_ob(ob("o1"))                                                                        # missing placement must not manufacture an open obligation
-        self.bad(self.incoming(d, dict(intake(1, "CONTRIBUTES_EVIDENCE", obligations=["o1"], targets=[rowtarget("K8")]), purpose="COMPLETED_EVIDENCE")), "must not manufacture an open obligation")
+        self.bad(self.incoming(d, dict(intake(1, "CONTRIBUTES_EVIDENCE", obligations=["o1"], targets=[rowtarget("K8")]), purpose="COMPLETED_EVIDENCE")), "completed evidence must not manufacture an open obligation")
         bad_row = dict(rowtarget("K8"), register_id="undeclared-register")
         self.bad(self.incoming(base(), dict(intake(1, "CONTRIBUTES_EVIDENCE", targets=[bad_row]), purpose="COMPLETED_EVIDENCE")), "declared authoritative register")
         self.assertEqual(interp.validate(self.incoming(with_ob(ob("o1", state="DONE_IN_RECORD")), dict(intake(1, "CONTRIBUTES_EVIDENCE", obligations=["o1"], targets=[rowtarget("K8")]), purpose="COMPLETED_EVIDENCE"))), [])
@@ -431,13 +434,13 @@ class Interpretation(unittest.TestCase):
 
     def test_regression_new_work_or_duplicate_disposal_needs_captures_inspected_or_is_provisional(self):
         def doc(captures, provisional=False, kind="CAPABILITY_GAP"):
-            search = {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "synthetic", "captures_inspected": captures, "initiatives_inspected": 4, "know_access": "SEARCHED"}
+            search = {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "synthetic", "captures_inspected": captures, "initiatives_inspected": 3, "know_access": "SEARCHED"}
             d = with_ob(ob("o1")); d["records"][0]["parts"][0]["obligation"]["tracking"] = {"status": "NOT_FOUND", "targets": []}
             e = dict(intake(1, "ADDS_OBLIGATION", targets=[itarget(3)], obligations=["o1"], search=search))
             d = self.incoming(d, e)
             d["proposals"] = [{"proposal_id": "p1", "kind": "FILE", "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
                                "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "EXISTING_TOOL", "tool_name": "docplane_work_capture", "rank": 1, "confidence": "medium",
-                               "effect": "RECORD_NEW", "provisional": provisional, "provisional_reason": "captures were not searched" if provisional else None, "held_behind": None}]
+                               "effect": "RECORD_NEW", "provisional": provisional, "provisional_reason": "captures were not searched" if provisional else None, "held_behind": None, "subjects": [U(1)]}]
             return d
         self.assertEqual(interp.validate(doc(2)), [])
         self.bad(doc(0), "needs relevant captures and initiatives inspected first")
@@ -475,7 +478,7 @@ class Interpretation(unittest.TestCase):
             d = self.incoming(d, dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="later cleanups may have changed the state", obligations=["o1"]), purpose="OBLIGATION"))
             mk = lambda pid, kind, effect, rank, **kw: dict({"proposal_id": pid, "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(1, "a")],
                 "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low", "effect": effect,
-                "provisional": False, "provisional_reason": None, "held_behind": None}, **kw)
+                "provisional": False, "provisional_reason": None, "held_behind": None, "subjects": [U(1)]}, **kw)
             filing = mk("filing", "FILE", "REHOME", 2, provisional=provisional, provisional_reason="status unverified" if provisional else None, held_behind=held)
             d["proposals"] = ([mk("verify", "VERIFY", "VERIFY", 1)] if verify else []) + [filing]
             return d
@@ -497,6 +500,87 @@ class Interpretation(unittest.TestCase):
         self.assertEqual(interp.validate(self.incoming(done, e)), [])
         listed_open = copy.deepcopy(done); listed_open["briefing"]["open_obligations"] = [{"local_id": "o1", "original_record": U(1), "text": "x", "tracking_status": "NOT_FOUND", "coverage": "NO_TARGET"}]
         self.bad(self.incoming(listed_open, e), "disagrees with its extraction")           # the briefing cannot list a done obligation as open
+
+    # ---- regression tests from the bounded review of bc6a3d26 (synthetic; regression evidence, not independent validation)
+
+    def test_review_b1_a_completed_tracker_cannot_back_a_confident_open_tracked_claim(self):
+        reg_done = target(kind="AUTHORITATIVE_REGISTER", register="prog-register", entry="K8", disp="DONE", state="NOT_APPLICABLE", cov=cover())
+        o = ob("o1", status="TRACKED", targets=[reg_done])
+        self.bad(self.incoming(with_ob(o), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="no work target", obligations=["o1"]), purpose="OBLIGATION")), "cannot back an open TRACKED claim")
+        self.bad(self.incoming(with_ob(o), intake(1, "ADDS_OBLIGATION", targets=[itarget(3)], obligations=["o1"])), "cannot back an open TRACKED claim")
+        self.bad(with_ob(o), "cannot back an open TRACKED claim")                                        # independent of the intake purpose label
+        # legitimate added scope is preserved: the tracker covers part, and the part it does not cover is stated
+        partial = target(kind="AUTHORITATIVE_REGISTER", register="prog-register", entry="K8", disp="DONE", state="NOT_APPLICABLE", cov=cover("DOES_NOT_ACTIVELY_COVER", "PARTIAL_SCOPE"))
+        added = dict(ob("o1", status="TRACKED", targets=[partial]), scope_components=comps(1))
+        self.assertEqual(interp.validate(with_ob(added)), [])
+        self.bad(with_ob(dict(added, scope_components=[])), "cannot back an open TRACKED claim")           # the added scope must be stated
+        # the other honest ways to record the same facts
+        self.assertEqual(interp.validate(with_ob(dict(ob("o1", status="TRACKED", targets=[reg_done], state="DONE_IN_RECORD"), currency="RECONCILED_CURRENT", later_evidence=[loc(3, "x")]))), [])
+        cand = dict(ob("o1", status="CANDIDATE", targets=[target(3, basis="SEMANTIC")]), currency="UNCERTAIN_CURRENT", later_evidence=[loc(3, "x")])
+        self.assertEqual(interp.validate(with_ob(cand)), [])
+        mixed = dict(ob("o1", status="TRACKED", targets=[reg_done, target(3)]))                          # one live tracker remains: not every tracker is done
+        self.assertEqual(interp.validate(with_ob(mixed)), [])
+
+    def test_review_b2_missing_placement_does_not_reject_a_genuine_decision_or_uncertain_concern(self):
+        q = with_ob(dict(ob("o1"), work_kind="DECISION"))
+        for purpose in ("OBLIGATION", "DECISION", "BACKGROUND", "HANDOVER"):
+            d = self.incoming(copy.deepcopy(q), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="register or WORK is an owner call", obligations=["o1"]), purpose=purpose))
+            self.assertEqual(interp.validate(d), [], purpose)
+        wide = {"terms": 3, "beyond_workstream": True, "included_completed": True, "limits": "synthetic", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": "SEARCHED"}
+        new = self.incoming(copy.deepcopy(q), dict(intake(1, "WARRANTS_NEW_DELIVERABLE", obligations=["o1"], search=wide), purpose="DECISION"))
+        self.assertEqual(interp.validate(new), [])
+        # but completed evidence never carries an open obligation
+        self.bad(self.incoming(copy.deepcopy(q), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="x", obligations=["o1"]), purpose="COMPLETED_EVIDENCE")), "completed evidence must not manufacture")
+
+    def test_review_b3_filing_a_still_uncertain_record_waits_behind_verification_even_if_the_evidence_list_omits_it(self):
+        u = dict(ob("o1"), currency="UNCERTAIN_CURRENT", later_evidence=[loc(3, "x")], tracking={"status": "CANDIDATE", "targets": [target(3, basis="SEMANTIC")]})
+        def doc(subjects, held, provisional, with_verify=True):
+            d = self.incoming(with_ob(u), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="the source may be retired", obligations=["o1"]), purpose="OBLIGATION"))
+            mk = lambda pid, kind, effect, rank, **kw: dict({"proposal_id": pid, "kind": kind, "target": "NEW", "change": "synthetic", "why": "synthetic", "alternatives": "none", "evidence": [loc(2, "c")],
+                "confidence_reason": "synthetic", "authority_stage": "PROPOSE_ONLY", "capability": "CAPABILITY_GAP", "tool_name": None, "rank": rank, "confidence": "low", "effect": effect,
+                "provisional": False, "provisional_reason": None, "held_behind": None, "subjects": []}, **kw)
+            filing = mk("pr5", "LINK", "CROSS_REFERENCE_ONLY", 2, subjects=subjects, held_behind=held, provisional=provisional, provisional_reason="status unverified" if provisional else None)
+            d["proposals"] = ([mk("pr8", "VERIFY", "VERIFY", 1)] if with_verify else []) + [filing]
+            return d
+        self.bad(doc([U(1)], None, False), "must be provisional and held behind a verification proposal")      # evidence cites record 2, the subject is the uncertain record 1
+        self.bad(doc([U(1)], "pr8", False), "must be provisional and held behind")
+        self.assertEqual(interp.validate(doc([U(1)], "pr8", True)), [])
+        self.bad(doc([], "pr8", True), "names its subject records")                                                # a subject is required
+        self.bad(doc([U(77)], "pr8", True), "was not read in this run")
+        self.bad(doc([U(1)], "pr8", True, with_verify=False), "held behind a verification proposal that exists")
+
+    def test_review_unread_or_withheld_records_are_undetermined_and_uncertain(self):
+        def unread(purpose, disp="UNCERTAIN"):
+            d = base(); d["retrieval"]["reads"][0]["read_ok"] = False; d["incomplete"] = True
+            return self.incoming(d, dict(intake(1, disp, status="READ_FAILED", reason="withheld"), purpose=purpose))
+        self.assertEqual([e for e in interp.validate(unread("UNDETERMINED")) if "intake" in e], [])
+        self.bad(unread("BACKGROUND"), "an unread or withheld record has an UNDETERMINED purpose")
+        ok = self.incoming(base(), dict(intake(1, "UNCERTAIN", status="UNCERTAIN_PLACEMENT", reason="ambiguous"), purpose="UNDETERMINED"))       # readable but unclassifiable: allowed
+        self.assertEqual(interp.validate(ok), [])
+        self.bad(self.incoming(base(), dict(intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)]), purpose="UNDETERMINED")), "goes with an UNCERTAIN disposition")
+
+    def test_review_inspection_counts_cannot_exceed_what_this_run_read(self):
+        search = lambda c, i: {"terms": 2, "beyond_workstream": True, "included_completed": True, "limits": "x", "captures_inspected": c, "initiatives_inspected": i, "know_access": "SEARCHED"}
+        d = with_ob(ob("o1")); d["records"][0]["parts"][0]["obligation"]["tracking"] = {"status": "NOT_FOUND", "targets": []}
+        d["retrieval"]["reads"] = [r for r in d["retrieval"]["reads"] if r["record_id"] in (U(1), U(2))]
+        self.bad(self.incoming(copy.deepcopy(d), intake(1, "ADDS_OBLIGATION", targets=[itarget(2)], obligations=["o1"], search=search(5, 1))), "but only 1 other records were read")
+        self.bad(self.incoming(copy.deepcopy(d), intake(1, "ADDS_OBLIGATION", targets=[itarget(2)], obligations=["o1"], search=search(1, 9))), "but only 1 other records were read")
+        self.assertEqual(interp.validate(self.incoming(copy.deepcopy(d), intake(1, "ADDS_OBLIGATION", targets=[itarget(2)], obligations=["o1"], search=search(1, 1)))), [])
+
+    def test_review_later_evidence_may_cite_a_pinned_authoritative_register_row(self):
+        row = lambda reg="prog-register": {"register_id": reg, "entry_ref": "K8"}
+        done = dict(ob("o1", state="DONE_IN_RECORD"), currency="RECONCILED_CURRENT", later_evidence=[row()])
+        self.assertEqual(interp.validate(with_ob(done)), [])
+        self.bad(with_ob(dict(done, later_evidence=[row("undeclared")])), "not declared authoritative")
+        self.bad(with_ob(dict(ob("o1"), later_evidence=[row()])), "cannot be presented as plainly as-of-record")      # with later evidence the status is not plainly as-of-record
+
+    def test_review_unavailable_know_access_needs_a_reason(self):
+        search = {"terms": 1, "beyond_workstream": False, "included_completed": False, "limits": "x", "captures_inspected": 1, "initiatives_inspected": 1, "know_access": "NOT_SEARCHED_OTHER"}
+        d = self.incoming(base(), intake(1, "CONTRIBUTES_EVIDENCE", targets=[itarget(3)], search=search))
+        d["briefing"]["completeness"] = "INCOMPLETE"; d["briefing"]["omitted"] = [{"what": "KNOW pages were not searched", "why": "n/a"}]
+        self.bad(d, "needs a reason")
+        d["briefing"]["omitted"] = [{"what": "KNOW pages were not searched", "why": "the docs service refused the read"}]
+        self.assertEqual(interp.validate(d), [])
 
     def test_subset_validator_agrees_with_jsonschema_when_available(self):
         try:

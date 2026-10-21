@@ -10,9 +10,10 @@ import os
 
 DISPLAY_TOP = 3
 WORD_LIMIT = 400
-KNOW_LINE = {"SEARCHED": "KNOW was searched.",
-             "NOT_SEARCHED_NO_CREDENTIAL": "KNOW was not searched (no docs credential on this path): no conclusion that depends on KNOW can be drawn.",
-             "NOT_SEARCHED_OTHER": "KNOW was not searched: no conclusion that depends on KNOW can be drawn."}
+def know_line(config):
+    if config["know_access"] == "SEARCHED":
+        return "KNOW was searched."
+    return f"KNOW was not searched ({config['know_access'].replace('NOT_SEARCHED_', '').lower().replace('_', ' ')}: {config['know_reason']}): no conclusion that depends on KNOW can be drawn."
 
 
 def build_ledger(runs, previous=None, applied=None):
@@ -76,7 +77,7 @@ def render(config, doc, ledger, ops=None):
     def briefing(n_done, n_rem, n_next):
         lines = [f"# Briefing: {_trunc(b['workstream'], 12)}", "",
                  f"> **Scope: {b['completeness']}.** Not covered: " + ("; ".join(omitted[:4]) or "nothing recorded") + (f"; {len(omitted) - 4} more" if len(omitted) > 4 else "") + ". "
-                 f"{KNOW_LINE[config['know_access']]} {len(rows)} remaining obligation(s) extracted; extraction recall is unmeasured, so this is not a complete list. "
+                 f"{know_line(config)} {len(rows)} remaining obligation(s) extracted; extraction recall is unmeasured, so this is not a complete list. "
                  f"{len(pending)} proposals pending in the ledger (top {min(n_next, len(ranked))} shown). Full backlog: [remaining](appendix.md#remaining), [proposals](appendix.md#proposals), [omitted](appendix.md#omitted).", "",
                  f"Snapshot cutoff {config['snapshot_cutoff']}; instance {config['instance']['label']}; records after the cutoff were not shown.", "",
                  "## Canonical facts (recorded claims; external facts unverified)"]
@@ -105,7 +106,7 @@ def render(config, doc, ledger, ops=None):
         text = briefing(n_done, n_rem, n_next)
 
     app = ["# Appendix (rebuildable from the interpretation, ledger and run config; not an authoritative list)", "",
-           f"Run config {config['config_sha256'][:16]}; scope {config['scope_id']}; snapshot cutoff {config['snapshot_cutoff']}; {KNOW_LINE[config['know_access']]}", "",
+           f"Run config {config['config_sha256'][:16]}; scope {config['scope_id']}; snapshot cutoff {config['snapshot_cutoff']}; {know_line(config)}", "",
            '<a id="remaining"></a>', f"## Remaining obligations ({len(rows)})", "", "| id | kind | obligation | source | tracking | home | coverage | currency | acceptance | review |", "|---|---|---|---|---|---|---|---|---|---|"]
     app += [f"| {r['id']} | {r['kind']} | {r['text']} | {r['source']} | {r['tracking']} | {r['home']} | {r['coverage']} | {r['currency']} | {r['acceptance']} | {r['review']} |" for r in rows]
     app += ["", "## Done and evidence"] + [f"- {s['text']} [{s['confirmation']['basis']}] ({', '.join(_short(e['record_id']) for e in s['evidence'])})" for s in b["status_lines"]]

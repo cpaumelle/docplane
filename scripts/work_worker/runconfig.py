@@ -16,7 +16,7 @@ from . import evaluations, interpretation, ledger
 CUTOFF = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 KNOW = ("SEARCHED", "NOT_SEARCHED_NO_CREDENTIAL", "NOT_SEARCHED_OTHER")
 SPEC_KEYS = {"scope_id", "snapshot_cutoff", "instance", "know_access", "incoming_record_ids", "pinned_files", "prompt_files", "model_configuration",
-             "read_budget", "authoritative_registers", "initiative_ids"}
+             "read_budget", "authoritative_registers", "initiative_ids", "know_reason"}
 
 
 def sha256_file(path):
@@ -41,6 +41,8 @@ def create(spec):
         raise ValueError("snapshot_cutoff must be one UTC timestamp like 2026-10-21T08:50:42Z")
     if spec["know_access"] not in KNOW:
         raise ValueError("know_access must be one of " + ", ".join(KNOW))
+    if not isinstance(spec["know_reason"], str) or (spec["know_access"] != "SEARCHED" and len(spec["know_reason"].strip()) < 5):
+        raise ValueError("unavailable KNOW access needs a reason (know_reason)")
     inst = spec["instance"]
     if set(inst) != {"label", "url", "expected_identity"} or not isinstance(inst["expected_identity"], dict):
         raise ValueError("instance takes label, url and expected_identity (named hashes or versions the operator verified)")
@@ -61,7 +63,7 @@ def create(spec):
         regs.append(r)
     prompts = [{"path": os.path.abspath(p), "sha256": sha256_file(p)} for p in spec["prompt_files"]]
     bundle = hashlib.sha256(b"".join(open(p["path"], "rb").read() for p in prompts)).hexdigest()
-    body = {"scope_id": spec["scope_id"], "snapshot_cutoff": spec["snapshot_cutoff"], "instance": inst, "know_access": spec["know_access"],
+    body = {"scope_id": spec["scope_id"], "snapshot_cutoff": spec["snapshot_cutoff"], "instance": inst, "know_access": spec["know_access"], "know_reason": spec["know_reason"].strip(),
             "incoming_record_ids": incoming, "initiative_ids": init_ids, "pinned_files": pinned, "authoritative_registers": regs,
             "prompts": prompts, "prompt_bundle_sha256": bundle, "model_configuration": str(spec["model_configuration"])[:300], "read_budget": int(spec["read_budget"]),
             "contract": _package_hashes()}
@@ -112,6 +114,8 @@ def header_errors(config, doc):
         errors.append("authoritative registers conflict with the run config")
     if run["prompt_hash"] != config["prompt_bundle_sha256"]:
         errors.append("prompt_hash conflicts with the pinned prompt bundle")
+    if config["know_access"] != "SEARCHED" and not any("know" in x["what"].lower() and len(x["why"].strip()) >= 5 for x in doc["briefing"]["omitted"]):
+        errors.append("KNOW is unavailable in this run config, so the briefing must list it as omitted with a reason")
     for e in doc["intake"]:
         if e["search"]["know_access"] != config["know_access"]:
             errors.append(f"intake {e['record_id']}: know_access conflicts with the run config ({config['know_access']})")

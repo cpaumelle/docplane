@@ -67,9 +67,17 @@ def validate_evaluations(evaluations, log):
         for i in s.get("initiatives_read") or []:
             if i not in seen["histories_opened"]:
                 errors.append(f"input {n}: claims initiative {i} was read but the log shows no history opened")
-        know = (s.get("know") or "").lower()
-        if not know.startswith(KNOW_WORDS):
+        know = (s.get("know") or "").strip().lower()
+        if know.startswith("not searched"):
+            if len(know.partition(":")[2].strip()) < 5:
+                errors.append(f"input {n}: KNOW was not searched and no reason is given (write 'not searched: <reason>')")
+        elif not know.startswith("searched"):
             errors.append(f"input {n}: KNOW access must be stated explicitly (searched, or not searched and why)")
+        if e.get("read_status", "READ") != "READ":
+            if e.get("proposed_disposition") != "UNCERTAIN" or e.get("confidence") != "low":
+                errors.append(f"input {n}: an unread or withheld record ({e['read_status']}) gets a low-confidence UNCERTAIN disposition, not a judgement")
+            if e.get("purpose", "UNDETERMINED") != "UNDETERMINED":
+                errors.append(f"input {n}: an unread or withheld record has an UNDETERMINED purpose")
         scopes.setdefault(tuple(sorted(read)), []).append((n, cid))
         others = [c for c in read if c != cid]
         needs = e.get("proposed_disposition") in GENERIC_DISPOSITIONS_NEEDING_CAPTURE_SEARCH or (e.get("relation_to_existing") or {}).get("class") == "NEW"

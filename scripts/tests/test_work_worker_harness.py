@@ -53,7 +53,7 @@ class Workdir(unittest.TestCase):
 
     def spec(self, **over):
         s = {"scope_id": "s1", "snapshot_cutoff": CUTOFF, "instance": {"label": "synthetic instance", "url": "http://127.0.0.1:1/mcp", "expected_identity": {"dump_sha256": "synthetic"}},
-             "know_access": "SEARCHED", "incoming_record_ids": [U(1)], "initiative_ids": [U(9)], "pinned_files": [{"label": "register", "path": str(self.d / "register.md")}],
+             "know_access": "SEARCHED", "know_reason": "no docs credential on this path", "incoming_record_ids": [U(1)], "initiative_ids": [U(9)], "pinned_files": [{"label": "register", "path": str(self.d / "register.md")}],
              "prompt_files": [str(self.d / "prompt.md")], "model_configuration": "synthetic agent", "read_budget": 12,
              "authoritative_registers": [{"register_id": "prog-register", "description": "programme register kept in git", "pinned_file_label": "register"}]}
         s.update(over)
@@ -77,6 +77,11 @@ class Config(Workdir):
         self.assertTrue(any("self hash differs" in e for e in runconfig.verify(edited)))
         (self.d / "register.md").write_text("changed")
         self.assertTrue(any("pinned file changed" in e for e in runconfig.verify(c)))
+
+    def test_review_unavailable_know_access_needs_a_reason(self):
+        with self.assertRaises(ValueError):
+            runconfig.create(self.spec(know_access="NOT_SEARCHED_OTHER", know_reason=""))
+        self.assertEqual(runconfig.create(self.spec(know_access="NOT_SEARCHED_OTHER", know_reason="the docs service refused reads"))["know_reason"], "the docs service refused reads")
 
     def test_bad_specs_are_refused(self):
         for over in ({"snapshot_cutoff": "yesterday"}, {"know_access": "MAYBE"}, {"incoming_record_ids": []}, {"read_budget": 5, "extra": 1},
@@ -201,6 +206,20 @@ class RunCheck(Workdir):
         with open(mixed, "a") as f:
             f.write(json.dumps({"tool": "docplane_work_capture_get", "cfg": "0" * 16, "ok": True, "ids_returned": []}) + "\n")
         self.assertTrue(any("mixes run configurations" in e for e in self.run_check(config, doc, fps)))
+
+    def test_review_claimed_inspections_must_agree_with_logged_reads(self):
+        config, doc, fps = self.make_run()
+        doc["intake"][0]["search"]["captures_inspected"] = 2             # the log shows two other captures opened (records 2 and 3)
+        self.assertEqual([e for e in self.run_check(config, doc, fps) if "captures inspected" in e], [])
+        doc["intake"][0]["search"]["captures_inspected"] = 3             # claims one more than the log returned
+        self.assertTrue(any("captures inspected but the log shows 2" in e for e in self.run_check(config, doc, fps)))
+        doc["retrieval"]["reads"].append({"record_id": U(50), "how_found": "SEARCH", "read_ok": True})        # the document says more was read than the log returned
+        self.assertTrue(any("never returned it" in e for e in self.run_check(config, doc, fps)))
+        two = copy.deepcopy(doc); two["retrieval"]["reads"] = two["retrieval"]["reads"][:-1]
+        two["intake"][0]["search"]["captures_inspected"] = 2
+        self.assertEqual([e for e in self.run_check(config, two, fps) if "inspected" in e], [])
+        two["intake"][0]["search"]["initiatives_inspected"] = 2             # only one initiative history was opened
+        self.assertTrue(any("initiatives inspected but the log shows 1 histories opened" in e for e in self.run_check(config, two, fps)))
 
     def test_mint_ids_are_immutable_and_continuity_uses_them(self):
         config, doc, fps = self.make_run()
