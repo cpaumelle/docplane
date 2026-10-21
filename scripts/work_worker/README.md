@@ -156,6 +156,37 @@ read live, complete):
   tuned rule.
 * *Uncertain*: every coverage claim, every external status, and the state flags above.
 
+## Interpretation contract (librarian-interp-2)
+
+The hand-supplied manifest above is now an **evaluation fixture**. The intended operating model is an interpreting
+agent (a manually invoked run on an existing agent runtime with governed read tools) whose output replaces the
+manifest and is validated before anything is stored. `interpretation.schema.json` and `interpretation.py` (stdlib
+validator: a JSON Schema subset plus semantic rules) define that output; prose and scenarios live in design PR #217.
+
+Rules the validator enforces, beyond shape:
+
+* **TRACKED** means an identifiable work item, or an entry in a register the run declared authoritative (for example
+  a programme register kept in git), records the obligation with a stated objective and disposition. **Active
+  coverage is a separate judgement per target**, and an ABANDONED or COMPLETE target stays visible: an abandoned
+  target is TRACKED but never actively covers. A semantic match is at most a CANDIDATE; a report that restates the
+  item is MENTIONED_ONLY.
+* Confirmation is qualified by source (`WORK_STATE_READ_NOW`, `DOCPLANE_PAGE_READ_NOW`, `MODEL_READ_NOW`,
+  `RECORDED_CLAIM_ONLY`, `EXTERNAL_UNVERIFIED` with a named verifier). WORK never confirms external execution.
+* A correction that retracts needs an explicit statement and named parts; otherwise it is an unresolved
+  contradiction. Both records and the relation are kept.
+* An id prefix resolves only inside the run's enumerated scope, with exactly one candidate confirmed by a full-id read.
+* Every record relied on, including linked evidence (`depends_on`), must have been read this run; incomplete runs
+  cannot say ready to close.
+
+Ledger: evidence versions may now also be `sem-v1:<sha256>` from `semantic_version(redacted_text, **state)`, a digest
+of the canonical redacted text actually used plus scalar state. It never accepts unredacted content. The cache key for an
+interpretation is the record's version plus the versions of its dependencies and the interpreter, prompt and schema
+versions; a changed dependency invalidates an unchanged record.
+
+Changes from the frozen v1 evaluation baseline (kept privately so results stay comparable): tracking targets gained
+`kind`, `coverage` and register entries; `run.scope.authoritative_registers`; briefing obligations gained `coverage`.
+Nothing here collects, schedules, triages or writes.
+
 ## Usefulness evaluation (agent-assessed, not human-adjudicated)
 
 * **State flags (20).** Each initiative's full history was read by an agent that

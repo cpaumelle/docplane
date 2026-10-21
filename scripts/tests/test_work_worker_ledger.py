@@ -6,7 +6,7 @@ from uuid import UUID
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from work_worker.ledger import reconcile, decide, identity, projection_version
+from work_worker.ledger import reconcile, decide, identity, projection_version, semantic_version
 
 
 def uid(n):
@@ -77,6 +77,24 @@ class LedgerTests(unittest.TestCase):
         value["evidence"][0]["version"] = uid(3)
         with self.assertRaises(ValueError):
             reconcile({}, [value], evaluated_subjects=[uid(1)])
+
+    def test_semantic_versions_are_accepted_stable_and_sensitive(self):
+        value = example()
+        value["evidence"][0]["version"] = semantic_version("Remaining:   do the thing", state="open")
+        state = reconcile({}, [value], evaluated_subjects=[uid(1)])
+        self.assertEqual(semantic_version("Remaining: do the thing", state="open"), value["evidence"][0]["version"])  # whitespace only
+        self.assertNotEqual(semantic_version("Remaining: do the other thing", state="open"), value["evidence"][0]["version"])
+        self.assertNotEqual(semantic_version("Remaining: do the thing", state="done"), value["evidence"][0]["version"])
+        changed = deepcopy(value)
+        changed["evidence"][0]["version"] = semantic_version("Remaining: do the other thing", state="open")
+        reviewed = decide(state, identity(value), status="REJECTED", actor_id=uid(7), evidence=[uid(8)])
+        self.assertEqual(reconcile(reviewed, [value], evaluated_subjects=[uid(1)])[identity(value)]["status"], "REJECTED")
+        self.assertEqual(reconcile(reviewed, [changed], evaluated_subjects=[uid(1)])[identity(value)]["status"], "OPEN")
+
+    def test_semantic_version_refuses_empty_or_structured_input(self):
+        for args, kw in (("", {}), ("   ", {}), ("text", {"state": ["x"]})):
+            with self.assertRaises(ValueError):
+                semantic_version(args, **kw)
 
 
 if __name__ == "__main__":
