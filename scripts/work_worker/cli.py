@@ -70,7 +70,7 @@ def main(argv=None):
     mt.add_argument("--interpretation", required=True); mt.add_argument("--registry-in"); mt.add_argument("--out", required=True)
     rn = sub.add_parser("render", help="briefing (<= 400 words), appendix and full proposal ledger into a NEW directory")
     rn.add_argument("--config", required=True); rn.add_argument("--interpretation", required=True); rn.add_argument("--run-label", required=True)
-    rn.add_argument("--ledger-in"); rn.add_argument("--applied"); rn.add_argument("--ops-log"); rn.add_argument("--out", required=True)
+    rn.add_argument("--ledger-in"); rn.add_argument("--applied"); rn.add_argument("--holds", help="JSON {proposal_id: {reason, source, subjects}}: explicit holds, carried across runs"); rn.add_argument("--ops-log"); rn.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     if a.cmd in ("config", "read", "check", "mint", "render"):
         return _harness(a)
@@ -184,12 +184,12 @@ def _harness(a):
             _write_new(a.report, {"ok": not errors, "errors": errors})
         print("\n".join(errors) or "run check passed")
         return 1 if errors else 0
-    out = runcheck.fresh_output_dir(a.out, a.config, a.interpretation, *(p for p in (a.ledger_in, a.applied, a.ops_log) if p))
+    out = runcheck.fresh_output_dir(a.out, a.config, a.interpretation, *(p for p in (a.ledger_in, a.applied, a.holds, a.ops_log) if p))
     errors = runconfig.verify(config) + runconfig.header_errors(config, doc)
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    ledger = render_mod.build_ledger([(a.run_label, doc)], _json(a.ledger_in) if a.ledger_in else None, _json(a.applied) if a.applied else None)
+    ledger = render_mod.build_ledger([(a.run_label, doc)], _json(a.ledger_in) if a.ledger_in else None, _json(a.applied) if a.applied else None, _json(a.holds) if a.holds else None)
     ops = None
     if a.ops_log:
         with open(a.ops_log) as handle:
