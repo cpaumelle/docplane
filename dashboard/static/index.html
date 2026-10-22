@@ -30,9 +30,8 @@
   </header>
   <div class="shell">
     <nav class="sidebar" data-product-aria="modules" aria-label="DocPlane modules">
-      <button class="nav active" data-view="overview">Overview</button>
       <span class="nav-group">work</span>
-      <button class="nav" data-view="work">Queues &amp; inbox</button>
+      <button class="nav active" data-view="work">Work board</button>
       <span class="nav-group">know</span>
       <button class="nav" data-view="explore">Explore</button>
       <button class="nav" data-view="review">Review</button>
@@ -43,10 +42,11 @@
       <span class="nav-group">observe</span>
       <button class="nav" data-view="observe">Coverage &amp; evidence</button>
       <span class="nav-group">control</span>
+      <button class="nav" data-view="overview">Corpus overview</button>
       <button class="nav" data-view="history">Changes &amp; versions</button>
     </nav>
     <main>
-      <section id="view-overview" class="view active">
+      <section id="view-overview" class="view">
         <div class="heading"><div><h1>Campaigns and state</h1><p>What needs doing, then what is true. Every card opens the view where the work happens.</p></div><button id="refresh-overview">Refresh</button></div>
         <div id="overview-cards" class="cards"></div>
         <div class="grid two">
@@ -55,9 +55,44 @@
         </div>
       </section>
 
-      <section id="view-work" class="view">
-        <div class="heading"><div><h1>Active work</h1><p>Capture without breaking flow; triage deliberately; review what is due.</p></div><button id="refresh-work">Refresh</button></div>
+      <section id="view-work" class="view active">
+        <div class="heading"><div><h1>Work board</h1><p>What comes next, what is held, and the evidence behind it.</p></div><button id="refresh-work">Refresh</button></div>
         <div id="work-cards" class="cards"></div>
+        <div class="work-layout">
+          <article class="panel work-browser">
+            <h2>Choose work</h2>
+            <label>Find an initiative<input id="work-search" type="search" placeholder="Title or key"></label>
+            <label>State<select id="work-state"><option value="">All open work</option><option>ACTIVE</option><option>BACKLOG</option><option>BLOCKED</option><option>SOAKING</option><option>PAUSED</option><option>PARKED</option></select></label>
+            <div id="work-initiatives" class="list muted">Connect to load.</div>
+          </article>
+          <div>
+            <article id="work-brief" class="panel" aria-live="polite">Choose an initiative to read its work brief.</article>
+            <article id="work-update-panel" class="panel" hidden>
+              <div class="panel-heading"><h2>Record a work update</h2><button id="work-update-cancel" type="button">Cancel</button></div>
+              <form id="work-update-form">
+                <input id="work-item-id" type="hidden">
+                <label>Action or obligation<input id="work-item-title" maxlength="300" required></label>
+                <div class="grid two">
+                  <label>Recorded state<select id="work-item-state"><option value="OPEN">Open</option><option value="UNCLEAR">Unclear</option><option value="DONE_IN_RECORD">Done according to evidence</option><option value="SUPERSEDED">Superseded</option><option value="WITHDRAWN">Withdrawn</option></select></label>
+                  <label>Posture<select id="work-item-stance"><option value="ACTIVE">Active</option><option value="HELD">Held — decision required</option><option value="DEFERRED">Deferred — deliberately later</option><option value="UNKNOWN">Unknown</option></select></label>
+                </div>
+                <label>Next action<textarea id="work-item-next" maxlength="1000" placeholder="A concrete next step; held work is never offered as a next action"></textarea></label>
+                <label>Accountable owner (optional)<input id="work-item-owner" maxlength="120" placeholder="A person or role; not the authenticated writer"></label>
+                <label>What changed and why<textarea id="work-item-reason" maxlength="1000" required></textarea></label>
+                <div class="grid two">
+                  <label>Evidence type<select id="work-evidence-type"><option>ACTIVITY</option><option>CAPTURE</option><option>PR</option><option>COMMIT</option><option>ARTIFACT</option><option>PAGE</option><option>CONDITION</option></select></label>
+                  <label>Evidence reference<input id="work-evidence-id" maxlength="300" required placeholder="Record UUID, page path, or exact external reference"></label>
+                </div>
+                <details id="work-decision"><summary>Decision changing a hold, deferral or completed state</summary><p class="muted">Name the recorded decision explicitly. Recording it does not grant permission to deploy or execute.</p><label>Decision reason<textarea id="work-decision-reason" maxlength="1000"></textarea></label><label>Decision activity UUID<input id="work-decision-source" maxlength="36"></label></details>
+                <label>Reported producer<input id="work-producer" maxlength="120" required placeholder="Who produced this update (self-reported)"></label>
+                <p class="muted">Only this named item changes. Other actions and holds are preserved. Evidence is a recorded claim, not live verification.</p>
+                <button id="work-update-save" class="primary" type="submit">Record update</button>
+                <p id="work-update-status" role="status"></p>
+              </form>
+            </article>
+          </div>
+        </div>
+        <details class="panel"><summary>Capture and triage inbox</summary><p class="muted">Use this for new concerns. Progress on existing work belongs in its work brief.</p>
         <div class="grid two">
           <article class="panel">
             <h2>Capture</h2>
@@ -71,7 +106,7 @@
             <div id="work-inbox" class="list muted">Connect to load.</div>
           </article>
         </div>
-        <article class="panel"><h2>Initiatives</h2><div id="work-initiatives" class="list muted">Connect to load.</div></article>
+        </details>
       </section>
 
       <section id="view-explore" class="view">

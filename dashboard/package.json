@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node esbuild.config.js",
-    "check": "node --check esbuild.config.js && node --check editor-src/editor.js && node --check editor-src/inline-editor.js && node --check static/authoring.js"
+    "check": "node --check esbuild.config.js && node --check editor-src/editor.js && node --check editor-src/inline-editor.js && node --check static/authoring.js && node --check static/app.js"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.1",

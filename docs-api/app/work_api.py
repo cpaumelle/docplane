@@ -694,10 +694,10 @@ def add_activity(
         **request.model_dump(mode="json"),
     })
     with get_conn() as conn:
-        _load(conn, initiative_id)
         replayed = load_receipt(conn, principal, key, "INITIATIVE_ACTIVITY_APPEND", digest)
         if replayed is not None:
             return replayed
+        _load(conn, initiative_id, for_update=True)
         cur = conn.cursor()
         cur.execute(
             """
@@ -1262,7 +1262,7 @@ def attach_capture(
             return replayed
         capture = _load_capture(conn, capture_id, for_update=True)
         _require_inbox(capture)
-        initiative = _load(conn, request.initiative_id)
+        initiative = _load(conn, request.initiative_id, for_update=True)
         cur = conn.cursor()
         cur.execute(
             """

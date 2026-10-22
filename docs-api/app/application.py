@@ -19,6 +19,7 @@ from app.structure_api import router as structure_router
 from app.system_api import router as system_router
 from app.trust_api import router as trust_router
 from app.work_api import router as work_router
+from app.work_brief_api import router as work_brief_router
 from app.work_conditions_api import router as work_conditions_router
 
 agent_router = APIRouter()
@@ -44,6 +45,7 @@ app.include_router(agent_router)
 app.include_router(agent_shortcuts_router)
 app.include_router(event_router)
 app.include_router(work_router)
+app.include_router(work_brief_router)
 app.include_router(work_conditions_router)
 app.include_router(model_router)
 app.include_router(model_page_links_router)
