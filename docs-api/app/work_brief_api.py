@@ -169,8 +169,8 @@ def work_update(initiative_id: UUID, payload: Any = Body(...),
         context, activity_count = _context(conn, initiative)
         if request.expected_context != context:
             raise HTTPException(409, detail={"code": "WORK_CONTEXT_STALE", "remedy": "Read the brief and rebase the update with a new idempotency key."})
-        _, previous, _ = _checkpoint(conn, initiative_id)
-        if not _safe_object(previous):
+        _, previous, checkpoint = _checkpoint(conn, initiative_id)
+        if not _safe_object({"items": previous, "checkpoint": checkpoint}):
             raise HTTPException(409, detail={"code": "WORK_CHECKPOINT_WITHHELD"})
         items = merge_items(previous, request)
         _check_evidence(conn, request)

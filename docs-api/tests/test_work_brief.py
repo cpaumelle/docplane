@@ -39,7 +39,9 @@ def test_named_update_preserves_unmentioned_items_ids_and_holds():
 def test_hold_or_deferral_cannot_be_released_or_rewritten_by_progress(stance):
     previous = item(stance=stance)
     for changed in (item(), item(stance=stance, reason="A different decision"),
-                    item(stance=stance, state="DONE_IN_RECORD")):
+                    item(stance=stance, state="DONE_IN_RECORD"),
+                    item(stance=stance, title="Different work under an old decision"),
+                    item(stance=stance, next_action="Perform a different operation")):
         with pytest.raises(HTTPException) as caught:
             merge_items([previous], update({"item": changed}))
         assert caught.value.detail["code"] == "WORK_DECISION_REQUIRED"

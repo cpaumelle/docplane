@@ -81,15 +81,11 @@ def merge_items(previous: list[dict], update: WorkUpdate) -> list[dict]:
         item = change.item.model_dump(mode="json")
         old = items.get(item["item_id"])
         if old is not None:
-            changed_posture = (old["state"], old["stance"]) != (item["state"], item["stance"])
-            if changed_posture and (old["stance"] in {"HELD", "DEFERRED"} or old["state"] in TERMINAL):
-                if change.decision is None:
-                    raise HTTPException(409, detail={"code": "WORK_DECISION_REQUIRED", "item_id": item["item_id"]})
-            # Re-reporting progress must not silently replace the decision's
-            # source or explanation while retaining the same HELD label.
-            if old["stance"] in {"HELD", "DEFERRED"} and (
-                old["reason"] != item["reason"] or old["references"] != item["references"]
-            ) and change.decision is None:
+            # The decision protects the subject and its evidence as well as
+            # the enum: renaming a held/completed item must not silently turn
+            # an old decision into authority for different work.
+            protected = old["stance"] in {"HELD", "DEFERRED"} or old["state"] in TERMINAL
+            if protected and old != item and change.decision is None:
                 raise HTTPException(409, detail={"code": "WORK_DECISION_REQUIRED", "item_id": item["item_id"]})
         items[item["item_id"]] = item
     result = list(items.values())
