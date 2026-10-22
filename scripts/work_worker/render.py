@@ -43,11 +43,6 @@ def _words(text):
     return len(text.split())
 
 
-def _trunc(text, n):
-    parts = text.split()
-    return " ".join(parts[:n]) + (" ..." if len(parts) > n else "")
-
-
 def _short(i):
     return (i or "")[:8]
 
@@ -71,45 +66,54 @@ def render(config, doc, ledger, ops=None):
     rows = _rows(doc)
     pending = [e for e in ledger["entries"] if e["status"] != "APPLIED"]
     ranked = sorted(pending, key=lambda e: e["last_rank"])
-    omitted = [_trunc(x["what"], 12) for x in b["omitted"]]
+    omitted = [x["what"] for x in b["omitted"]]
     writes = [o for o in (ops or []) if o.get("write") and o.get("ok")]
 
-    def briefing(n_done, n_rem, n_next):
-        lines = [f"# Briefing: {_trunc(b['workstream'], 12)}", "",
-                 f"> **Scope: {b['completeness']}.** Not covered: " + ("; ".join(omitted[:4]) or "nothing recorded") + (f"; {len(omitted) - 4} more" if len(omitted) > 4 else "") + ". "
+    def briefing(n_done, n_rem, n_next, n_om):
+        lines = [f"# Briefing: {b['workstream']}", "",
+                 f"> **Scope: {b['completeness']}.** Not covered: " + ("; ".join(omitted[:n_om]) or "nothing recorded") + (f"; {len(omitted) - n_om} more (appendix#omitted)" if len(omitted) > n_om else "") + ". "
                  f"{know_line(config)} {len(rows)} remaining obligation(s) extracted; extraction recall is unmeasured, so this is not a complete list. "
                  f"{len(pending)} proposals pending in the ledger (top {min(n_next, len(ranked))} shown). Full backlog: [remaining](appendix.md#remaining), [proposals](appendix.md#proposals), [omitted](appendix.md#omitted).", "",
                  f"Snapshot cutoff {config['snapshot_cutoff']}; instance {config['instance']['label']}; records after the cutoff were not shown.", "",
                  "## Canonical facts (recorded claims; external facts unverified)"]
-        lines += [f"- {_trunc(s['text'], 22)} ({', '.join(dict.fromkeys(_short(e['record_id']) for e in s['evidence'][:3]))})" for s in b["status_lines"][:n_done]]
+        lines += [f"- {s['text']} ({', '.join(dict.fromkeys(_short(e['record_id']) for e in s['evidence'][:3]))})" for s in b["status_lines"][:n_done]]
+        if len(b["status_lines"]) > n_done:
+            lines.append(f"- {len(b['status_lines']) - n_done} more in the [appendix](appendix.md#done)")
         lines += ["", f"## Remaining obligations ({len(rows)})"]
-        lines += [f"- {_trunc(r['text'], 15)} [{r['source']}] {r['tracking']} {r['home']}" for r in rows[:n_rem]]
+        lines += [f"- {r['text']} [{r['source']}] {r['tracking']} {r['home']}" for r in rows[:n_rem]]
         if len(rows) > n_rem:
-            lines.append(f"- {len(rows) - n_rem} more in the appendix")
+            lines.append(f"- {len(rows) - n_rem} more in the [appendix](appendix.md#remaining)")
         lines += ["", "## Proposed organisation (nothing applied; each shows what it would do)"]
-        lines += [f"{i}. [{e['effect']}{', PROVISIONAL' if e['provisional'] else ''}] {_trunc(e['change'], 24)}" for i, e in enumerate(ranked[:n_next], 1)]
+        lines += [f"{i}. [{e['effect']}{', PROVISIONAL' if e['provisional'] else ''}] {e['change']}" for i, e in enumerate(ranked[:n_next], 1)]
         if writes:
             lines += ["", f"Applied outside this tool: {len(writes)} write(s) (appendix#operations)."]
         return "\n".join(lines) + "\n"
 
-    n_done, n_rem, n_next = 4, 7, DISPLAY_TOP
-    text = briefing(n_done, n_rem, n_next)
+    # Actionable text is never cut: when the briefing is over the limit, fewer COMPLETE items are selected and the rest is linked to the appendix.
+    n_done, n_rem, n_next, n_om = 4, 7, DISPLAY_TOP, 4
+    text = briefing(n_done, n_rem, n_next, n_om)
     while _words(text) > WORD_LIMIT:
-        if n_rem > 2:
+        if n_om > 1 and n_om > len(omitted) // 2:
+            n_om -= 1
+        elif n_rem > 2:
             n_rem -= 1
         elif n_done > 1:
             n_done -= 1
         elif n_next > 1:
             n_next -= 1
+        elif n_rem > 1:
+            n_rem -= 1
+        elif n_om > 1:
+            n_om -= 1
         else:
-            raise ValueError("the banner alone does not fit in %d words" % WORD_LIMIT)
-        text = briefing(n_done, n_rem, n_next)
+            raise ValueError("the briefing cannot fit in %d words with one complete item of each kind; shorten the workstream or the item texts" % WORD_LIMIT)
+        text = briefing(n_done, n_rem, n_next, n_om)
 
     app = ["# Appendix (rebuildable from the interpretation, ledger and run config; not an authoritative list)", "",
            f"Run config {config['config_sha256'][:16]}; scope {config['scope_id']}; snapshot cutoff {config['snapshot_cutoff']}; {know_line(config)}", "",
            '<a id="remaining"></a>', f"## Remaining obligations ({len(rows)})", "", "| id | kind | obligation | source | tracking | home | coverage | currency | acceptance | review |", "|---|---|---|---|---|---|---|---|---|---|"]
     app += [f"| {r['id']} | {r['kind']} | {r['text']} | {r['source']} | {r['tracking']} | {r['home']} | {r['coverage']} | {r['currency']} | {r['acceptance']} | {r['review']} |" for r in rows]
-    app += ["", "## Done and evidence"] + [f"- {s['text']} [{s['confirmation']['basis']}] ({', '.join(_short(e['record_id']) for e in s['evidence'])})" for s in b["status_lines"]]
+    app += ["", '<a id="done"></a>', "## Done and evidence"] + [f"- {s['text']} [{s['confirmation']['basis']}] ({', '.join(_short(e['record_id']) for e in s['evidence'])})" for s in b["status_lines"]]
     app += ["", "## Intake evaluation of incoming records", "", "| record | lifecycle | purpose | processing | disposition | placement | targets | search |", "|---|---|---|---|---|---|---|---|"]
     for e in doc["intake"]:
         app.append(f"| {_short(e['record_id'])} | {e['lifecycle_seen']} | {e['purpose']} | {e['processing_status']} | {e['disposition']} | {e['placement']} | "
