@@ -257,7 +257,7 @@ function initialiseNavigation() {
   const params = new URLSearchParams(location.search);
   const hash = (location.hash || "").replace(/^#/, "");
   const parsed = parseHash();
-  const requested = hash ? parsed.view : validView(params.get("view") || "overview");
+  const requested = hash ? parsed.view : validView(params.get("view") || "work");
   if (!hash) {
     const url = new URL(location.href);
     url.hash = requested;
@@ -1435,10 +1435,10 @@ if (typeof document !== "undefined") {
   });
   $("connect").addEventListener("click", async () => {
     const candidate = $("token").value.trim();
-    if (candidate && await authentication.useToken(candidate)) await loadOverview();
+    if (candidate && await authentication.useToken(candidate)) { const parsed = parseHash(); activate(parsed.view, parsed.arg); }
   });
   document.addEventListener("docplane:authentication-rejected", async () => {
-    if (await authentication.recover()) await loadOverview();
+    if (await authentication.recover()) { const parsed = parseHash(); activate(parsed.view, parsed.arg); }
   });
   document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
   $("refresh-overview").addEventListener("click", loadOverview);

@@ -117,3 +117,14 @@ def test_authenticated_routes_and_required_uuid_key_contract():
     parameters = app.openapi()["paths"]["/api/v1/initiatives/{initiative_id}/updates"]["post"]["parameters"]
     key = next(p for p in parameters if p["name"] == "Idempotency-Key")
     assert key["required"] and key["schema"]["format"] == "uuid"
+
+
+def test_top_level_invalid_body_is_not_reflected_in_http_error():
+    from app.agent_auth import Principal, require_contributor
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[require_contributor] = lambda: Principal(str(uuid4()), "AGENT", "fixture", str(uuid4()))
+    result = TestClient(app).post(f"/api/v1/initiatives/{uuid4()}/updates",
+        headers={"Idempotency-Key": str(uuid4())}, json=["PRIVATE_SENTINEL"])
+    assert result.status_code == 422
+    assert "PRIVATE_SENTINEL" not in result.text

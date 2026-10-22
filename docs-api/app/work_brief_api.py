@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from uuid import UUID
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from pydantic import TypeAdapter, ValidationError
@@ -151,7 +152,7 @@ def _check_evidence(conn, request):
              openapi_extra={"requestBody": {"required": True, "content": {"application/json": {
                  "schema": WorkUpdate.model_json_schema()}}}, "parameters": [{"name": "Idempotency-Key",
                  "in": "header", "required": True, "schema": {"type": "string", "format": "uuid"}}]})
-def work_update(initiative_id: UUID, payload: dict = Body(...),
+def work_update(initiative_id: UUID, payload: Any = Body(...),
                 idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", include_in_schema=False),
                 principal: Principal = Depends(require_contributor)):
     key = _activity_key(idempotency_key)

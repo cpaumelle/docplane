@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node esbuild.config.js",
-    "check": "node --check esbuild.config.js && node --check editor-src/editor.js && node --check editor-src/inline-editor.js && node --check static/authoring.js && node --check static/app.js"
+    "check": "node --check esbuild.config.js && node --check editor-src/editor.js && node --check editor-src/inline-editor.js && node --check static/authoring.js && node --check static/app.js && npm run test:work",
+    "test:work": "node tests/work_board_dom.cjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "6.5.1",
@@ -12,6 +13,7 @@
     "codemirror": "6.0.2"
   },
   "devDependencies": {
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "jsdom": "26.1.0"
   }
 }
