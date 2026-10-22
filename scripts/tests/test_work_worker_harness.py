@@ -372,6 +372,53 @@ class Rendering(Workdir):
         self.assertEqual(out["briefing.md"].count("\n1. ") + out["briefing.md"].count("\n2. ") + out["briefing.md"].count("\n3. "), 3)   # display cap = 3
         self.assertIn("14 proposals pending", out["briefing.md"])
 
+    def test_regression_actionable_text_is_never_cut_mid_sentence_fewer_complete_items_are_selected(self):
+        config, doc = self.config(), self.synthetic(6)
+        words = lambda tag, n=28: " ".join("%s%d" % (tag, k) for k in range(n))      # long, distinctive, complete sentences
+        doc["briefing"]["open_obligations"] = [{"local_id": "o1", "original_record": U(1), "text": "synthetic", "tracking_status": "NOT_FOUND", "coverage": "UNKNOWN"}]
+        doc["briefing"]["workstream"] = words("workstream", 26)
+        doc["briefing"]["status_lines"] = [{"text": words("fact%d_" % i), "confirmation": {"basis": "RECORDED_CLAIM_ONLY", "read_at": "2026-01-01T00:00:00Z", "verifier_needed": None},
+                                            "evidence": [T.loc(1, "a")]} for i in range(6)]
+        doc["briefing"]["omitted"] = [{"what": words("omitted%d_" % i, 20), "why": "synthetic reason"} for i in range(6)]
+        for rec in doc["records"]:
+            for part in rec["parts"]:
+                if part["obligation"]:
+                    part["interpretation"] = words("obligation")
+        for i, pr in enumerate(doc["proposals"]):
+            pr["change"] = words("proposal%d_" % i)
+        ledger = render.build_ledger([("r1", doc)])
+        out = render.render(config, doc, ledger)
+        brief = out["briefing.md"]
+        self.assertLessEqual(len(brief.split()), 400)
+        self.assertNotIn("...", brief)
+        self.assertNotIn("\u2026", brief)
+        self.assertIn("## Remaining obligations (1)", brief)
+        self.assertIn(words("obligation"), brief, "the only remaining action must be shown whole")
+        self.assertIn(words("obligation"), out["appendix.md"])
+        shown = {"fact": 0, "proposal": 0, "omitted": 0}
+        for key, tag in (("fact", "fact%d_"), ("proposal", "proposal%d_"), ("omitted", "omitted%d_")):
+            for i in range(6):
+                first = (tag % i) + "0"
+                if first in brief:
+                    shown[key] += 1
+                    n = 20 if key == "omitted" else 28
+                    self.assertIn(" ".join((tag % i) + str(k) for k in range(n)), brief, "a selected item must appear complete")
+        self.assertTrue(0 < shown["fact"] < 6 and 0 < shown["proposal"] <= 6 and 0 < shown["omitted"] < 6, shown)   # fewer, complete items were selected
+        self.assertIn("appendix.md#done", brief)
+        self.assertIn("appendix#omitted", brief)
+        for i in range(6):                                                   # nothing is lost: the appendix has every item whole
+            self.assertIn(" ".join("fact%d_%d" % (i, k) for k in range(28)), out["appendix.md"])
+            self.assertIn(" ".join("proposal%d_%d" % (i, k) for k in range(28)), out["appendix.md"])
+            self.assertIn(" ".join("omitted%d_%d" % (i, k) for k in range(20)), out["appendix.md"])
+
+    def test_an_oversized_only_obligation_refuses_instead_of_cutting_or_hiding_it(self):
+        config, doc = self.config(), self.synthetic(1)
+        doc["briefing"]["open_obligations"] = [{"local_id": "o1", "original_record": U(1), "text": "synthetic", "tracking_status": "NOT_FOUND", "coverage": "UNKNOWN"}]
+        doc["records"][0]["parts"][0]["interpretation"] = " ".join("action%d" % i for i in range(401))
+        ledger = render.build_ledger([("r1", doc)])
+        with self.assertRaisesRegex(ValueError, "one complete item"):
+            render.render(config, doc, ledger)
+
     def test_a_later_run_without_a_proposal_keeps_it_pending_and_applied_ones_are_marked(self):
         config, first = self.config(), self.synthetic(5)
         ledger = render.build_ledger([("r1", first)])
