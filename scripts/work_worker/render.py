@@ -17,15 +17,64 @@ def know_line(config):
 
 
 def _hold(pid, h):
-    if not isinstance(h, dict) or len(str(h.get("reason", "")).strip()) < 5 or len(str(h.get("source", "")).strip()) < 3:
-        raise ValueError(f"hold for {pid} needs a reason and a source (who or what decided it)")
-    return {"reason": str(h["reason"]).strip(), "source": str(h["source"]).strip(), "subjects": sorted(h.get("subjects") or [])}
+    ok = isinstance(h, dict) and all(isinstance(h.get(k), str) for k in ("reason", "source")) and len(h["reason"].strip()) >= 5 and len(h["source"].strip()) >= 3
+    ok = ok and isinstance(h.get("subjects", []), list) and all(isinstance(x, str) and x for x in h.get("subjects", []))
+    if not ok:
+        raise ValueError(f"hold for {pid} needs a string reason and a string source (who or what decided it) and a list of string subjects")
+    return {"reason": h["reason"].strip(), "source": h["source"].strip(), "subjects": sorted(h.get("subjects", []))}
+
+
+def _subject_status(pid, who, value):
+    if value is True or value == "APPLIED":
+        return "APPLIED"
+    if value == "PENDING":
+        return "PENDING"
+    raise ValueError(f"application record for {pid}: subject {who} has status {value!r}; only APPLIED or PENDING are recorded here (holds go in the hold record)")
+
+
+def _merge_applied(pid, old, new):
+    """Merge a newer application record into the earlier one. Earlier subjects and receipts are never dropped; anything that would rewrite history is refused."""
+    if not isinstance(new, dict):
+        raise ValueError(f"application record for {pid} must be an object")
+    if old is None:
+        old = {}
+    out = {k: v for k, v in old.items() if k not in ("subjects", "receipts", "partial")}
+    for k, v in new.items():
+        if k not in ("subjects", "receipts", "partial") and k in out and out[k] != v:
+            raise ValueError(f"application record for {pid}: conflicting {k!r} ({out[k]!r} then {v!r})")
+        if k not in ("subjects", "receipts", "partial"):
+            out[k] = v
+    subs = {k: _subject_status(pid, k, v) for k, v in (old.get("subjects") or {}).items()}
+    for k, v in (new.get("subjects") or {}).items():
+        v = _subject_status(pid, k, v)
+        if subs.get(k) == "APPLIED" and v != "APPLIED":
+            raise ValueError(f"application record for {pid}: subject {k} was APPLIED and cannot be recorded as {v}")
+        subs[k] = v
+    receipts = [dict(r) for r in (old.get("receipts") or [])]
+    for r in (new.get("receipts") or []):
+        same = [x for x in receipts if x.get("capture_id") == r.get("capture_id")]
+        if r.get("capture_id") and same:
+            if any(x != r for x in same):
+                raise ValueError(f"application record for {pid}: a different receipt already exists for {r.get('capture_id')}")
+            continue
+        receipts.append(dict(r))
+    if subs:
+        out["subjects"] = subs
+    if receipts:
+        out["receipts"] = receipts
+    if "partial" in old or "partial" in new:
+        was, now = old.get("partial"), new.get("partial", old.get("partial"))
+        if now is True and ((was is False and not subs) or (subs and all(v == "APPLIED" for v in subs.values()))):
+            raise ValueError(f"application record for {pid}: a fully applied proposal cannot be recorded as partial")
+        if now is False and subs and any(v != "APPLIED" for v in subs.values()):
+            raise ValueError(f"application record for {pid}: cannot be recorded complete while subjects are not applied")
+        out["partial"] = now
+    return out
 
 
 def _subjects(applied, hold):
     """Per-subject status from the applied record (subjects: {id: APPLIED}) and the hold (subjects held). None when nothing is tracked per subject."""
-    done = dict((applied or {}).get("subjects") or {})
-    out = {k: ("APPLIED" if v in (True, "APPLIED") else "PENDING") for k, v in done.items()}
+    out = {k: _subject_status("ledger", k, v) for k, v in ((applied or {}).get("subjects") or {}).items()}
     for k in (hold or {}).get("subjects", []):
         out.setdefault(k, "HELD")
     return out or None
@@ -50,8 +99,13 @@ def build_ledger(runs, previous=None, applied=None, holds=None):
         if pid not in entries:
             raise ValueError(f"applied/hold record names a proposal that is in no ledger or run: {pid}")
     for pid, e in entries.items():
-        app = (applied or {}).get(pid, e.get("applied"))                    # carried unless a newer record replaces it
-        hold = _hold(pid, holds[pid]) if pid in (holds or {}) else e.get("hold")
+        app = _merge_applied(pid, e.get("applied"), applied[pid]) if pid in (applied or {}) else e.get("applied")   # carried; a newer record is merged, never replaces
+        hold = e.get("hold")
+        if pid in (holds or {}):
+            newer = _hold(pid, holds[pid])
+            if hold and hold != newer:
+                e["hold_history"] = list(e.get("hold_history", [])) + [hold]       # a changed hold decision keeps the earlier one
+            hold = newer
         subj = _subjects(app, hold)
         if app is not None and subj:
             partial = any(v != "APPLIED" for v in subj.values())
@@ -101,7 +155,7 @@ def render(config, doc, ledger, ops=None):
     rows = _rows(doc)
     pending = [e for e in ledger["entries"] if e["status"] != "APPLIED"]
     held = [e for e in pending if e.get("hold")]                              # any explicit hold, including a hold on one subject of a partly applied proposal
-    ranked = sorted((e for e in pending if e["status"] != "HELD"), key=lambda e: e["last_rank"])
+    ranked = sorted((e for e in pending if not e.get("hold")), key=lambda e: e["last_rank"])   # any explicit hold (also on a partly applied proposal) keeps it out of the next-action ranking
     omitted = [x["what"] for x in b["omitted"]]
     writes = [o for o in (ops or []) if o.get("write") and o.get("ok")]
 

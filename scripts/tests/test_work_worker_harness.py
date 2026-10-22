@@ -450,6 +450,53 @@ class Rendering(Workdir):
         with self.assertRaises(ValueError):
             render.build_ledger([("r3", first)], previous=ledger, holds={"nope": {"reason": "no such proposal", "source": "operator"}})
 
+    def test_regression_partly_applied_proposal_with_a_hold_is_not_ranked_but_stays_visible(self):
+        config, doc = self.config(), self.synthetic(4)
+        A, B = U(31), U(32)
+        ledger = render.build_ledger([("r1", doc)], applied={"p00": {"subjects": {A: "APPLIED"}}},
+                                     holds={"p00": {"reason": "second attach is deferred by the operator", "source": "batch review", "subjects": [B]}})
+        self.assertEqual({e["proposal_id"]: e["status"] for e in ledger["entries"]}["p00"], "PARTLY_APPLIED")
+        out = render.render(config, doc, ledger)
+        brief_actions = out["briefing.md"].split("## Proposed organisation")[1]
+        self.assertNotIn("synthetic proposal 0 ", brief_actions)                              # a partly applied proposal with a hold is never offered as the next action
+        self.assertIn("synthetic proposal 1 ", brief_actions)
+        self.assertIn("1 of them on explicit hold", out["briefing.md"])
+        self.assertIn("| p00 |", out["appendix.md"])
+        self.assertIn(f"p00 per subject: {A} APPLIED; {B} HELD", out["appendix.md"])
+
+    def test_regression_application_records_merge_without_losing_subjects_or_receipts_and_conflicts_are_refused(self):
+        doc = self.synthetic(3)
+        A, B, C = U(41), U(42), U(43)
+        r = lambda cap, act: {"capture_id": cap, "activity_id": act, "triaged_at": "2026-01-01T00:00:00Z"}
+        first = render.build_ledger([("r1", doc)], applied={"p00": {"subjects": {A: "APPLIED"}, "receipts": [r(A, "a1")]}})
+        second = render.build_ledger([("r2", doc)], previous=first, applied={"p00": {"subjects": {B: "APPLIED"}, "receipts": [r(B, "b1")]}})
+        e = {x["proposal_id"]: x for x in second["entries"]}["p00"]
+        self.assertEqual(e["subjects"], {A: "APPLIED", B: "APPLIED"})                         # earlier subject kept
+        self.assertEqual([x["capture_id"] for x in e["applied"]["receipts"]], [A, B])         # earlier receipt kept
+        self.assertEqual(e["status"], "APPLIED")
+        again = render.build_ledger([("r3", doc)], previous=second, applied={"p00": {"subjects": {A: "APPLIED"}, "receipts": [r(A, "a1")]}})
+        self.assertEqual(len({x["capture_id"] for x in {y["proposal_id"]: y for y in again["entries"]}["p00"]["applied"]["receipts"]}), 2)   # an identical repeat is idempotent
+        for bad in ({"subjects": {A: "PENDING"}},                                             # an applied subject cannot be un-applied
+                    {"receipts": [r(A, "other-activity")]},                                   # a different receipt for the same capture
+                    {"subjects": {C: "FAILED"}},                                              # unknown status
+                    {"partial": True}):                                                       # fully applied cannot become partial
+            with self.assertRaises(ValueError, msg=str(bad)):
+                render.build_ledger([("r4", doc)], previous=second, applied={"p00": bad})
+        partial_first = render.build_ledger([("r1", doc)], applied={"p01": {"subjects": {A: "APPLIED", B: "PENDING"}}})
+        with self.assertRaises(ValueError):                                                   # cannot be declared complete while a subject is pending
+            render.build_ledger([("r2", doc)], previous=partial_first, applied={"p01": {"partial": False}})
+
+    def test_regression_hold_reason_and_source_must_be_real_strings(self):
+        doc = self.synthetic(2)
+        ok = {"reason": "operator decision about this capture", "source": "batch review"}
+        render.build_ledger([("r1", doc)], holds={"p00": ok})
+        for bad in (dict(ok, source=None), dict(ok, reason=None), dict(ok, source=123), dict(ok, reason=["x"]), dict(ok, subjects="2029f662"), dict(ok, subjects=[None]), None, "text"):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                render.build_ledger([("r1", doc)], holds={"p00": bad})                        # source:null must not become the string "None"
+        ledger = render.build_ledger([("r1", doc)], holds={"p00": ok})
+        changed = render.build_ledger([("r2", doc)], previous=ledger, holds={"p00": dict(ok, reason="the operator changed the decision")})
+        self.assertEqual({x["proposal_id"]: x for x in changed["entries"]}["p00"]["hold_history"][0]["reason"], ok["reason"])   # an earlier hold decision is kept
+
     def test_a_later_run_without_a_proposal_keeps_it_pending_and_applied_ones_are_marked(self):
         config, first = self.config(), self.synthetic(5)
         ledger = render.build_ledger([("r1", first)])
