@@ -62,13 +62,15 @@ def _merge_applied(pid, old, new):
         out["subjects"] = subs
     if receipts:
         out["receipts"] = receipts
-    if "partial" in old or "partial" in new:
-        was, now = old.get("partial"), new.get("partial", old.get("partial"))
-        if now is True and ((was is False and not subs) or (subs and all(v == "APPLIED" for v in subs.values()))):
+    if "partial" in new:                                                    # only an explicit new claim is checked; an inherited flag is recomputed from the subjects
+        now = new["partial"]
+        if now is True and ((old.get("partial") is False and not subs) or (subs and all(v == "APPLIED" for v in subs.values()))):
             raise ValueError(f"application record for {pid}: a fully applied proposal cannot be recorded as partial")
         if now is False and subs and any(v != "APPLIED" for v in subs.values()):
             raise ValueError(f"application record for {pid}: cannot be recorded complete while subjects are not applied")
         out["partial"] = now
+    elif "partial" in old:
+        out["partial"] = old["partial"]
     return out
 
 

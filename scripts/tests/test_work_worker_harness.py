@@ -482,6 +482,9 @@ class Rendering(Workdir):
                     {"partial": True}):                                                       # fully applied cannot become partial
             with self.assertRaises(ValueError, msg=str(bad)):
                 render.build_ledger([("r4", doc)], previous=second, applied={"p00": bad})
+        legacy = render.build_ledger([("r1", doc)], applied={"p02": {"partial": True}})                # an older record without subjects, then per-subject records
+        moved = render.build_ledger([("r2", doc)], previous=legacy, applied={"p02": {"subjects": {A: "APPLIED"}}}, holds={"p02": {"reason": "second attach kept for later", "source": "batch review", "subjects": [B]}})
+        self.assertEqual({x["proposal_id"]: x for x in moved["entries"]}["p02"]["status"], "PARTLY_APPLIED")
         partial_first = render.build_ledger([("r1", doc)], applied={"p01": {"subjects": {A: "APPLIED", B: "PENDING"}}})
         with self.assertRaises(ValueError):                                                   # cannot be declared complete while a subject is pending
             render.build_ledger([("r2", doc)], previous=partial_first, applied={"p01": {"partial": False}})
