@@ -213,7 +213,7 @@ async function startDashboardAuthentication(controller, onReady) {
   return connected;
 }
 
-function validView(name) { return VIEWS.has(name) ? name : "overview"; }
+function validView(name) { return VIEWS.has(name) ? name : "work"; }
 function parseHash() {
   const raw = (location.hash || "").replace(/^#/, "");
   const [name, ...rest] = raw.split("=");
@@ -226,7 +226,7 @@ function activate(name, arg = null) {
   $(`view-${view}`)?.classList.add("active");
   document.querySelector(`.nav[data-view="${view}"]`)?.classList.add("active");
   if (view === "overview") loadOverview();
-  if (view === "work") loadWork();
+  if (view === "work") { if (arg && /^[0-9a-f-]{36}$/.test(arg)) selectedWorkId = arg; loadWork(); }
   if (view === "explore") {
     if (arg !== null) explorePath = arg;
     loadExplore();
@@ -257,7 +257,7 @@ function initialiseNavigation() {
   const params = new URLSearchParams(location.search);
   const hash = (location.hash || "").replace(/^#/, "");
   const parsed = parseHash();
-  const requested = hash ? parsed.view : validView(params.get("view") || "overview");
+  const requested = hash ? parsed.view : validView(params.get("view") || "work");
   if (!hash) {
     const url = new URL(location.href);
     url.hash = requested;
@@ -340,6 +340,153 @@ function renderCertification(value, available) {
   $("certification").innerHTML = `<strong>${esc(state)}</strong><p>${esc(detail)}</p>`;
 }
 
+let workInitiatives = [];
+let selectedWorkId = null;
+let currentWorkBrief = null;
+let workBriefRequest = 0;
+let pendingWorkUpdate = null;
+
+function workLabel(value) { return String(value || "").replaceAll("_", " ").toLowerCase(); }
+function renderWorkChoices() {
+  const query = $("work-search").value.trim().toLowerCase();
+  const state = $("work-state").value;
+  const visible = workInitiatives.filter((item) => (!state || item.work_state === state) &&
+    (!query || `${item.title} ${item.initiative_key}`.toLowerCase().includes(query)));
+  $("work-initiatives").innerHTML = visible.length ? visible.map((item) =>
+    `<button class="work-choice" data-id="${esc(item.initiative_id)}" aria-pressed="${item.initiative_id === selectedWorkId}"><strong>${esc(item.title)}</strong><small>${esc(workLabel(item.work_state))} · ${esc(workLabel(item.priority))}</small></button>`
+  ).join("") : `<p>No matching initiatives.</p>`;
+  $("work-initiatives").querySelectorAll(".work-choice").forEach((button) => button.addEventListener("click", () => {
+    if (!$("work-update-panel").hidden && !confirm("Close this unsaved work update?")) return;
+    $("work-update-panel").hidden = true;
+    navigate("work", button.dataset.id);
+  }));
+}
+function workItemHTML(item, editable) {
+  return `<div class="work-item ${["HELD", "DEFERRED"].includes(item.stance) ? "work-hold" : ""}">
+    <strong>${esc(item.title)}</strong><p class="muted">${esc(workLabel(item.state))} · ${esc(workLabel(item.stance))}${item.owner ? ` · ${esc(item.owner)}` : ""}</p>
+    ${item.next_action ? `<p>${esc(item.next_action)}</p>` : ""}<p>${esc(item.reason)}</p>
+    <details><summary>Evidence and identity</summary><p class="muted">${esc(item.item_id)}</p>${item.references.map((ref) => `<p class="work-evidence">${esc(ref.reference_type)}: ${esc(ref.reference_id)}</p>`).join("")}</details>
+    ${editable ? `<div class="actions"><button class="work-edit" data-id="${esc(item.item_id)}">Update this item</button></div>` : ""}</div>`;
+}
+function renderWorkBrief(brief) {
+  const initiative = brief.initiative;
+  const editable = !brief.checkpoint_withheld && !["COMPLETE", "ABANDONED"].includes(initiative.work_state);
+  const groups = [["next_actions", "Next actions"], ["held", "Held — decision required"], ["deferred", "Deferred — deliberately later"],
+    ["uncertain", "Needs clarification"], ["paused_actions", "Actions paused by initiative state"], ["recorded_done", "Done, superseded or withdrawn in the record"]];
+  const empty = brief.checkpoint_status === "NOT_SET"
+    ? `<p class="work-notice">No structured work brief has been recorded yet. Existing history has not been classified automatically. Read it before adding the first actions or holds.</p>`
+    : brief.checkpoint_withheld ? `<p class="work-notice">The checkpoint cannot be safely displayed. Its work state is unknown; updates are unavailable.</p>` : "";
+  $("work-brief").innerHTML = `<div class="panel-heading"><div><h2>${esc(initiative.title || "Title withheld")}</h2><p class="muted">${esc(workLabel(initiative.work_state))} · ${esc(initiative.initiative_key)}</p></div>${editable ? `<button id="work-new-item">Add an action or hold</button>` : ""}</div>
+    <p>${esc(initiative.objective || "Objective unavailable")}</p>${initiative.scope ? `<details><summary>Scope</summary><p class="work-history">${esc(initiative.scope)}</p></details>` : ""}
+    ${initiative.blocker_summary ? `<p class="work-notice">Blocked: ${esc(initiative.blocker_summary)}</p>` : ""}
+    ${initiative.parked_reason ? `<p class="work-notice">Parked: ${esc(initiative.parked_reason)}</p>` : ""}
+    ${empty}${brief.activities_since_checkpoint > 0 ? `<p class="work-notice">${brief.activities_since_checkpoint} activities were added after this checkpoint. Review their evidence before relying on its recorded state.</p>` : ""}${groups.filter(([key]) => brief[key]?.length).map(([key, title]) => `<section class="work-group"><h3>${title} <span class="muted">(${brief[key].length})</span></h3>${brief[key].map((id) => workItemHTML(brief.items.find((item) => item.item_id === id), editable)).join("")}</section>`).join("")}
+    <section class="work-group"><h3>Recent evidence</h3><p class="muted">Notes do not change actions or release holds automatically.</p>${brief.recent_activity.length ? brief.recent_activity.map((item) => `<details><summary>${esc(workLabel(item.activity_type))} · ${esc(item.created_at)}</summary><p class="work-history">${esc(item.body_withheld ? "Body withheld" : item.body_in_history ? "Full body available in the activity history." : item.body)}</p><p class="muted">Activity ${esc(item.activity_id)} · writer ${esc(item.author_principal_id)}</p></details>`).join("") : `<p>No activities recorded.</p>`}<button id="work-history-open">Read activity history</button><div id="work-history-content"></div></section>
+    <p class="muted">${esc(brief.evidence_policy)}${brief.checkpoint ? ` Checkpoint recorded ${esc(brief.checkpoint.created_at)}; producer ${esc(brief.checkpoint.reported_producer || "not stated")} (self-reported).` : ""}</p>`;
+  $("work-new-item")?.addEventListener("click", () => openWorkItem(null));
+  $("work-brief").querySelectorAll(".work-edit").forEach((button) => button.addEventListener("click", () => openWorkItem(button.dataset.id)));
+  $("work-history-open").addEventListener("click", loadWorkHistory);
+}
+async function loadWorkHistory() {
+  const id = selectedWorkId;
+  const target = $("work-history-content");
+  target.textContent = "Loading history…";
+  try {
+    const data = await api(`/api/control-plane/initiatives/${id}/history`);
+    if (selectedWorkId !== id) return;
+    const activity = data.activities || [];
+    target.innerHTML = activity.map((item) => `<details><summary>${esc(workLabel(item.activity_type))} · ${esc(item.created_at)}</summary><p class="work-history">${esc(item.body_withheld ? "Body withheld" : item.body)}</p><p class="muted">Activity ${esc(item.activity_id)}</p></details>`).join("") || "No activity history.";
+  } catch (error) { if (selectedWorkId === id) target.textContent = error.message; }
+}
+async function selectWork(id) {
+  if (!id) return;
+  const request = ++workBriefRequest;
+  selectedWorkId = id;
+  currentWorkBrief = null;
+  renderWorkChoices();
+  $("work-brief").textContent = "Loading work brief…";
+  try {
+    const data = await api(`/api/control-plane/initiatives/${id}/brief`);
+    if (request !== workBriefRequest) return;
+    if (data.contract !== "work-brief-v1") throw new Error("The API does not support the work brief contract yet.");
+    currentWorkBrief = data;
+    renderWorkBrief(data);
+  } catch (error) { if (request === workBriefRequest) $("work-brief").textContent = error.message; }
+}
+function openWorkItem(id) {
+  if (!currentWorkBrief || currentWorkBrief.checkpoint_withheld) return;
+  if (pendingWorkUpdate) {
+    $("work-update-panel").hidden = false;
+    $("work-update-status").textContent = "The previous request has no confirmed outcome. Retry it with Record update before starting another.";
+    return;
+  }
+  const item = currentWorkBrief.items.find((value) => value.item_id === id);
+  $("work-update-form").reset();
+  $("work-item-id").value = item?.item_id || crypto.randomUUID();
+  $("work-item-title").value = item?.title || "";
+  $("work-item-state").value = item?.state || "OPEN";
+  $("work-item-stance").value = item?.stance || "ACTIVE";
+  $("work-item-next").value = item?.next_action || "";
+  $("work-item-owner").value = item?.owner || "";
+  $("work-item-reason").value = item?.reason || "";
+  $("work-evidence-type").value = item?.references[0]?.reference_type || "ACTIVITY";
+  $("work-evidence-id").value = item?.references[0]?.reference_id || "";
+  $("work-producer").value = "Dashboard contributor";
+  $("work-decision").open = Boolean(item && (["HELD", "DEFERRED"].includes(item.stance) || item.state !== "OPEN"));
+  $("work-update-status").textContent = "";
+  $("work-update-panel").hidden = false;
+  $("work-item-title").focus();
+}
+function workFormLocked(locked) {
+  $("work-update-form").querySelectorAll("input, textarea, select").forEach((item) => { item.disabled = locked; });
+}
+async function saveWorkUpdate(event) {
+  event.preventDefault();
+  if (!currentWorkBrief || $("work-update-save").disabled) return;
+  if (!pendingWorkUpdate) {
+    const old = currentWorkBrief.items.find((item) => item.item_id === $("work-item-id").value);
+    const ref = {reference_type: $("work-evidence-type").value, reference_id: $("work-evidence-id").value.trim()};
+    const refs = [...(old?.references || [])];
+    if (!refs.some((item) => item.reference_type === ref.reference_type && item.reference_id === ref.reference_id)) refs.push(ref);
+    const item = {item_id: $("work-item-id").value, title: $("work-item-title").value.trim(),
+      state: $("work-item-state").value, stance: $("work-item-stance").value,
+      next_action: $("work-item-next").value.trim() || null, owner: $("work-item-owner").value.trim() || null,
+      reason: $("work-item-reason").value.trim(), references: refs};
+    if (item.state === "OPEN" && item.stance === "ACTIVE" && !item.next_action) {
+      $("work-update-status").textContent = "Active open work needs a concrete next action."; return;
+    }
+    const decisionText = $("work-decision-reason").value.trim();
+    const decisionSource = $("work-decision-source").value.trim();
+    const decision = decisionText ? {reason: decisionText, references: [{reference_type: "ACTIVITY", reference_id: decisionSource}]} : null;
+    pendingWorkUpdate = {initiativeId: selectedWorkId, key: crypto.randomUUID(), payload: {
+      expected_context: currentWorkBrief.context_token, summary: item.reason,
+      reported_producer: $("work-producer").value.trim(), changes: [{item, decision}]}};
+  }
+  const pending = pendingWorkUpdate;
+  $("work-update-save").disabled = true;
+  workFormLocked(true);
+  $("work-update-status").textContent = "Recording update…";
+  try {
+    const receipt = await api(`/api/control-plane/initiatives/${pending.initiativeId}/updates`, {
+      method: "POST", headers: {"Content-Type": "application/json", "Idempotency-Key": pending.key}, body: JSON.stringify(pending.payload)});
+    pendingWorkUpdate = null;
+    $("work-update-panel").hidden = true;
+    await selectWork(pending.initiativeId);
+    notify(`Update recorded. Activity ${receipt.activity_id}`);
+  } catch (error) {
+    // Preserve the exact intent/key after a lost response or 5xx. A retry
+    // returns the original receipt, including after the checkpoint moved on.
+    if (error.status && error.status < 500) {
+      pendingWorkUpdate = null;
+      if (error.status === 409) await selectWork(pending.initiativeId);
+    }
+    $("work-update-status").textContent = `${error.message}${pendingWorkUpdate ? " Retry Record update to recover the same request." : " Review the current brief before correcting this update."}`;
+  } finally {
+    $("work-update-save").disabled = false;
+    workFormLocked(Boolean(pendingWorkUpdate));
+  }
+}
+
 async function loadWork() {
   if (!authentication?.token()) return;
   try {
@@ -352,15 +499,10 @@ async function loadWork() {
     const wip = queues.wip_limit ?? 0;
     const active = states.ACTIVE ?? 0;
     $("work-cards").innerHTML = [
-      ["Inbox", queues.inbox ?? 0],
-      ["Now", wip ? `${active}/${wip}` : active],
-      ["Roadmap", states.BACKLOG ?? 0],
-      ["Blocked", states.BLOCKED ?? 0],
-      ["Soaking", states.SOAKING ?? 0],
-      ["Parked", states.PARKED ?? 0],
-      ["Decisions needed", queues.decisions_needed ?? 0],
-      ["Parked review due", queues.parked_review_due ?? 0],
-      ["Soak review due", queues.soak_review_due ?? 0],
+      ["Active initiatives", wip ? `${active}/${wip}` : active],
+      ["Blocked initiatives", states.BLOCKED ?? 0],
+      ["Decisions recorded", queues.decisions_needed ?? 0],
+      ["Inbox captures", queues.inbox ?? 0],
     ].map(([label, value]) => `<article class="card"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>`).join("");
     if (wip && active > wip) {
       $("work-cards").insertAdjacentHTML("beforeend", `<article class="card"><strong>⚠</strong><span>Now exceeds the WIP limit — finish or park before starting more</span></article>`);
@@ -377,8 +519,9 @@ async function loadWork() {
     document.querySelectorAll(".capture-promote").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "promote").catch((error) => { $("work-inbox").textContent = error.message; })));
     document.querySelectorAll(".capture-attach").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "attach").catch((error) => { $("work-inbox").textContent = error.message; })));
     document.querySelectorAll(".capture-discard").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "discard").catch((error) => { $("work-inbox").textContent = error.message; })));
-    const recent = (queues.recently_completed || []).map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">completed ${esc(item.completed_at)}</p></article>`).join("");
-    $("work-initiatives").innerHTML = (open.length ? open.map((item) => `<article class="panel"><strong>${esc(item.title)}</strong><p class="muted">${esc(item.initiative_key)} · ${esc(item.work_state)} · ${esc(item.priority)}</p><p>${esc(item.objective || "")}</p></article>`).join("") : `<p class="muted">No open initiatives.</p>`) + (recent ? `<h2>Recently completed</h2>${recent}` : "");
+    workInitiatives = open;
+    renderWorkChoices();
+    await selectWork(selectedWorkId || open.find((item) => item.work_state === "ACTIVE")?.initiative_id || open[0]?.initiative_id);
   } catch (error) {
     $("work-inbox").textContent = error.message;
   }
@@ -1223,6 +1366,10 @@ function clearAuthenticatedView() {
   $("certification").textContent = "Not connected.";
   $("recent-changes").textContent = "Connect to load.";
   $("changes").textContent = "Connect to load.";
+  currentWorkBrief = null;
+  workBriefRequest++;
+  $("work-brief").textContent = "Connect to load.";
+  $("work-update-panel").hidden = true;
   $("work-cards").innerHTML = "";
   $("work-inbox").textContent = "Connect to load.";
   $("work-initiatives").textContent = "Connect to load.";
@@ -1288,14 +1435,18 @@ if (typeof document !== "undefined") {
   });
   $("connect").addEventListener("click", async () => {
     const candidate = $("token").value.trim();
-    if (candidate && await authentication.useToken(candidate)) await loadOverview();
+    if (candidate && await authentication.useToken(candidate)) { const parsed = parseHash(); activate(parsed.view, parsed.arg); }
   });
   document.addEventListener("docplane:authentication-rejected", async () => {
-    if (await authentication.recover()) await loadOverview();
+    if (await authentication.recover()) { const parsed = parseHash(); activate(parsed.view, parsed.arg); }
   });
   document.querySelectorAll(".nav").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.view)));
   $("refresh-overview").addEventListener("click", loadOverview);
   $("refresh-work").addEventListener("click", loadWork);
+  $("work-search").addEventListener("input", renderWorkChoices);
+  $("work-state").addEventListener("change", renderWorkChoices);
+  $("work-update-form").addEventListener("submit", saveWorkUpdate);
+  $("work-update-cancel").addEventListener("click", () => { $("work-update-panel").hidden = true; });
   $("refresh-explore").addEventListener("click", loadExplore);
   $("refresh-review").addEventListener("click", loadReview);
   $("refresh-classify").addEventListener("click", loadClassify);
@@ -1366,7 +1517,7 @@ if (typeof document !== "undefined") {
   window.addEventListener("hashchange", () => { const parsed = parseHash(); activate(parsed.view, parsed.arg); });
   initialiseNavigation();
   loadProductIdentity();
-  startDashboardAuthentication(authentication, loadOverview);
+  startDashboardAuthentication(authentication, () => { const parsed = parseHash(); activate(parsed.view, parsed.arg); });
 }
 
 globalThis.DocPlaneAuth = {createAuthentication, startDashboardAuthentication, TOKEN_KEY};

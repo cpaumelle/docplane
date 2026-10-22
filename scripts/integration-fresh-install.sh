@@ -11,14 +11,19 @@ REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_ROOT"
 
 PROJECT=${PROJECT:-docplane_itest_$$}
-API_PORT=${API_PORT:-18110}
-DASH_PORT=${DASH_PORT:-18151}
-SITE_PORT=${SITE_PORT:-18180}
-MCP_PORT=${MCP_PORT:-18149}
+# Docker allocates loopback ports atomically; fixed defaults collide when
+# dp1/dp2 or another repository runs a disposable stack on the shared host.
+# Explicit caller overrides are retained.
+API_PORT=${API_PORT:-0}
+DASH_PORT=${DASH_PORT:-0}
+SITE_PORT=${SITE_PORT:-0}
+MCP_PORT=${MCP_PORT:-0}
 ENV_FILE=$(mktemp)
 API="http://127.0.0.1:${API_PORT}"
 FRONT="http://127.0.0.1:${SITE_PORT}"
 MCP="http://127.0.0.1:${MCP_PORT}/mcp"
+# shellcheck source=lib/integration-endpoint.sh
+source "$REPO_ROOT/scripts/lib/integration-endpoint.sh"
 
 log()  { printf '\n=== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -65,6 +70,8 @@ set -a; . "$ENV_FILE"; set +a
 log "1. start from COMPLETELY EMPTY volumes (project $PROJECT)"
 compose down -v --remove-orphans >/dev/null 2>&1 || true
 compose up --build -d postgres docs-api dashboard docs-web >/dev/null
+API=$(integration_endpoint docs-api 8010) || fail "cannot read allocated API loopback port"
+FRONT=$(integration_endpoint docs-web 80) || fail "cannot read allocated front loopback port"
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS "$API/healthz" >/dev/null || fail "docs-api never became healthy"
 # Waiting on the ROUTED dashboard health covers both nginx accepting
@@ -219,8 +226,11 @@ log "12. MCP on non-default port"
 sed -i "s|^DOCPLANE_TOKEN=.*|DOCPLANE_TOKEN=${TOKEN}|" "$ENV_FILE"
 export DOCPLANE_TOKEN="$TOKEN"
 compose up --build -d docs-mcp >/dev/null
-for _ in $(seq 1 30); do curl -fsS "http://127.0.0.1:${MCP_PORT}/healthz" >/dev/null 2>&1 && break; sleep 2; done
-curl -fsS "http://127.0.0.1:${MCP_PORT}/healthz" | grep -q '"contributor_token_configured":true' || fail "MCP token missing"
+MCP="$(integration_endpoint docs-mcp 8049)/mcp" || fail "cannot read allocated MCP loopback port"
+API=$(integration_endpoint docs-api 8010) || fail "cannot read allocated API loopback port"
+FRONT=$(integration_endpoint docs-web 80) || fail "cannot read allocated front loopback port"
+for _ in $(seq 1 30); do curl -fsS "${MCP%/mcp}/healthz" >/dev/null 2>&1 && break; sleep 2; done
+curl -fsS "${MCP%/mcp}/healthz" | grep -q '"contributor_token_configured":true' || fail "MCP token missing"
 
 log "13. routed publication retry"
 compose up -d --force-recreate site-init >/dev/null 2>&1 || true
@@ -259,6 +269,8 @@ compose down -v --remove-orphans >/dev/null
 sed -i 's/^DOCPLANE_ACCESS_PROFILE=.*/DOCPLANE_ACCESS_PROFILE=managed/' "$ENV_FILE"
 export DOCPLANE_ACCESS_PROFILE=managed
 compose up -d postgres docs-api dashboard docs-web >/dev/null
+API=$(integration_endpoint docs-api 8010) || fail "cannot read allocated managed API loopback port"
+FRONT=$(integration_endpoint docs-web 80) || fail "cannot read allocated managed front loopback port"
 for _ in $(seq 1 60); do curl -fsS "$API/healthz" >/dev/null 2>&1 && break; sleep 2; done
 for _ in $(seq 1 30); do curl -fsS "$FRONT/dashboard/healthz" >/dev/null 2>&1 && break; sleep 1; done
 curl -fsS "$FRONT/dashboard/healthz" >/dev/null || fail "managed routed dashboard never became healthy"

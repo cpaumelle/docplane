@@ -62,3 +62,26 @@ def test_capture_create_and_triage_forward_idempotency():
 def test_unauthenticated_work_routes_refuse():
     assert client.get("/api/control-plane/work/queues").status_code == 401
     assert client.post("/api/control-plane/work/captures", json={"body": "x"}).status_code == 401
+
+
+def test_brief_and_redacted_history_use_same_identity():
+    initiative = "33333333-3333-3333-3333-333333333333"
+    headers = {"Authorization": "Bearer human-token"}
+    assert client.get(f"/api/control-plane/initiatives/{initiative}/brief", headers=headers).status_code == 200
+    assert client.get(f"/api/control-plane/initiatives/{initiative}/history", headers=headers).status_code == 200
+    assert dashboard_app.client.calls[0][1] == f"/api/v1/initiatives/{initiative}/brief"
+    assert dashboard_app.client.calls[0][2] == "Bearer human-token"
+    assert dashboard_app.client.calls[1][3] == {"activity_bodies": "redacted"}
+
+
+def test_work_update_preserves_intent_and_caller_key():
+    initiative = "33333333-3333-3333-3333-333333333333"
+    payload = {"expected_context": "a" * 64, "changes": [{"item": {"item_id": "stable"}}]}
+    headers = {"Authorization": "Bearer human-token", "Idempotency-Key": "44444444-4444-4444-4444-444444444444"}
+    assert client.post(f"/api/control-plane/initiatives/{initiative}/updates", headers=headers, json=payload).status_code == 201
+    call = dashboard_app.client.calls[0]
+    assert call[1] == f"/api/v1/initiatives/{initiative}/updates"
+    assert call[4] == headers["Idempotency-Key"]
+    assert call[5] == payload
+    assert client.get(f"/api/control-plane/initiatives/{initiative}/brief").status_code == 401
+    assert client.post(f"/api/control-plane/initiatives/{initiative}/updates", json=payload).status_code == 401

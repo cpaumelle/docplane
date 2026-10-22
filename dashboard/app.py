@@ -233,6 +233,36 @@ def list_initiatives(
         _raise(exc)
 
 
+@app.get("/api/control-plane/initiatives/{initiative_id}/brief")
+def initiative_brief(initiative_id: UUID, authorization: str | None = Header(default=None)) -> Any:
+    try:
+        return client.get(f"/api/v1/initiatives/{initiative_id}/brief", authorization=_auth(authorization))
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.get("/api/control-plane/initiatives/{initiative_id}/history")
+def initiative_history(initiative_id: UUID, authorization: str | None = Header(default=None)) -> Any:
+    try:
+        return client.get(f"/api/v1/initiatives/{initiative_id}", authorization=_auth(authorization),
+                          params={"activity_bodies": "redacted"})
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
+@app.post("/api/control-plane/initiatives/{initiative_id}/updates", status_code=201)
+def initiative_update(
+    initiative_id: UUID, body: dict[str, Any],
+    authorization: str | None = Header(default=None),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Any:
+    try:
+        return client.post(f"/api/v1/initiatives/{initiative_id}/updates", authorization=_auth(authorization),
+                           idempotency_key=idempotency_key, json_body=body)
+    except ControlPlaneError as exc:
+        _raise(exc)
+
+
 @app.get("/api/control-plane/maintenance/freshness")
 def maintenance_freshness(
     limit: int = Query(default=200, ge=1, le=1000),
