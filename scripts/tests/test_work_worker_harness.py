@@ -419,6 +419,37 @@ class Rendering(Workdir):
         with self.assertRaisesRegex(ValueError, "one complete item"):
             render.render(config, doc, ledger)
 
+    def test_regression_holds_and_per_subject_status_are_not_flattened_by_a_later_run(self):
+        config, first = self.config(), self.synthetic(4)
+        A, B, C = U(21), U(22), U(23)
+        applied = {"p00": {"subjects": {A: "APPLIED", B: "APPLIED"}}}                       # two captures filed, the third is held
+        holds = {"p00": {"reason": "operator keeps the third attach for a later batch", "source": "approval of filing batch 1", "subjects": [C]},
+                 "p01": {"reason": "home must be decided by the release coordinator", "source": "operator decision, batch review"}}
+        ledger = render.build_ledger([("r1", first)], applied=applied, holds=holds)
+        by = {e["proposal_id"]: e for e in ledger["entries"]}
+        self.assertEqual((by["p00"]["status"], by["p01"]["status"], by["p02"]["status"]), ("PARTLY_APPLIED", "HELD", "PENDING"))
+        self.assertEqual(by["p00"]["subjects"], {A: "APPLIED", B: "APPLIED", C: "HELD"})
+        self.assertIsNone(by["p01"]["held_behind"])                                           # a hold is a decision with a source, never an invented dependency
+        # the regression: a later run that restates proposals but passes no applied/hold record must not flatten them to PENDING
+        second = copy.deepcopy(first)
+        later = render.build_ledger([("r2", second)], previous=ledger)
+        by2 = {e["proposal_id"]: e for e in later["entries"]}
+        self.assertEqual((by2["p00"]["status"], by2["p01"]["status"], by2["p02"]["status"]), ("PARTLY_APPLIED", "HELD", "PENDING"))
+        self.assertEqual(by2["p01"]["hold"], {"reason": "home must be decided by the release coordinator", "source": "operator decision, batch review", "subjects": []})
+        self.assertEqual(by2["p00"]["subjects"][C], "HELD")
+        self.assertEqual(later["held"], 2)
+        out = render.render(config, second, later)
+        self.assertIn("HELD (home must be decided by the release coordinator; source: operator decision, batch review)", out["appendix.md"])
+        self.assertIn(f"p00 per subject: {A} APPLIED; {B} APPLIED; {C} HELD", out["appendix.md"])
+        self.assertIn("2 of them on explicit hold", out["briefing.md"])
+        self.assertNotIn("[CLARIFY] synthetic proposal 1 ", out["briefing.md"])               # a held proposal is not offered as the next action
+        for pid in ("p00", "p01", "p02", "p03"):
+            self.assertIn("| %s |" % pid, out["appendix.md"])                                 # and nothing is dropped from the appendix
+        with self.assertRaises(ValueError):                                                   # a hold without a reason or source is refused
+            render.build_ledger([("r3", first)], previous=ledger, holds={"p02": {"reason": "x", "source": ""}})
+        with self.assertRaises(ValueError):
+            render.build_ledger([("r3", first)], previous=ledger, holds={"nope": {"reason": "no such proposal", "source": "operator"}})
+
     def test_a_later_run_without_a_proposal_keeps_it_pending_and_applied_ones_are_marked(self):
         config, first = self.config(), self.synthetic(5)
         ledger = render.build_ledger([("r1", first)])

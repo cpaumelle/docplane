@@ -16,8 +16,25 @@ def know_line(config):
     return f"KNOW was not searched ({config['know_access'].replace('NOT_SEARCHED_', '').lower().replace('_', ' ')}: {config['know_reason']}): no conclusion that depends on KNOW can be drawn."
 
 
-def build_ledger(runs, previous=None, applied=None):
-    """Merge proposals across runs (and a previous ledger). Nothing is ever removed: absence from a later run changes only a flag."""
+def _hold(pid, h):
+    if not isinstance(h, dict) or len(str(h.get("reason", "")).strip()) < 5 or len(str(h.get("source", "")).strip()) < 3:
+        raise ValueError(f"hold for {pid} needs a reason and a source (who or what decided it)")
+    return {"reason": str(h["reason"]).strip(), "source": str(h["source"]).strip(), "subjects": sorted(h.get("subjects") or [])}
+
+
+def _subjects(applied, hold):
+    """Per-subject status from the applied record (subjects: {id: APPLIED}) and the hold (subjects held). None when nothing is tracked per subject."""
+    done = dict((applied or {}).get("subjects") or {})
+    out = {k: ("APPLIED" if v in (True, "APPLIED") else "PENDING") for k, v in done.items()}
+    for k in (hold or {}).get("subjects", []):
+        out.setdefault(k, "HELD")
+    return out or None
+
+
+def build_ledger(runs, previous=None, applied=None, holds=None):
+    """Merge proposals across runs (and a previous ledger). Nothing is ever removed: absence from a later run changes only a flag.
+    Applied receipts and operator holds are carried from the previous ledger and only replaced by a newer record for the same proposal, so a later
+    run that does not restate them cannot flatten them. A hold is a decision with a source and reason; it is not a dependency (held_behind is untouched)."""
     entries = {e["proposal_id"]: dict(e) for e in (previous or {}).get("entries", [])}
     seen_latest = set()
     for label, doc in runs:
@@ -29,14 +46,32 @@ def build_ledger(runs, previous=None, applied=None):
                       "last_rank": p["rank"], "last_seen": label, "evidence": p["evidence"]})
             e["history"] = list(e.get("history", [])) + [{"run": label, "rank": p["rank"]}]
             seen_latest.add(p["proposal_id"])
-    applied = applied or {}
+    for pid in list(applied or {}) + list(holds or {}):
+        if pid not in entries:
+            raise ValueError(f"applied/hold record names a proposal that is in no ledger or run: {pid}")
     for pid, e in entries.items():
-        e["status"] = ("PARTLY_APPLIED" if applied[pid].get("partial") else "APPLIED") if pid in applied else "PENDING"
+        app = (applied or {}).get(pid, e.get("applied"))                    # carried unless a newer record replaces it
+        hold = _hold(pid, holds[pid]) if pid in (holds or {}) else e.get("hold")
+        subj = _subjects(app, hold)
+        if app is not None and subj:
+            partial = any(v != "APPLIED" for v in subj.values())
+        else:
+            partial = bool(app and app.get("partial"))
+        if app is not None and not partial:
+            e["status"] = "APPLIED"
+        elif app is not None:
+            e["status"] = "PARTLY_APPLIED"
+        elif hold:
+            e["status"] = "HELD"
+        else:
+            e["status"] = "PENDING"
+        for key, val in (("applied", app), ("hold", hold), ("subjects", subj)):
+            if val is None: e.pop(key, None)
+            else: e[key] = val
         e["not_restated_in_latest"] = pid not in seen_latest
-        if pid in applied:
-            e["applied"] = applied[pid]
     label_list = list((previous or {}).get("runs", [])) + [label for label, _ in runs]
-    return {"runs": label_list, "count": len(entries), "pending": sum(1 for e in entries.values() if e["status"] != "APPLIED"), "entries": list(entries.values())}
+    return {"runs": label_list, "count": len(entries), "pending": sum(1 for e in entries.values() if e["status"] != "APPLIED"),
+            "held": sum(1 for e in entries.values() if e["status"] == "HELD" or e.get("hold")), "entries": list(entries.values())}
 
 
 def _words(text):
@@ -65,7 +100,8 @@ def render(config, doc, ledger, ops=None):
     b = doc["briefing"]
     rows = _rows(doc)
     pending = [e for e in ledger["entries"] if e["status"] != "APPLIED"]
-    ranked = sorted(pending, key=lambda e: e["last_rank"])
+    held = [e for e in pending if e.get("hold")]                              # any explicit hold, including a hold on one subject of a partly applied proposal
+    ranked = sorted((e for e in pending if e["status"] != "HELD"), key=lambda e: e["last_rank"])
     omitted = [x["what"] for x in b["omitted"]]
     writes = [o for o in (ops or []) if o.get("write") and o.get("ok")]
 
@@ -73,7 +109,7 @@ def render(config, doc, ledger, ops=None):
         lines = [f"# Briefing: {b['workstream']}", "",
                  f"> **Scope: {b['completeness']}.** Not covered: " + ("; ".join(omitted[:n_om]) or "nothing recorded") + (f"; {len(omitted) - n_om} more (appendix#omitted)" if len(omitted) > n_om else "") + ". "
                  f"{know_line(config)} {len(rows)} remaining obligation(s) extracted; extraction recall is unmeasured, so this is not a complete list. "
-                 f"{len(pending)} proposals pending in the ledger (top {min(n_next, len(ranked))} shown). Full backlog: [remaining](appendix.md#remaining), [proposals](appendix.md#proposals), [omitted](appendix.md#omitted).", "",
+                 f"{len(pending)} proposals pending in the ledger" + (f", {len(held)} of them on explicit hold" if held else "") + f" (top {min(n_next, len(ranked))} shown). Full backlog: [remaining](appendix.md#remaining), [proposals](appendix.md#proposals), [omitted](appendix.md#omitted).", "",
                  f"Snapshot cutoff {config['snapshot_cutoff']}; instance {config['instance']['label']}; records after the cutoff were not shown.", "",
                  "## Canonical facts (recorded claims; external facts unverified)"]
         lines += [f"- {s['text']} ({', '.join(dict.fromkeys(_short(e['record_id']) for e in s['evidence'][:3]))})" for s in b["status_lines"][:n_done]]
@@ -126,7 +162,15 @@ def render(config, doc, ledger, ops=None):
             "| rank | id | kind | effect | confidence | provisional | held behind | tool | status | proposal |", "|---|---|---|---|---|---|---|---|---|---|"]
     for e in sorted(ledger["entries"], key=lambda e: e["last_rank"]):
         app.append(f"| {e['last_rank']} | {e['proposal_id']} | {e['kind']} | {e['effect']} | {e['confidence']} | {e['provisional']} | {e['held_behind'] or '-'} | {e['tool_name'] or e['capability']} | "
-                   f"{e['status']}{' (not restated in the latest run)' if e['not_restated_in_latest'] else ''} | {e['change']} |")
+                   f"{e['status']}{' (' + e['hold']['reason'] + '; source: ' + e['hold']['source'] + ')' if e.get('hold') and e['status'] == 'HELD' else ''}{' (not restated in the latest run)' if e['not_restated_in_latest'] else ''} | {e['change']} |")
+    tracked = [e for e in ledger["entries"] if e.get("hold") or e.get("subjects")]
+    if tracked:
+        app += ["", "## Holds and per-subject status (operator decisions, not dependencies)"]
+        for e in sorted(tracked, key=lambda e: e["last_rank"]):
+            if e.get("hold"):
+                app.append(f"- {e['proposal_id']}: HOLD ({e['hold']['source']}): {e['hold']['reason']}" + (f" Subjects held: {', '.join(e['hold']['subjects'])}." if e["hold"]["subjects"] else ""))
+            if e.get("subjects"):
+                app.append(f"- {e['proposal_id']} per subject: " + "; ".join(f"{k} {v}" for k, v in sorted(e["subjects"].items())))
     app += ["", '<a id="operations"></a>', "## Operations recorded by the operator (this tool applies none)"] + [f"- {o['ts'][11:19]} {o['tool']} -> {o.get('result')}" for o in writes]
     app += ["", "## Limits", "- not retrieved: " + ("; ".join(n["what"] for n in doc["retrieval"]["not_retrieved"]) or "nothing recorded"), f"- run incomplete: {doc['incomplete']}"]
     appendix = "\n".join(app) + "\n"
