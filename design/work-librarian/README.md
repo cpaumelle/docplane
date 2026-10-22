@@ -1,14 +1,8 @@
-Warning: truncated output (original token count: 7427)
-Total output lines: 330
-
 # DocPlane Librarian — interpretation contract (proposed)
 
 Status: design for review, not agent policy or a deployed service.
 No new schema, relationship type, identity or mutation authority is established.
 Complements worker PRs #215/#216; does not replace their transport or ledger.
-
-The proposed human-facing work briefing, backlog, proposal ledger and run views
-are specified in [Dashboard product and integration contract](DASHBOARD.md).
 
 ## Outcome and division of labour
 
@@ -230,7 +224,23 @@ classification disputes are settled by the arbiter or reported as unsettled. The
 (tracked but abandoned, register-tracked, repeat is not tracking, dependency invalidates cache, external claim
 qualification, retraction versus contradiction, prefix resolution); the original six are unchanged.
 
-### Interpretation discipline (added after…427 tokens truncated…  before it was written.
+### Interpretation discipline (added after the first manually reviewed runs)
+
+* **Obligation, evidence, suggestion, background.** An obligation is something someone must do, decide or deliver, with its own acceptance
+  condition. A reported result is evidence. An idea nobody committed to is a suggestion, even with a stated trigger ("if it recurs").
+  Restating status is background. When unsure between obligation and suggestion, choose suggestion and record the uncertainty.
+* **Split and consolidate.** Split only actions that can be independently accepted or closed. The same obligation stated in several
+  records is one obligation that keeps every source reference.
+* **Uncertainty survives review.** An obligation that independent review left unsettled or unarbitrated may back only verification or
+  next-action proposals, never a confident filing, linking, metadata or consolidation proposal.
+* **Scope exclusion never hides a correction.** Before a record is left out of a lane's interpretation, check whether it corrects,
+  contradicts, supersedes or is cited by an in-scope claim. If so it is kept with the related claim and relation, and the lane difference
+  is stated. Without an explicit retraction the relation is a contradiction or a semantic supersession, never a retraction. A first
+  manually reviewed run missed exactly this: a record was set aside as another lane's and its different diagnosis of an in-scope failure was
+  never linked.
+* **Live state outruns captures.** A capture's account of a pull request or a register row is a historical claim; both can have moved by the time
+  it is read. Reference conclusions are a comparison, not truth: in one comparison the reference reported a pull request open that had merged
+  before it was written.
 
 ### Backlog guardianship
 
