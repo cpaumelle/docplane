@@ -61,8 +61,11 @@ def validate_evaluations(evaluations, log):
         read = list(s.get("captures_read") or [])
         if cid not in read:
             errors.append(f"input {n}: the search scope must include the input itself")
+        failed = e.get("read_status") in ("FAILED", "AFTER_SNAPSHOT")      # the input's own read did not succeed: that must be visible, not an error
+        if failed and not any(r.get("tool") == "docplane_work_capture_get" and (r.get("args") or {}).get("capture_id") == cid for r in log):
+            errors.append(f"input {n}: marked {e['read_status']} but the log shows no attempt to read it")
         for c in read:
-            if c not in seen["captures_opened"]:
+            if c not in seen["captures_opened"] and not (failed and c == cid):
                 errors.append(f"input {n}: claims capture {c} was read but the log shows it was not")
         for i in s.get("initiatives_read") or []:
             if i not in seen["histories_opened"]:

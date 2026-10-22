@@ -101,5 +101,30 @@ class SearchScope(unittest.TestCase):
         self.assertEqual(ev.summarise(failed)["captures_opened"], {B})
 
 
+class FailedInputRead(unittest.TestCase):
+    """An input whose own read failed must be reportable as FAILED/UNCERTAIN, not make the whole run unvalidatable."""
+    LOG = log(dict(cap(A), ok=False, ids_returned=[]), cap(B))
+
+    def failed(self, **kw):
+        return evaluation(1, A, [A], read_status="FAILED", proposed_disposition="UNCERTAIN", confidence="low", purpose="UNDETERMINED", **kw)
+
+    def test_a_failed_input_read_is_accepted_when_it_is_uncertain_and_low_confidence(self):
+        self.assertEqual(ev.validate_evaluations([self.failed()], self.LOG), [])
+        self.assertEqual(ev.validate_evaluations([dict(self.failed(), read_status="AFTER_SNAPSHOT")], self.LOG), [])
+
+    def test_a_failed_input_cannot_carry_a_judgement(self):
+        errors = ev.validate_evaluations([dict(self.failed(), proposed_disposition="ADDS_OBLIGATION", confidence="high")], self.LOG)
+        self.assertTrue(any("low-confidence UNCERTAIN" in e for e in errors), errors)
+
+    def test_claiming_READ_for_an_input_whose_read_failed_is_still_refused(self):
+        errors = ev.validate_evaluations([evaluation(1, A, [A])], self.LOG)
+        self.assertTrue(any("capture %s was read but the log shows it was not" % A in e for e in errors), errors)
+
+    def test_a_failure_with_no_attempt_in_the_log_and_other_unread_claims_are_still_refused(self):
+        errors = ev.validate_evaluations([dict(self.failed(), capture_id=C, search_scope={"captures_read": [C, X], "initiatives_read": [], "know": "not searched: no credential"})], self.LOG)
+        self.assertTrue(any("no attempt to read it" in e for e in errors), errors)
+        self.assertTrue(any("capture %s was read but the log shows it was not" % X in e for e in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()
