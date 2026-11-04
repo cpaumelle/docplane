@@ -563,3 +563,59 @@ The three label-agnostic alerts then cover every schema catalogue, including
 stay per artifact (charliehub-hub2 adds `DocPlaneTrevarnSchemaCatalogueMetricsMissing`
 for the vps3 collector, whose node_exporter hub2 already scrapes). This is a reporting
 improvement independent of Trevarn; it changes no publication behaviour.
+
+## Trevarn: staging catalogue on VM1424 (design, inert)
+
+**Status: design and inert configuration only.** `config/schema-catalogue/trevarn_staging.yml`
+introspects nothing; no principal, role, route, command, unit or allowlist entry for
+staging exists until the activation decisions below are taken. The production catalogue
+does not depend on any of this.
+
+**Why 1424, not a synthetic 1124 database.** The Development Process Charter makes
+VM1424 the environment that qualifies the accepted release candidate through the
+production-style deployment path, including the migration mechanism. Its database is
+therefore the structure a release would deploy. The disposable Compose database that
+trevarn-core `scripts/schema-candidate-db.sh` builds on VM1124 from `db/baseline` remains
+a **generator test fixture** (it is what the end-to-end tests run against), not a
+catalogue source: a source commit alone does not prove which migrations were applied.
+
+**Provenance binding.** `CATALOGUE_SOURCE_IDENTITY=VM1424/<stack>@<release-manifest-id>`
+names the actual stack and the exact release manifest, and `CATALOGUE_LEDGER_TABLE`
+captures the applied set (`rows`, head, `ledger_digest`) to compare with the manifest's
+migration list and with the production catalogue. The staging landing page/handoff
+already names the current candidate; the catalogue page carries the same identity.
+
+**Smallest supported design, reusing the established pattern.**
+
+1. The generator and observer run **on VM1424** as root one-shots through the unchanged
+   wrappers, discovering the stack's PostgreSQL by its Compose labels and connecting to
+   its container-network address host-locally. The stack's loopback-only database and
+   API bindings are untouched; nothing is published.
+2. **No standing timer.** A candidate's structure changes only when a candidate is
+   deployed, so the staging `deploy` helper requests one generation after a successful
+   deploy (the same best-effort hook shape as production); the observer one-shot runs on
+   demand for acceptance evidence.
+3. **Credentials boundary.** Staging-only `trevarn_schema_catalogue_reader` /
+   `_observer` roles on the staging database (same provisioning SQL, plus the ledger
+   grant for the reader), and two DocPlane scoped principals bound to artifact
+   `schema-catalogue-trevarn_staging` only (generator: `GENERATE` with source entity
+   `trevarn_staging` and page prefix `model/schema-catalogue/trevarn_staging/`, plus
+   `OBSERVE/GENERATION`; observer: `OBSERVE/FRESHNESS_CHECK`). Neither can touch the
+   production artifact; staging gains no write authority anywhere else.
+
+**Access dependencies to verify before activation (not assumed).** The documented
+VM1424 posture is: no default route, a host route only for replies to the internal
+ingress source, `stagingadmin` without Docker membership and with fixed sudo commands,
+Docker and the VM disabled for automatic start.
+
+| Need | First check (read-only, by the staging operator) | If absent, the exact proposal for review |
+|---|---|---|
+| HTTPS egress to DocPlane (`docplane.charliehub.internal` = `10.254.0.1`, TCP 443, CA-verified) | `ip -4 route get 10.254.0.1` on VM1424 and `curl --cacert <internal CA> -sS -o /dev/null -w '%{http_code}' https://docplane.charliehub.internal/openapi.json` | one host route `10.254.0.1/32 via 10.44.1.1`, installed and verified by the staging helper (same mechanism as the existing ingress-reply route), validated by the curl above returning 200 and by `--dry-run` through the wrapper; rollback `ip route del 10.254.0.1/32`. Destination is DocPlane only; no default route, no other host. |
+| Operator invocation without Docker membership | `sudo -l` for `stagingadmin` | one fixed command `/usr/local/sbin/staging-schema-catalogue {dry-run|generate|observe|status}` that execs the two DocPlane wrappers with fixed settings paths `/etc/docplane/schema-catalogue.d/trevarn_staging.env` and `…-observer.d/trevarn_staging.env`, no other arguments, exit codes passed through; rollback is removing the sudoers line and the script. |
+| Plaintext bridge allowlist entry | the stack's Compose project, service and network names | add `("staging", "VM1424/<stack>@<manifest>", "<stack network>")` to both wrappers and `_PLAINTEXT_BRIDGES` in the activation PR, with the manifest id matched as a pattern; until then the wrappers refuse `sslmode=disable` for staging (tested). |
+| Escrow for four staging credentials | `ops/secrets-v3/registry/secrets.yaml` | four records mirroring the vps3 pair under a `vm1424` profile of the attended writer. |
+
+Generated destination pages: `model/schema-catalogue/trevarn_staging/index.md` plus one
+page per schema. Agents compare `schema_provenance trevarn` and
+`schema_provenance trevarn_staging` (fingerprint, ledger rows/head/digest) to see what a
+release would change; they never read `trevarn_staging` as production structure.

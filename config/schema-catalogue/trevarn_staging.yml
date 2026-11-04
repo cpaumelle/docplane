@@ -1,0 +1,67 @@
+# Presentation configuration for the Trevarn STAGING catalogue (db_key `trevarn_staging`).
+#
+# INERT until the separately reviewed VM1424 activation: a config file introspects nothing.
+#
+# Source: the accepted release candidate's database on VM1424 (`staging-1424-trevarn`), i.e. the
+# actual staging stack deployed through the production-style path, not a source checkout. The
+# runtime settings bind provenance to that stack and to the exact release manifest:
+#   CATALOGUE_DB_KEY=trevarn_staging
+#   CATALOGUE_ENVIRONMENT=staging
+#   CATALOGUE_SOURCE_IDENTITY=VM1424/<stack>@<release-manifest-id>
+#   CATALOGUE_LEDGER_TABLE=public.schema_migrations
+# A source commit alone does not prove which migrations were applied; the captured ledger set
+# (row count, head and digest over filename+sha256) is the evidence to compare with the manifest's
+# migration set and with the production catalogue (db_key `trevarn`).
+#
+# This catalogue is never production structure. Staging acceptance gives VM1424 no write authority
+# anywhere; the staging generator holds a GENERATE scope for artifact schema-catalogue-trevarn_staging
+# only and cannot touch the production artifact.
+
+schemas:
+  platform:
+    description: >-
+      Staging (accepted release candidate on VM1424) view of Trevarn's shared identity and
+      tenant platform. Production structure: MODEL database `trevarn`.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: >-
+        The candidate's trevarn-core db/baseline/*.sql, applied on the staging stack by the
+        production-style deployment path; applied set recorded in public.schema_migrations.
+      reason: >-
+        Comparison against the production catalogue is by ledger digest and fingerprint, not yet automated.
+  ingest:
+    description: Staging (release candidate) view of Trevarn's ingestion layer.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: Candidate db/baseline applied on the VM1424 stack; ledger public.schema_migrations.
+      reason: Comparison against production not automated.
+  occupancy:
+    description: Staging (release candidate) view of Trevarn occupancy and people counting.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: Candidate db/baseline applied on the VM1424 stack; ledger public.schema_migrations.
+      reason: Comparison against production not automated.
+  analytics:
+    description: Staging (release candidate) view of Trevarn reporting projections.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: Candidate db/baseline applied on the VM1424 stack; ledger public.schema_migrations.
+      reason: Comparison against production not automated.
+  parking:
+    description: Staging (release candidate) view of Trevarn parking.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: Candidate db/baseline applied on the VM1424 stack; ledger public.schema_migrations.
+      reason: Comparison against production not automated.
+  contact:
+    description: Staging (release candidate) view of the Trevarn contact study.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: Candidate db/baseline applied on the VM1424 stack; ledger public.schema_migrations.
+      reason: Comparison against production not automated.
+  public:
+    description: Default schema holding the staging stack's migration ledger public.schema_migrations.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: trevarn-core db/migrate.sh creates public.schema_migrations before applying the baseline.
+      reason: Comparison against production not automated.
