@@ -71,7 +71,7 @@ def identity(ledger: dict[str, Any] | None) -> dict[str, Any] | None:
     """The part of a capture that shapes the render identity (never applied_at)."""
     if ledger is None:
         return None
-    keep = {"status", "table", "rows", "head_filename", "ledger_digest", "error_class"}
+    keep = {"status", "table", "rows", "head_filename", "ledger_set_digest_prefix", "error_class"}
     return {key: ledger[key] for key in sorted(ledger) if key in keep}
 
 
@@ -114,8 +114,9 @@ def capture_ledger(conn, table: str) -> dict[str, Any]:
         "head_filename": head_filename,
         "head_sha256_prefix": str(head_sha)[:DIGEST_PREFIX],
         "head_applied_at": head_applied.isoformat() if head_applied is not None else None,
-        "ledger_digest": ledger_digest([(row[0], row[1]) for row in rows]),
+        "ledger_set_digest_prefix": ledger_digest([(row[0], row[1]) for row in rows]),
         "digest_prefix_hex": DIGEST_PREFIX,
+        "identity_note": "truncated comparison identifiers, not integrity hashes",
     }
 
 
@@ -128,8 +129,10 @@ def summary_line(ledger: dict[str, Any] | None) -> str:
     if status == "CAPTURED":
         return (
             f"- Migration-ledger identity: `{table}` head `{ledger['head_filename']}` "
-            f"({ledger['rows']} rows, set digest `{ledger['ledger_digest']}`). "
-            "The ledger shapes the render identity, not the structural fingerprint."
+            f"({ledger['rows']} rows, set digest prefix `{ledger['ledger_set_digest_prefix']}`, "
+            f"{ledger.get('digest_prefix_hex', DIGEST_PREFIX)} hex). Truncated comparison identifiers, "
+            "not the release manifest's integrity hashes. The ledger shapes the render identity, not the "
+            "structural fingerprint; the observer verifies structure only."
         )
     if status == "EMPTY":
         return f"- Migration-ledger identity: `{table}` is present but holds no rows."

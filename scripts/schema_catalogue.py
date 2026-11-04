@@ -78,6 +78,7 @@ from schema_catalogue_connection import source_connection_parameters  # noqa: E4
 from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
 import schema_catalogue_projection as projection  # noqa: E402
 import schema_catalogue_ledger as ledger_module  # noqa: E402
+import schema_catalogue_capture as capture  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
 GENERATOR_VERSION = "2.0.0"
@@ -774,20 +775,28 @@ def _reconcile(args) -> int:
     }
     config = projection.load_config(config_path(db_key))
 
-    with psycopg2.connect(**source_connection) as source:
-        structure = introspect(source, schemas)
-    with psycopg2.connect(**source_connection) as source:
-        metadata = source_metadata(source)
     # Optional, additive to contract 2: the deployed migration-ledger identity.
-    # Never part of the structural fingerprint (the observer stays structure-only);
-    # folded into the render identity so a ledger-only change republishes honestly
-    # while catalogues without the setting keep their exact render identity.
+    # With a ledger, structure, metadata and ledger come from ONE consistent capture
+    # (schema_catalogue_capture: one REPEATABLE READ snapshot, ledger compared before
+    # and after, retry then refusal if a migration ran mid-capture). Without a
+    # ledger the original two short reads are kept byte for byte.
     ledger_table = ledger_module.ledger_table_setting(os.environ.get("CATALOGUE_LEDGER_TABLE"))
-    migration_ledger = None
     if ledger_table:
+        structure, metadata, migration_ledger, _capture_info = capture.capture_with_ledger(
+            source_connection, schemas, ledger_table,
+            introspector=introspect, metadata_reader=source_metadata,
+        )
+    else:
         with psycopg2.connect(**source_connection) as source:
-            migration_ledger = ledger_module.capture_ledger(source, ledger_table)
+            structure = introspect(source, schemas)
+        with psycopg2.connect(**source_connection) as source:
+            metadata = source_metadata(source)
+        migration_ledger = None
     structure_hash = fingerprint(structure)
+    # The ledger is never part of the structural fingerprint (the observer stays
+    # structure-only); it is folded into the render identity so a ledger-only change
+    # republishes honestly while catalogues without the setting keep their exact
+    # previous render identity.
     render_inputs = static_provenance if migration_ledger is None else {
         **static_provenance, "migration_ledger": ledger_module.identity(migration_ledger),
     }

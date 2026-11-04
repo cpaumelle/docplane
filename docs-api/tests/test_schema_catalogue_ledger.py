@@ -83,7 +83,7 @@ def test_capture_reads_in_a_read_only_pg_catalog_transaction_and_reports_the_set
     assert captured["head_sha256_prefix"] == "c" * 24
     assert captured["digest_prefix_hex"] == 24
     assert captured["head_applied_at"] == "2026-11-01T00:00:00+00:00"
-    assert captured["ledger_digest"] == ledger.ledger_digest([(r[0], r[1]) for r in ROWS])
+    assert captured["ledger_set_digest_prefix"] == ledger.ledger_digest([(r[0], r[1]) for r in ROWS])
     assert conn.rolled_back == 0
 
 
@@ -92,7 +92,7 @@ def test_a_gap_in_the_set_changes_the_digest_even_with_the_same_head():
     full = ledger.capture_ledger(_Conn(rows=ROWS), "public.schema_migrations")
     gapped = ledger.capture_ledger(_Conn(rows=[ROWS[0], ROWS[2]]), "public.schema_migrations")
     assert full["head_filename"] == gapped["head_filename"]
-    assert full["ledger_digest"] != gapped["ledger_digest"]
+    assert full["ledger_set_digest_prefix"] != gapped["ledger_set_digest_prefix"]
     assert ledger.identity(full) != ledger.identity(gapped)
 
 
@@ -113,7 +113,7 @@ def test_capture_reports_an_empty_ledger():
 
 def test_identity_excludes_applied_at_and_head_sha():
     captured = ledger.capture_ledger(_Conn(rows=ROWS), "public.schema_migrations")
-    assert set(ledger.identity(captured)) == {"status", "table", "rows", "head_filename", "ledger_digest"}
+    assert set(ledger.identity(captured)) == {"status", "table", "rows", "head_filename", "ledger_set_digest_prefix"}
     assert ledger.identity(None) is None
 
 
@@ -150,6 +150,7 @@ def test_overview_page_names_the_ledger_head_only_when_captured_and_touches_no_s
     overview_ledger = {p["path"]: p["content"] for p in with_ledger}["model/schema-catalogue/trevarn/index.md"]
     assert "not captured by this projection contract" in overview
     assert "`public.schema_migrations` head `318_retwin_device_guard.sql` (3 rows" in overview_ledger
+    assert "Truncated comparison identifiers" in overview_ledger and "observer verifies structure only" in overview_ledger
     assert ("c" * 40) not in overview_ledger
     # A ledger-only change rewrites the overview, never a schema page.
     differing = [a for a, b in zip(without, with_ledger) if a["content"] != b["content"]]

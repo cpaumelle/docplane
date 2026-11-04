@@ -459,13 +459,16 @@ deprecation warning each run logs) is a separate follow-up, not widened here.
 ### Refresh after a production deployment, with the scheduled safety net
 
 trevarn-core's maintained deployment tool (`deploy/vps3/vps3_deploy.py`, which the
-release packet and `release.py` drive) requests
+release packet and `release.py` drive and pin) requests
 `systemctl start --no-block docplane-schema-catalogue@trevarn.service` after a
 successful, verified deploy that applied at least one migration, and records the
-request (`catalogue_refresh`) in its deploy-ledger `end` record. The request is
-best-effort: a missing unit, a disabled hook or a failing start never changes the
-deploy result. The per-database timer (30 min) and observer timer remain the safety
-net; an unchanged structure is a zero-write no-op.
+request (`catalogue_refresh`) in its deploy-ledger `end` record. **Activation
+boundary:** the request is made only when `docplane-schema-catalogue@trevarn.timer`
+reports `enabled`, which is the owner's scheduled-operation activation act; a unit that
+is merely installed is never started, and the ledger records `not activated`. The
+request is otherwise best-effort: a missing unit, a disabled hook or a failing start
+never changes the deploy result. The per-database timer (30 min) and observer timer
+remain the safety net; an unchanged structure is a zero-write no-op.
 
 ### Coverage and known unsupported areas
 
@@ -506,25 +509,35 @@ reads the ledger in its own read-only transaction and records:
   "head_filename": "332_glanik_checkins_scope.sql",
   "head_sha256_prefix": "<24 hex>",
   "head_applied_at": "2026-11-04T21:57:10+00:00",
-  "ledger_digest": "<24-hex prefix of sha256 over the sorted set of filename<TAB>sha256 lines>",
-  "digest_prefix_hex": 24
+  "ledger_set_digest_prefix": "<24-hex prefix of sha256 over the sorted set of filename<TAB>sha256 lines>",
+  "digest_prefix_hex": 24,
+  "identity_note": "truncated comparison identifiers, not integrity hashes"
 }
 ```
 
-Digests are published as 24-hex (96-bit) prefixes because the projection store refuses
-any 40+ character hex value as secret-shaped (`PROJECTION_SECRET_SHAPED`, found by the
-development end-to-end run); a prefix is an identity, not a credential, and the full
-digest is reproducible from the ledger.
+The two digests are **truncated comparison identifiers** (24 hex, 96 bits): the projection
+store refuses any 40+ character hex value as secret-shaped (`PROJECTION_SECRET_SHAPED`,
+found by the development end-to-end run). They are for comparing captures with each
+other and with a release manifest's migration list; they do **not** substitute for the
+manifest's full integrity hashes, which stay in the release record.
 
-`ledger_digest` identifies the **set**: two databases with the same head but a gap
+`ledger_set_digest_prefix` identifies the **set**: two databases with the same head but a gap
 differ. Compare it, and `rows`, against the manifest's migration list and between the
 production and staging catalogues.
 
 Rules:
 
+- **One consistent capture.** Structure, source metadata and the ledger are read on one
+  connection inside one `REPEATABLE READ, READ ONLY` transaction, and the ledger is read
+  again before and after that snapshot; if the three ledger identities differ, a migration
+  ran during capture and the generator retries (three attempts) and otherwise **refuses to
+  publish** (`SourceChangedDuringCapture`). Catalogues without a ledger setting get the
+  original two short reads and no retry. This closes the window in which structure from one
+  state could be published with ledger evidence from another.
 - **Ledger and structure stay distinct.** The ledger is never part of the structural
-  fingerprint (the observer's role reads no rows; its FRESHNESS_CHECK stays
-  structure-only). The ledger identity (status, table, rows, head filename, digest;
+  fingerprint. The independent observer reads no rows and **verifies structure only**:
+  its FRESHNESS_CHECK verdict says nothing about ledger freshness; a ledger-only change is
+  visible through the render identity and the republished overview, not through the observer. The ledger identity (status, table, rows, head filename, digest;
   never `applied_at`) is folded into the **render identity**, so a ledger-only change
   (a data migration) republishes the overview page and the projection document and
   rewrites **no schema page**; a catalogue without the setting keeps its exact
@@ -560,8 +573,9 @@ The generator now takes `--metrics-file` and the reconciliation wrapper passes
 
 The three label-agnostic alerts then cover every schema catalogue, including
 `charliehub_domains` and `docplane` on hub2, without a rule change; absence guards
-stay per artifact (charliehub-hub2 adds `DocPlaneTrevarnSchemaCatalogueMetricsMissing`
-for the vps3 collector, whose node_exporter hub2 already scrapes). This is a reporting
+stay per artifact. charliehub-hub2 holds `DocPlaneTrevarnSchemaCatalogueMetricsMissing`
+as a **staged** rule file outside the deployed rules directory until the Trevarn
+activation gate; promoting it is step 8 of the first-activation plan below. This is a reporting
 improvement independent of Trevarn; it changes no publication behaviour.
 
 ## Trevarn: staging catalogue on VM1424 (design, inert)
@@ -619,3 +633,29 @@ Generated destination pages: `model/schema-catalogue/trevarn_staging/index.md` p
 page per schema. Agents compare `schema_provenance trevarn` and
 `schema_provenance trevarn_staging` (fingerprint, ledger rows/head/digest) to see what a
 release would change; they never read `trevarn_staging` as production structure.
+
+## Trevarn production: first-activation plan
+
+One plan, executed in order, each step with its evidence recorded in WORK. Nothing before
+step 1 exists today beyond merged code. **Activation condition** for both the scheduled timer
+and the post-deploy refresh request is the same single act: the owner enables
+`docplane-schema-catalogue@trevarn.timer` (step 8). Until then the units are installed inert
+and trevarn-core's deployment tool records `catalogue_refresh: not activated` and starts nothing.
+
+| # | Step | Who / where | Evidence |
+|---|---|---|---|
+| 0 | Reviewed heads merged: docplane (this PR), trevarn-core #556, charliehub-hub2 #1383. | reviewers | PR merge SHAs |
+| 1 | **Provision roles** on production `trevarn-postgres`: `provision-schema-catalogue-reader.sql`, then `provision-schema-catalogue-observer.sql`; run the two boundary tests; **do not** apply the ledger grant yet. | DB owner on vps3 | psql transcripts (no credential) |
+| 2 | **Scoped DocPlane principals**: generator `GENERATE` (source entity `trevarn`, prefix `model/schema-catalogue/trevarn/`) + `OBSERVE/GENERATION`; observer `OBSERVE/FRESHNESS_CHECK`; both for artifact `schema-catalogue-trevarn` only. | DocPlane bootstrap authority | principal ids (no token) |
+| 3 | **Credentials**: set the two role passwords (`\password`, client-side SCRAM); enrol the four escrow records; write the files on vps3 with `SC_ENV_PROFILE=vps3 sc-env.sh install generator`, then `observer`; `extract … \| ch-secretctl escrow-verify` all four → `match: true`. | secrets owner | escrow-verify receipts |
+| 4 | **Install inert** on vps3: read-only `/opt/docplane` checkout at the merged tag; template units copied and `daemon-reload`; **no `enable`, no `start`**. Confirm `systemctl is-enabled docplane-schema-catalogue@trevarn.timer` → `disabled`. | vps3 operator | unit list, `is-enabled` output |
+| 5 | **Structure-only canary** (settings without `CATALOGUE_LEDGER_TABLE`): `run_schema_catalogue_reconciliation.sh --dry-run` → fingerprint, 7 schemas; one attended generation → `PUBLISHED`; one attended observation → `NOMINAL`; `schema_provenance trevarn` → FRESH / MATCH / CURRENT; pages render under `model/schema-catalogue/trevarn/`. Rerun generation → `UNCHANGED`. | vps3 operator + owner | wrapper output, provenance JSON |
+| 6 | **Ledger-enabled capture**: apply `grant-schema-catalogue-ledger-read.sql` (column-level, reader only) and its boundary test; add `CATALOGUE_LEDGER_TABLE=public.schema_migrations` to the generator settings; one attended generation → overview republished with `migration_ledger.status=CAPTURED`, no schema page changed (ledger-only render-identity change); record `rows`, `head_filename` and `ledger_set_digest_prefix` next to the current release receipt's migration list. | DB owner, vps3 operator | provenance JSON, page diff |
+| 7 | **Owner acceptance** of steps 5–6 recorded in WORK. | owner | WORK update |
+| 8 | **Activate**: artifact execution contract → `SCHEDULED` (2 h max evidence age, `schema-catalogue` exclusion); `systemctl enable --now docplane-schema-catalogue@trevarn.timer docplane-schema-catalogue-observer@trevarn.timer`; move the staged absence alert into `monitoring/prometheus/rules/` and deploy it with `deploy-prometheus-rules-only.py` (then `/-/reload`). From this point the deployment tool's post-deploy refresh request is live. | owner + vps3 operator + hub2 operator | `is-enabled` → `enabled`, rule deploy receipt |
+| 9 | **Soak 24 h**: both timers fire every 30 min; `schema_provenance trevarn` stays FRESH; `docplane_generated_projection_reconcile_success{artifact="schema-catalogue-trevarn"}` = 1 on hub2 Prometheus; no `DocPlaneGeneratedProjection*` alert for the artifact; one real or synthetic-free deploy without migrations shows `catalogue_refresh: no migrations applied`. | monitoring | Prometheus queries, journal |
+| 10 | **KNOW links**: Data-model blocks on `services/trevarn/database.md` and `architecture.md` pointing at `model/schema-catalogue/trevarn/`; deployment facts stay in the deploy ledger. | docs owner | page revisions |
+
+**Rollback at any step.** Steps 1–3: drop the roles and revoke the principals; remove the four files with `sc-env.sh remove`. Step 4–7: stop nothing (nothing runs); `pct`-level no-op; generated pages, if any, are retired by `POST /api/v1/model/artifacts/{id}/retire` through the owning authority, never hand-edited. Step 8+: `systemctl disable --now` both timers (the deployment tool then records `not activated` again); remove the alert file from `rules/` and redeploy; the artifact stays with its last generation evidence and `schema_provenance` reports staleness honestly.
+
+**Dependencies tracked separately, not on this path:** the VM1424 staging catalogue's connectivity checks, and the production ledger receipt needed to correct the two Trevarn KNOW pages.
