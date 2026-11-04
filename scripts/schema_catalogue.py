@@ -782,10 +782,14 @@ def _reconcile(args) -> int:
     # ledger the original two short reads are kept byte for byte.
     ledger_table = ledger_module.ledger_table_setting(os.environ.get("CATALOGUE_LEDGER_TABLE"))
     if ledger_table:
-        structure, metadata, migration_ledger, _capture_info = capture.capture_with_ledger(
+        structure, metadata, migration_ledger, capture_info = capture.capture_with_ledger(
             source_connection, schemas, ledger_table,
             introspector=introspect, metadata_reader=source_metadata,
+            lock_wait_seconds=float(os.environ.get("CATALOGUE_LEDGER_LOCK_WAIT_SECONDS", "60")),
         )
+        # How the pair was obtained travels with it: an UNAVAILABLE/EMPTY ledger publishes
+        # structure only and is recorded as consistent=False, never as a certified pair.
+        migration_ledger = {**migration_ledger, "capture": capture_info}
     else:
         with psycopg2.connect(**source_connection) as source:
             structure = introspect(source, schemas)

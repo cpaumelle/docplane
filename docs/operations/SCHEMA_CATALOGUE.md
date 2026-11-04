@@ -527,13 +527,25 @@ production and staging catalogues.
 
 Rules:
 
-- **One consistent capture.** Structure, source metadata and the ledger are read on one
-  connection inside one `REPEATABLE READ, READ ONLY` transaction, and the ledger is read
-  again before and after that snapshot; if the three ledger identities differ, a migration
-  ran during capture and the generator retries (three attempts) and otherwise **refuses to
-  publish** (`SourceChangedDuringCapture`). Catalogues without a ledger setting get the
-  original two short reads and no retry. This closes the window in which structure from one
-  state could be published with ledger evidence from another.
+- **One guarded capture, coordinated with the migration runner.** Trevarn's `db/migrate.sh`
+  (the single supported runner; the vps3 deployment tool, the 285/286 gate, CI and the test
+  fixture all call it) commits a migration's DDL and then records its ledger row, so between
+  those commits the database holds new structure with the old ledger and re-reading the
+  ledger cannot tell. The runner therefore holds `pg_advisory_lock(hashtext('public.schema_migrations')::bigint)`
+  in one psql session across the DDL and its ledger row (trevarn-core #556), and the capture
+  takes the **shared** form of the same key for its whole read: while a migration holds the
+  lock the capture polls for `CATALOGUE_LEDGER_LOCK_WAIT_SECONDS` (default 60) and then
+  **refuses** (`MigrationInProgress`); while a capture holds it a migration waits a few
+  seconds (`lock_timeout` 120 s on the runner side). Inside the lock the capture still reads
+  structure, source metadata and the ledger in one `REPEATABLE READ, READ ONLY` snapshot
+  with the ledger compared before and after; a difference means a writer bypassed the runner,
+  and the generator retries then refuses (`SourceChangedDuringCapture`). Catalogues without
+  a ledger setting keep the original two short reads. Proven on a real PostgreSQL by
+  `test_schema_catalogue_capture_integration.py`: a runner paused after DDL commit and before
+  the ledger insert makes the capture wait and then return the matching pair, or refuse.
+- **A missing ledger never certifies the pair.** An `UNAVAILABLE` or `EMPTY` ledger still
+  publishes structure, but `provenance.migration_ledger.capture.consistent` is `false` with
+  the reason; `true` requires three identical `CAPTURED` reads under the lock.
 - **Ledger and structure stay distinct.** The ledger is never part of the structural
   fingerprint. The independent observer reads no rows and **verifies structure only**:
   its FRESHNESS_CHECK verdict says nothing about ledger freshness; a ledger-only change is
