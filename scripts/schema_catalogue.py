@@ -737,10 +737,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-projection", type=Path)
     parser.add_argument("--emit-pages", type=Path)
+    parser.add_argument(
+        "--metrics-file",
+        help="atomically write this database's projection status in Prometheus textfile format "
+             "(artifact schema-catalogue-<db_key>); never written by --dry-run",
+    )
     args = parser.parse_args(argv)
     if (args.emit_projection or args.emit_pages) and not args.dry_run:
         parser.error("--emit-projection/--emit-pages are review aids and require --dry-run")
+    if args.metrics_file and args.dry_run:
+        parser.error("--metrics-file is not written by --dry-run")
+    if not args.metrics_file:
+        return _reconcile(args)
+    artifact = f"schema-catalogue-{os.environ.get('CATALOGUE_DB_KEY', 'unknown')}"
+    try:
+        status = _reconcile(args)
+    except BaseException:
+        # A failed run is the signal ReconcileFailed exists for; the stale drift value is
+        # unknown here and reads 0, exactly as the other generators report a failure.
+        write_projection_metrics(args.metrics_file, artifact=artifact, drift=False, success=False)
+        raise
+    # Every successful path (published, repaired, or UNCHANGED) ends with the published
+    # projection equal to the live source, so drift is 0 by construction.
+    write_projection_metrics(args.metrics_file, artifact=artifact, drift=False, success=status == 0)
+    return status
 
+
+def _reconcile(args) -> int:
     source_connection = source_connection_parameters()
     db_key = os.environ["CATALOGUE_DB_KEY"]
     db_display = os.environ.get("CATALOGUE_DB_DISPLAY", db_key)

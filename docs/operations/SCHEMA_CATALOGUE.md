@@ -537,3 +537,29 @@ Rules:
 - A refused or missing table is recorded as `UNAVAILABLE` with the error class only;
   the run continues and the structure remains authoritative. The redaction guard is
   unchanged: no exemption is needed for prefix-length digests.
+
+### Projection-status metrics for schema catalogues
+
+Until now only the work-catalogue, meter-list and invariant-register generators wrote
+`docplane_generated_projection_{drift,reconcile_success,last_run_unixtime}` for
+node_exporter, so `DocPlaneGeneratedProjectionDrift`, `…ReconcileFailed` and
+`…MetricsStale` could not see any schema catalogue; its only failure signal was the
+systemd journal and the observer's FRESHNESS_CHECK evidence inside DocPlane.
+
+The generator now takes `--metrics-file` and the reconciliation wrapper passes
+`/var/lib/node_exporter/textfile_collector/docplane_schema_catalogue_<db_key>.prom`
+(override `DOCPLANE_SCHEMA_CATALOGUE_METRICS_FILE`) through the shared writer, labelled
+`artifact="schema-catalogue-<db_key>"`:
+
+- written on every non-dry run: `reconcile_success` 1 after any successful path
+  (published, repaired or UNCHANGED) and 0 when the run raises; `drift` is 0 after a
+  successful run by construction (the published projection equals the live source);
+- never written by `--dry-run`; skipped with a journal line on a host without the
+  textfile directory; the unit files gain `-/var/lib/node_exporter/textfile_collector`
+  in `ReadWritePaths`.
+
+The three label-agnostic alerts then cover every schema catalogue, including
+`charliehub_domains` and `docplane` on hub2, without a rule change; absence guards
+stay per artifact (charliehub-hub2 adds `DocPlaneTrevarnSchemaCatalogueMetricsMissing`
+for the vps3 collector, whose node_exporter hub2 already scrapes). This is a reporting
+improvement independent of Trevarn; it changes no publication behaviour.

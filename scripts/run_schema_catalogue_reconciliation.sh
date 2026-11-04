@@ -120,4 +120,17 @@ if [[ "${CATALOGUE_SOURCE_SSLMODE:-${PGSSLMODE:-}}" == "disable" ]]; then
   export CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED="$expected_network"
 fi
 
-exec python3 "$repository_root/scripts/schema_catalogue.py" "$@"
+# Projection-status metrics for node_exporter, one file per database, through the shared
+# writer (the same three series and alerts as every generated projection). A dry run never
+# writes them; a host without the textfile directory skips them and says so.
+metrics_args=()
+if [[ " $* " != *" --dry-run "* ]]; then
+  metrics_file="${DOCPLANE_SCHEMA_CATALOGUE_METRICS_FILE:-/var/lib/node_exporter/textfile_collector/docplane_schema_catalogue_${CATALOGUE_DB_KEY}.prom}"
+  if [[ -d "$(dirname "$metrics_file")" ]]; then
+    metrics_args=(--metrics-file "$metrics_file")
+  else
+    echo "schema-catalogue wrapper: metrics directory $(dirname "$metrics_file") is absent; projection status metrics not written" >&2
+  fi
+fi
+
+exec python3 "$repository_root/scripts/schema_catalogue.py" "${metrics_args[@]}" "$@"
