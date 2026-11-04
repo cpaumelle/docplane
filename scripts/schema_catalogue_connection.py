@@ -55,16 +55,40 @@ def source_connection_parameters() -> dict[str, str]:
     if sslmode:
         if sslmode not in {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}:
             raise RuntimeError("CATALOGUE_SOURCE_SSLMODE is not a supported libpq mode")
-        if sslmode == "disable" and not (
-            os.environ.get("CATALOGUE_ENVIRONMENT", "").strip() == "development"
-            and os.environ.get("CATALOGUE_SOURCE_IDENTITY", "").strip() == "VM1124/trevarn"
-            and os.environ.get("CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED", "").strip() == "trevarn-net"
+        if sslmode == "disable" and not plaintext_bridge_allowed(
+            os.environ.get("CATALOGUE_ENVIRONMENT", ""),
+            os.environ.get("CATALOGUE_SOURCE_IDENTITY", ""),
+            os.environ.get("CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED", ""),
         ):
             raise RuntimeError(
-                "CATALOGUE_SOURCE_SSLMODE=disable is restricted to the VM1124 Trevarn Docker bridge"
+                "CATALOGUE_SOURCE_SSLMODE=disable is restricted to an allowlisted Trevarn Docker bridge"
             )
         params["sslmode"] = sslmode
     return params
+
+
+# Plaintext (sslmode=disable) is allowed only on a wrapper-verified, unpublished Docker
+# bridge whose (environment, source identity) pair is listed here. The wrapper verifies
+# the network name against the live container and exports it; this table must stay in
+# step with plaintext_bridge_network() in both wrappers. Both Trevarn PostgreSQL
+# containers run without server TLS and publish no port; the bridge hop is host-local.
+_PLAINTEXT_BRIDGES = (
+    ("development", "VM1124/trevarn", "trevarn-net"),
+    ("production", "VPS3/trevarn", "trevarn-net"),
+)
+
+
+def plaintext_bridge_network(environment: str, identity: str) -> str | None:
+    """The Docker network a plaintext source must sit on, or None when not allowlisted."""
+    for allowed_environment, allowed_identity, network in _PLAINTEXT_BRIDGES:
+        if environment.strip() == allowed_environment and identity.strip() == allowed_identity:
+            return network
+    return None
+
+
+def plaintext_bridge_allowed(environment: str, identity: str, verified_network: str) -> bool:
+    expected = plaintext_bridge_network(environment, identity)
+    return expected is not None and verified_network.strip() == expected
 
 
 def _required_setting(name: str) -> str:

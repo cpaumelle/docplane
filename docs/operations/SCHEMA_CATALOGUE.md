@@ -375,3 +375,114 @@ Two changes are required, in separate governed gates:
 Once `public` is introspected, the generated pages are
 `model/schema-catalogue/charliehub_domains/public.md` (plus the refreshed
 `model/schema-catalogue/charliehub_domains/index.md` overview).
+
+## Trevarn: production catalogue on vps3
+
+Trevarn's deployed production database is onboarded as **one more instance of the
+existing template units**, alongside `charliehub_domains` and `docplane`, with the
+same generator/observer lifecycle, scoped principals and governed gates described
+above. Nothing in this section is new mechanism.
+
+| db_key | Environment | Source identity | Runs on | Source database |
+|---|---|---|---|---|
+| `trevarn` | `production` | `VPS3/trevarn` | vps3 host, root, `docplane-schema-catalogue@trevarn` and `docplane-schema-catalogue-observer@trevarn` from a read-only `/opt/docplane` checkout at the reviewed tag | live `trevarn-core/postgres` container `trevarn-postgres`, database `trevarn`, PostgreSQL 16.13, roles `trevarn_schema_catalogue_reader` / `_observer` (trevarn-core `ops/metadata-reader`, CONNECT-only, `pg_catalog` reads) |
+
+`CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public`
+(`cbre_compat` is deliberately excluded, as in the presentation config). Candidate
+and staging coverage is a **separate** catalogue and a separate decision; see
+*Trevarn: staging catalogue* below. Main's unapplied migrations are never
+presented as production structure under `trevarn`.
+
+### Plaintext Docker bridges (allowlist)
+
+Both Trevarn PostgreSQL containers run without server TLS and publish no port, so
+the host-local bridge hop uses `sslmode=disable`. That is accepted only when the
+wrapper has verified the single discovered container is attached to the network
+bound to the `(CATALOGUE_ENVIRONMENT, CATALOGUE_SOURCE_IDENTITY)` pair:
+
+| Environment | Source identity | Required network |
+|---|---|---|
+| `development` | `VM1124/trevarn` | `trevarn-net` |
+| `production` | `VPS3/trevarn` | `trevarn-net` |
+
+The table lives twice on purpose and must stay in step: `plaintext_bridge_network()`
+in both wrappers and `_PLAINTEXT_BRIDGES` in `scripts/schema_catalogue_connection.py`.
+Adding a pair is a code change with its own review, never a settings-file value.
+This replaces the single hard-coded VM1124 rule; the VM1124 development one-shot
+is unchanged.
+
+### Production settings on vps3
+
+```text
+# /etc/docplane/schema-catalogue.d/trevarn.env (root:root 0600)
+DOCPLANE_API=https://docplane.charliehub.internal
+DOCPLANE_SCHEMA_CATALOGUE_TOKEN_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-generator/docplane-token
+CATALOGUE_DB_KEY=trevarn
+CATALOGUE_DB_DISPLAY='Trevarn PostgreSQL'
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SOURCE_DB=trevarn
+CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_reader
+CATALOGUE_SOURCE_PASSWORD_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-generator/db-password
+CATALOGUE_SOURCE_PORT=5432
+CATALOGUE_SOURCE_COMPOSE_PROJECT=trevarn-core
+CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres
+CATALOGUE_ENVIRONMENT=production
+CATALOGUE_SOURCE_IDENTITY=VPS3/trevarn
+CATALOGUE_SOURCE_SSLMODE=disable
+# optional, see "Migration-ledger identity": CATALOGUE_LEDGER_TABLE=public.schema_migrations
+
+# /etc/docplane/schema-catalogue-observer.d/trevarn.env (root:root 0600)
+DOCPLANE_API=https://docplane.charliehub.internal
+DOCPLANE_SCHEMA_OBSERVER_TOKEN_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-observer/docplane-token
+CATALOGUE_DB_KEY=trevarn
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SOURCE_DB=trevarn
+CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_observer
+CATALOGUE_SOURCE_PASSWORD_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-observer/db-password
+CATALOGUE_SOURCE_PORT=5432
+CATALOGUE_SOURCE_COMPOSE_PROJECT=trevarn-core
+CATALOGUE_SOURCE_COMPOSE_SERVICE=postgres
+CATALOGUE_ENVIRONMENT=production
+CATALOGUE_SOURCE_IDENTITY=VPS3/trevarn
+CATALOGUE_SOURCE_SSLMODE=disable
+```
+
+Secret files follow vps3's existing recovery-escrow pattern
+(`/etc/trevarn/secrets/<consumer>/…`, root `0400`, persistent across reboot as for
+`vps3-offsite-s3`), because a **scheduled** production collector must survive a reboot
+without an attended restore; the writer, escrow records and verification are in
+charliehub-hub2 `ops/secrets-v3/docs/trevarn-schema-catalogue.md` (profile `vps3`).
+Settings files contain paths only. This does not change how hub2's own two catalogue
+settings files deliver their bearers; their plaintext-environment delivery (and the
+deprecation warning each run logs) is a separate follow-up, not widened here.
+
+### Refresh after a production deployment, with the scheduled safety net
+
+trevarn-core's maintained deployment tool (`deploy/vps3/vps3_deploy.py`, which the
+release packet and `release.py` drive) requests
+`systemctl start --no-block docplane-schema-catalogue@trevarn.service` after a
+successful, verified deploy that applied at least one migration, and records the
+request (`catalogue_refresh`) in its deploy-ledger `end` record. The request is
+best-effort: a missing unit, a disabled hook or a failing start never changes the
+deploy result. The per-database timer (30 min) and observer timer remain the safety
+net; an unchanged structure is a zero-write no-op.
+
+### Coverage and known unsupported areas
+
+Contract 2 captures tables (incl. partitioned), views and materialized views
+(definition, columns), enums, columns (type, udt, array, nullability, default,
+identity, generated, comment), primary keys, foreign keys with exact column pairs,
+unique/check/exclusion constraints, indexes (columns, INCLUDE, predicate), and schema
+and relation comments. **Not captured** by contract 2 and therefore not claimed for
+Trevarn: function and procedure signatures (`platform.twin_asof()`, `local_zone()`,
+`retwin_device()`, trigger functions), triggers, row-level-security policies,
+grants/ACLs, sequences and extensions. Those remain KNOW statements on
+`services/trevarn/database.md` until a separately reviewed contract extension.
+
+### Activation gates (unchanged order, none performed by code review)
+
+1. Production roles exist with the reviewed shape (`provision-schema-catalogue-reader.sql`, `provision-schema-catalogue-observer.sql`).
+2. Two scoped DocPlane principals exist for artifact `schema-catalogue-trevarn` (generator: `GENERATE` with source entity `trevarn` and page prefix `model/schema-catalogue/trevarn/`, plus `OBSERVE/GENERATION`; observer: `OBSERVE/FRESHNESS_CHECK` only).
+3. Secrets enrolled, written and escrow-verified; `/opt/docplane` checkout and units installed **disabled** on vps3.
+4. Attended canary: `--dry-run`, one generation, one observation; owner accepts `schema_provenance trevarn` (FRESH, MATCH, CURRENT) and the generated pages.
+5. Execution contract set to `SCHEDULED`; timers enabled; 24-hour soak; then KNOW pages receive their Data-model links to `model/schema-catalogue/trevarn/`.
