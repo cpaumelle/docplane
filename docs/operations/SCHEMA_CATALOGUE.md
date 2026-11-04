@@ -486,3 +486,54 @@ grants/ACLs, sequences and extensions. Those remain KNOW statements on
 3. Secrets enrolled, written and escrow-verified; `/opt/docplane` checkout and units installed **disabled** on vps3.
 4. Attended canary: `--dry-run`, one generation, one observation; owner accepts `schema_provenance trevarn` (FRESH, MATCH, CURRENT) and the generated pages.
 5. Execution contract set to `SCHEDULED`; timers enabled; 24-hour soak; then KNOW pages receive their Data-model links to `model/schema-catalogue/trevarn/`.
+
+### Migration-ledger identity (optional, additive to contract 2)
+
+Contract 2 records `provenance.migration_ledger` as `NOT_CAPTURED` because the source
+contract reads structure only. For Trevarn the deployed **migration set** is release
+evidence: the Development Process Charter binds a release manifest to its migration
+set, and a maximum migration number does not prove which files were applied. A
+catalogue may therefore opt in with `CATALOGUE_LEDGER_TABLE=<schema>.<table>`
+(Trevarn: `public.schema_migrations`, columns `filename`, `sha256`, `applied_at`,
+written only by `db/migrate.sh`; no row of it is tenant data). When set, the generator
+reads the ledger in its own read-only transaction and records:
+
+```json
+"migration_ledger": {
+  "status": "CAPTURED",
+  "table": "public.schema_migrations",
+  "rows": 126,
+  "head_filename": "332_glanik_checkins_scope.sql",
+  "head_sha256_prefix": "<24 hex>",
+  "head_applied_at": "2026-11-04T21:57:10+00:00",
+  "ledger_digest": "<24-hex prefix of sha256 over the sorted set of filename<TAB>sha256 lines>",
+  "digest_prefix_hex": 24
+}
+```
+
+Digests are published as 24-hex (96-bit) prefixes because the projection store refuses
+any 40+ character hex value as secret-shaped (`PROJECTION_SECRET_SHAPED`, found by the
+development end-to-end run); a prefix is an identity, not a credential, and the full
+digest is reproducible from the ledger.
+
+`ledger_digest` identifies the **set**: two databases with the same head but a gap
+differ. Compare it, and `rows`, against the manifest's migration list and between the
+production and staging catalogues.
+
+Rules:
+
+- **Ledger and structure stay distinct.** The ledger is never part of the structural
+  fingerprint (the observer's role reads no rows; its FRESHNESS_CHECK stays
+  structure-only). The ledger identity (status, table, rows, head filename, digest;
+  never `applied_at`) is folded into the **render identity**, so a ledger-only change
+  (a data migration) republishes the overview page and the projection document and
+  rewrites **no schema page**; a catalogue without the setting keeps its exact
+  previous render identity (no churn, verified by test).
+- **Exception to structure-only introspection, narrowly scoped.** The source role
+  needs `SELECT` on that one table and nothing else (trevarn-core
+  `ops/metadata-reader/grant-schema-catalogue-ledger-read.sql`, which refuses if the
+  table ever has columns other than those three). The observer role receives no
+  grant. This is the only row read the generator performs, and it is opt-in per catalogue.
+- A refused or missing table is recorded as `UNAVAILABLE` with the error class only;
+  the run continues and the structure remains authoritative. The redaction guard is
+  unchanged: no exemption is needed for prefix-length digests.

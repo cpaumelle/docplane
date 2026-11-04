@@ -77,6 +77,7 @@ from schema_catalogue_connection import source_connection_parameters  # noqa: E4
 # the names keeps `schema_catalogue.introspect` / `.fingerprint` working.
 from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
 import schema_catalogue_projection as projection  # noqa: E402
+import schema_catalogue_ledger as ledger_module  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
 GENERATOR_VERSION = "2.0.0"
@@ -124,6 +125,7 @@ def render_pages(
     structure_hash: str,
     config: dict[str, Any] | None = None,
     static_provenance: dict[str, Any] | None = None,
+    migration_ledger: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Catalogue pages for one database. Deterministic for a given structure,
     configuration and static provenance.
@@ -142,6 +144,7 @@ def render_pages(
         config=config or {"schemas": {}},
         static_provenance=static_provenance or {},
         generator=GENERATOR,
+        migration_ledger=migration_ledger,
     )
     for page in pages:
         # Fail-closed boundary: DocumentRefusedError from the canonical
@@ -752,10 +755,25 @@ def main(argv: list[str] | None = None) -> int:
         structure = introspect(source, schemas)
     with psycopg2.connect(**source_connection) as source:
         metadata = source_metadata(source)
+    # Optional, additive to contract 2: the deployed migration-ledger identity.
+    # Never part of the structural fingerprint (the observer stays structure-only);
+    # folded into the render identity so a ledger-only change republishes honestly
+    # while catalogues without the setting keep their exact render identity.
+    ledger_table = ledger_module.ledger_table_setting(os.environ.get("CATALOGUE_LEDGER_TABLE"))
+    migration_ledger = None
+    if ledger_table:
+        with psycopg2.connect(**source_connection) as source:
+            migration_ledger = ledger_module.capture_ledger(source, ledger_table)
     structure_hash = fingerprint(structure)
-    render_config_hash = projection.config_hash(config, static_provenance)
+    render_inputs = static_provenance if migration_ledger is None else {
+        **static_provenance, "migration_ledger": ledger_module.identity(migration_ledger),
+    }
+    render_config_hash = projection.config_hash(config, render_inputs)
     identity = render_identity(structure_hash, render_config_hash)
-    pages = render_pages(db_key, db_display, structure, structure_hash, config, static_provenance)
+    # Keyword only when captured, so callers and test doubles that predate the
+    # optional ledger keep their exact positional contract.
+    render_extra = {} if migration_ledger is None else {"migration_ledger": migration_ledger}
+    pages = render_pages(db_key, db_display, structure, structure_hash, config, static_provenance, **render_extra)
     document = projection.build_document(
         db_key, db_display, structure, structure_hash, render_config_hash,
         PROJECTION_CONTRACT_VERSION,
@@ -767,9 +785,15 @@ def main(argv: list[str] | None = None) -> int:
         source_metadata=metadata,
         extracted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         generator=GENERATOR,
+        **render_extra,
     )
     guard_projection(document, provenance)
     print(f"fingerprint {structure_hash}")
+    if migration_ledger is not None:
+        print(
+            f"ledger {migration_ledger.get('status')} {migration_ledger.get('table', '')} "
+            f"head {migration_ledger.get('head_filename', '-')} rows {migration_ledger.get('rows', 0)}"
+        )
     print(f"config {render_config_hash[:16]} render identity {identity[:16]}")
     print(f"rendered {len(pages)} catalogue pages for {len(schemas)} schemas")
 

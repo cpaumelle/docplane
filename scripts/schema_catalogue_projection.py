@@ -31,6 +31,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import schema_catalogue_ledger as ledger_module  # noqa: E402
+
 PROJECTION_NAME = "docplane.schema-structure"
 PROJECTION_KIND = "SCHEMA_STRUCTURE"
 
@@ -180,6 +182,7 @@ def build_provenance(
     source_metadata: dict[str, Any],
     extracted_at: str,
     generator: dict[str, Any],
+    migration_ledger: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Where the structure came from and what it may be trusted to mean.
 
@@ -198,13 +201,9 @@ def build_provenance(
         "extracted_at": extracted_at,
         "generator": generator,
         "schemas": schemas,
-        "migration_ledger": {
-            "status": "NOT_CAPTURED",
-            "reason": (
-                "Ledger identity requires a row read of the migration ledger; the "
-                "least-privilege source contract reads catalogue metadata only."
-            ),
-        },
+        # Additive to contract 2: captured only when CATALOGUE_LEDGER_TABLE is set
+        # and readable (schema_catalogue_ledger); otherwise the contract-2 default.
+        "migration_ledger": dict(migration_ledger) if migration_ledger else dict(ledger_module.NOT_CAPTURED),
     }
 
 
@@ -490,6 +489,7 @@ def render_pages(
     config: dict[str, Any],
     static_provenance: dict[str, Any],
     generator: dict[str, Any],
+    migration_ledger: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """One overview page per database plus one page per schema.
 
@@ -604,7 +604,7 @@ def render_pages(
         f"source `{_cell(static_provenance.get('source_identity'))}`.",
         "- Basis: deployed-schema introspection, structure only, read from the PostgreSQL "
         "catalogue by a read-only transaction.",
-        "- Migration-ledger identity: not captured by this projection contract.",
+        ledger_module.summary_line(migration_ledger),
         "- Extraction time, server version and live freshness (observer evidence and "
         "projection correspondence) are served by `schema_provenance`, not frozen into this page.",
         "",
