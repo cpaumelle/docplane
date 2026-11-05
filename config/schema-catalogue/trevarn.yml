@@ -1,214 +1,105 @@
-# Presentation configuration for the Trevarn PostgreSQL schema catalogue.
+# Presentation configuration for the Trevarn PRODUCTION PostgreSQL schema catalogue
+# (db_key `trevarn`, source vps3 `trevarn-core/postgres`, database `trevarn`).
 #
 # Authority: structure is generated only from live projection-contract 2
-# introspection. This file supplies descriptions and migration provenance; it
-# does not create or filter database structure.
+# introspection of the deployed production database. This file supplies
+# descriptions and the stated canonical-from-migrations status; it never adds,
+# removes or filters structure.
 #
-# Descriptions and migration provenance below describe that historical snapshot;
-# a new runtime generation must introspect the live database before publication.
+# Runtime contract (settings file, not this file):
+#   CATALOGUE_ENVIRONMENT=production
+#   CATALOGUE_SOURCE_IDENTITY=VPS3/trevarn
+#   CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+#   CATALOGUE_LEDGER_TABLE=public.schema_migrations   (optional, needs the ledger grant)
 #
-# Runtime CATALOGUE_SCHEMAS must be: platform,ingest,occupancy,analytics,parking,contact,public.
-# The 2026-10-09 source snapshot also has cbre_compat (3 tables and 1 view); it is an
-# existing CBRE compatibility area and is excluded from this Trevarn catalogue.
+# The candidate catalogue for an unreleased tree is a SEPARATE db_key
+# (`trevarn_candidate`, config/schema-catalogue/trevarn_candidate.yml). Main's
+# unapplied migrations are never presented as production structure here.
+#
+# Canonical status vocabulary (see charliehub_domains.yml): AVAILABLE,
+# NOT_YET_COMPARED, NOT_AVAILABLE. Trevarn has one ordered migration source
+# (trevarn-core db/baseline/*.sql applied by db/migrate.sh, recorded in
+# public.schema_migrations), so a clean-apply comparison is possible but has not
+# been built: every schema is NOT_YET_COMPARED. The deployed ledger head is
+# captured at runtime when CATALOGUE_LEDGER_TABLE is set; it is never copied here.
 
 schemas:
   platform:
     description: >-
-      Trevarn's shared identity and tenant platform: users, memberships,
-      API keys, tenant and device/gateway registries, allocation, settings,
-      audit and platform administration. See services/trevarn/database.md.
+      Trevarn's shared identity and tenant platform: tenants, users, memberships,
+      API keys, device and gateway registries, locations, device twinning and its
+      history, allocation, settings, audit and platform administration.
+      Semantics: services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; read-only evidence bundle in
-        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
-        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
-        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
-        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        The 2026-10-09 comparison used trevarn-core main
-        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
-        migrations 285–286 from merged PR #281
-        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
-        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
-        PR #286 updates its README; neither adds a numbered migration.
+        trevarn-core db/baseline/*.sql applied in numeric order by db/migrate.sh;
+        applied files and content hashes are recorded in public.schema_migrations.
       reason: >-
-        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
-        entries through 283, and its schema-only DDL describes that VM1124 development
-        state. Its migration hashes were verified against the reviewed migration sources.
-        The compared GitHub revision included migrations 285–286 absent from this
-        captured database state. This historical comparison does not qualify today's
-        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
-        not a claim about current GitHub-main schema or vps3 production parity.
-        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
-        bundle is supporting provenance only.
+        A clean baseline apply is reproducible (CI applies the full baseline on every
+        build) but the automated canonical-versus-deployed comparison is not built.
+        This page shows deployed production structure only.
   ingest:
     description: >-
       Trevarn's ingestion layer: raw uplinks, LNS events, gateway reception,
-      durable ingest spool and receipts. See services/trevarn/database.md.
+      durable ingest spool, receipts and device notifications.
+      Semantics: services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; read-only evidence bundle in
-        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
-        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
-        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
-        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        The 2026-10-09 comparison used trevarn-core main
-        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
-        migrations 285–286 from merged PR #281
-        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
-        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
-        PR #286 updates its README; neither adds a numbered migration.
+        trevarn-core db/baseline/*.sql applied by db/migrate.sh; ledger public.schema_migrations.
       reason: >-
-        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
-        entries through 283, and its schema-only DDL describes that VM1124 development
-        state. Its migration hashes were verified against the reviewed migration sources.
-        The compared GitHub revision included migrations 285–286 absent from this
-        captured database state. This historical comparison does not qualify today's
-        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
-        not a claim about current GitHub-main schema or vps3 production parity.
-        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
-        bundle is supporting provenance only.
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
   occupancy:
     description: >-
-      Trevarn occupancy and people-counter events, aggregates, device and
-      gateway twinning, locations, installation plans and reports. See
-      services/trevarn/database.md.
+      Trevarn occupancy and people-counter events, aggregates, install plans and
+      sessions, inference, battery evidence and compatibility views over the
+      platform twinning tables. Semantics: services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; read-only evidence bundle in
-        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
-        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
-        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
-        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        The 2026-10-09 comparison used trevarn-core main
-        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
-        migrations 285–286 from merged PR #281
-        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
-        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
-        PR #286 updates its README; neither adds a numbered migration.
+        trevarn-core db/baseline/*.sql applied by db/migrate.sh; ledger public.schema_migrations.
       reason: >-
-        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
-        entries through 283, and its schema-only DDL describes that VM1124 development
-        state. Its migration hashes were verified against the reviewed migration sources.
-        The compared GitHub revision included migrations 285–286 absent from this
-        captured database state. This historical comparison does not qualify today's
-        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
-        not a claim about current GitHub-main schema or vps3 production parity.
-        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
-        bundle is supporting provenance only.
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
   analytics:
     description: >-
-      Trevarn reporting projections consumed by analytics interfaces and
-      report APIs. See services/trevarn/database.md.
+      Trevarn reporting projections consumed by the analytics interfaces and
+      report APIs. Semantics: services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; read-only evidence bundle in
-        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
-        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
-        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
-        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        The 2026-10-09 comparison used trevarn-core main
-        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
-        migrations 285–286 from merged PR #281
-        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
-        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
-        PR #286 updates its README; neither adds a numbered migration.
+        trevarn-core db/baseline/*.sql applied by db/migrate.sh; ledger public.schema_migrations.
       reason: >-
-        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
-        entries through 283, and its schema-only DDL describes that VM1124 development
-        state. Its migration hashes were verified against the reviewed migration sources.
-        The compared GitHub revision included migrations 285–286 absent from this
-        captured database state. This historical comparison does not qualify today's
-        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
-        not a claim about current GitHub-main schema or vps3 production parity.
-        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
-        bundle is supporting provenance only.
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
   parking:
     description: >-
       Trevarn parking sites, spaces, reservations, state transitions, downlink
-      queue, actuations and display state. See services/trevarn/database.md.
+      queue, actuations and display state. Semantics: services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; read-only evidence bundle in
-        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
-        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
-        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
-        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        The 2026-10-09 comparison used trevarn-core main
-        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
-        migrations 285–286 from merged PR #281
-        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
-        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
-        PR #286 updates its README; neither adds a numbered migration.
+        trevarn-core db/baseline/*.sql applied by db/migrate.sh; ledger public.schema_migrations.
       reason: >-
-        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
-        entries through 283, and its schema-only DDL describes that VM1124 development
-        state. Its migration hashes were verified against the reviewed migration sources.
-        The compared GitHub revision included migrations 285–286 absent from this
-        captured database state. This historical comparison does not qualify today's
-        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
-        not a claim about current GitHub-main schema or vps3 production parity.
-        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
-        bundle is supporting provenance only.
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
   contact:
     description: >-
-      Trevarn contact-study detections, asset-scan captures, twinning history
-      and processing watermark. See services/trevarn/database.md.
+      Trevarn contact-study detections, asset-scan captures, twinning history and
+      processing watermark. Semantics: services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; read-only evidence bundle in
-        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
-        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
-        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
-        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        The 2026-10-09 comparison used trevarn-core main
-        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
-        migrations 285–286 from merged PR #281
-        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
-        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
-        PR #286 updates its README; neither adds a numbered migration.
+        trevarn-core db/baseline/*.sql applied by db/migrate.sh; ledger public.schema_migrations.
       reason: >-
-        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
-        entries through 283, and its schema-only DDL describes that VM1124 development
-        state. Its migration hashes were verified against the reviewed migration sources.
-        The compared GitHub revision included migrations 285–286 absent from this
-        captured database state. This historical comparison does not qualify today's
-        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
-        not a claim about current GitHub-main schema or vps3 production parity.
-        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
-        bundle is supporting provenance only.
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
   public:
     description: >-
       PostgreSQL's default schema, included as a whole by projection-contract 2.
-      The verified development export contains public.schema_migrations; its
-      structure is read by introspection, while migration row identity remains
-      outside the contract-2 projection. See services/trevarn/database.md.
+      Holds the migration ledger public.schema_migrations (filename, sha256,
+      applied_at); the ledger's row identity is captured as provenance when
+      CATALOGUE_LEDGER_TABLE is configured. Semantics: services/trevarn/database.md.
     canonical:
       status: NOT_YET_COMPARED
       source: >-
-        VM1124 development database trevarn; read-only evidence bundle in
-        trevarn-core PR #276 at commit 1868c01728c92b08a7fa06b62c3fd65e6497d766.
-        Source migrations 000–280 are from reviewed main 4ee75c8fd72df4a8fdc990fee6fc2ffa8691293b;
-        migration 281 is in merged PR #270 (merge 113404d86b0e7321ad247b5d2b6272e887a50173);
-        migrations 282–283 are in merged PR #274 (merge a83c9ef16d163229196c36420b6863abc0dac067).
-        The 2026-10-09 comparison used trevarn-core main
-        a83c9ef16d163229196c36420b6863abc0dac067, which additionally contained
-        migrations 285–286 from merged PR #281
-        (merge d3b3d4c62a51b1a400e9e1c53a7e1531a20883ac); those migrations are not
-        represented by the VM1124 evidence bundle. PR #284 adds reader provisioning SQL;
-        PR #286 updates its README; neither adds a numbered migration.
+        trevarn-core db/migrate.sh creates public.schema_migrations itself before applying the baseline.
       reason: >-
-        The evidence bundle captured 2026-10-09T11:38:08Z contains 81 migration-ledger
-        entries through 283, and its schema-only DDL describes that VM1124 development
-        state. Its migration hashes were verified against the reviewed migration sources.
-        The compared GitHub revision included migrations 285–286 absent from this
-        captured database state. This historical comparison does not qualify today's
-        VM1124 database or GitHub main; both require a fresh attended introspection. This catalogue is development evidence,
-        not a claim about current GitHub-main schema or vps3 production parity.
-        Contract 2 records migration_ledger as NOT_CAPTURED at runtime; the evidence
-        bundle is supporting provenance only.
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.

@@ -274,13 +274,13 @@ def test_connection_parameters_read_password_file_and_confine_disable_sslmode(
     assert "dsn" not in params
 
     monkeypatch.setenv("CATALOGUE_ENVIRONMENT", "production")
-    with pytest.raises(RuntimeError, match="restricted to the VM1124 Trevarn Docker bridge"):
+    with pytest.raises(RuntimeError, match="allowlisted Trevarn Docker bridge"):
         consumer.source_connection_parameters()
 
     monkeypatch.delenv("CATALOGUE_SOURCE_SSLMODE")
     monkeypatch.delenv("CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED")
     monkeypatch.setenv("PGSSLMODE", "disable")
-    with pytest.raises(RuntimeError, match="restricted to the VM1124 Trevarn Docker bridge"):
+    with pytest.raises(RuntimeError, match="allowlisted Trevarn Docker bridge"):
         consumer.source_connection_parameters()
 
 

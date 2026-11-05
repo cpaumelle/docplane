@@ -77,6 +77,8 @@ from schema_catalogue_connection import source_connection_parameters  # noqa: E4
 # the names keeps `schema_catalogue.introspect` / `.fingerprint` working.
 from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
 import schema_catalogue_projection as projection  # noqa: E402
+import schema_catalogue_ledger as ledger_module  # noqa: E402
+import schema_catalogue_capture as capture  # noqa: E402
 
 GENERATOR_NAME = "docplane-schema-catalogue"
 GENERATOR_VERSION = "2.0.0"
@@ -124,6 +126,7 @@ def render_pages(
     structure_hash: str,
     config: dict[str, Any] | None = None,
     static_provenance: dict[str, Any] | None = None,
+    migration_ledger: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Catalogue pages for one database. Deterministic for a given structure,
     configuration and static provenance.
@@ -142,6 +145,7 @@ def render_pages(
         config=config or {"schemas": {}},
         static_provenance=static_provenance or {},
         generator=GENERATOR,
+        migration_ledger=migration_ledger,
     )
     for page in pages:
         # Fail-closed boundary: DocumentRefusedError from the canonical
@@ -734,10 +738,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-projection", type=Path)
     parser.add_argument("--emit-pages", type=Path)
+    parser.add_argument(
+        "--metrics-file",
+        help="atomically write this database's projection status in Prometheus textfile format "
+             "(artifact schema-catalogue-<db_key>); never written by --dry-run",
+    )
     args = parser.parse_args(argv)
     if (args.emit_projection or args.emit_pages) and not args.dry_run:
         parser.error("--emit-projection/--emit-pages are review aids and require --dry-run")
+    if args.metrics_file and args.dry_run:
+        parser.error("--metrics-file is not written by --dry-run")
+    if not args.metrics_file:
+        return _reconcile(args)
+    artifact = f"schema-catalogue-{os.environ.get('CATALOGUE_DB_KEY', 'unknown')}"
+    try:
+        status = _reconcile(args)
+    except BaseException:
+        # A failed run is the signal ReconcileFailed exists for; the stale drift value is
+        # unknown here and reads 0, exactly as the other generators report a failure.
+        write_projection_metrics(args.metrics_file, artifact=artifact, drift=False, success=False)
+        raise
+    # Every successful path (published, repaired, or UNCHANGED) ends with the published
+    # projection equal to the live source, so drift is 0 by construction.
+    write_projection_metrics(args.metrics_file, artifact=artifact, drift=False, success=status == 0)
+    return status
 
+
+def _reconcile(args) -> int:
     source_connection = source_connection_parameters()
     db_key = os.environ["CATALOGUE_DB_KEY"]
     db_display = os.environ.get("CATALOGUE_DB_DISPLAY", db_key)
@@ -748,14 +775,41 @@ def main(argv: list[str] | None = None) -> int:
     }
     config = projection.load_config(config_path(db_key))
 
-    with psycopg2.connect(**source_connection) as source:
-        structure = introspect(source, schemas)
-    with psycopg2.connect(**source_connection) as source:
-        metadata = source_metadata(source)
+    # Optional, additive to contract 2: the deployed migration-ledger identity.
+    # With a ledger, structure, metadata and ledger come from ONE consistent capture
+    # (schema_catalogue_capture: one REPEATABLE READ snapshot, ledger compared before
+    # and after, retry then refusal if a migration ran mid-capture). Without a
+    # ledger the original two short reads are kept byte for byte.
+    ledger_table = ledger_module.ledger_table_setting(os.environ.get("CATALOGUE_LEDGER_TABLE"))
+    if ledger_table:
+        structure, metadata, migration_ledger, capture_info = capture.capture_with_ledger(
+            source_connection, schemas, ledger_table,
+            introspector=introspect, metadata_reader=source_metadata,
+            lock_wait_seconds=float(os.environ.get("CATALOGUE_LEDGER_LOCK_WAIT_SECONDS", "60")),
+        )
+        # How the pair was obtained travels with it: an UNAVAILABLE/EMPTY ledger publishes
+        # structure only and is recorded as consistent=False, never as a certified pair.
+        migration_ledger = {**migration_ledger, "capture": capture_info}
+    else:
+        with psycopg2.connect(**source_connection) as source:
+            structure = introspect(source, schemas)
+        with psycopg2.connect(**source_connection) as source:
+            metadata = source_metadata(source)
+        migration_ledger = None
     structure_hash = fingerprint(structure)
-    render_config_hash = projection.config_hash(config, static_provenance)
+    # The ledger is never part of the structural fingerprint (the observer stays
+    # structure-only); it is folded into the render identity so a ledger-only change
+    # republishes honestly while catalogues without the setting keep their exact
+    # previous render identity.
+    render_inputs = static_provenance if migration_ledger is None else {
+        **static_provenance, "migration_ledger": ledger_module.identity(migration_ledger),
+    }
+    render_config_hash = projection.config_hash(config, render_inputs)
     identity = render_identity(structure_hash, render_config_hash)
-    pages = render_pages(db_key, db_display, structure, structure_hash, config, static_provenance)
+    # Keyword only when captured, so callers and test doubles that predate the
+    # optional ledger keep their exact positional contract.
+    render_extra = {} if migration_ledger is None else {"migration_ledger": migration_ledger}
+    pages = render_pages(db_key, db_display, structure, structure_hash, config, static_provenance, **render_extra)
     document = projection.build_document(
         db_key, db_display, structure, structure_hash, render_config_hash,
         PROJECTION_CONTRACT_VERSION,
@@ -767,9 +821,15 @@ def main(argv: list[str] | None = None) -> int:
         source_metadata=metadata,
         extracted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         generator=GENERATOR,
+        **render_extra,
     )
     guard_projection(document, provenance)
     print(f"fingerprint {structure_hash}")
+    if migration_ledger is not None:
+        print(
+            f"ledger {migration_ledger.get('status')} {migration_ledger.get('table', '')} "
+            f"head {migration_ledger.get('head_filename', '-')} rows {migration_ledger.get('rows', 0)}"
+        )
     print(f"config {render_config_hash[:16]} render identity {identity[:16]}")
     print(f"rendered {len(pages)} catalogue pages for {len(schemas)} schemas")
 

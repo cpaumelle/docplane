@@ -101,12 +101,36 @@ import ipaddress
 import sys
 ipaddress.ip_address(sys.argv[1])
 PY
+# Plaintext (sslmode=disable) is allowed only on an unpublished Docker bridge whose
+# (environment, source identity) pair is allowlisted here; the live container must be
+# attached to exactly that network. Keep in step with scripts/schema_catalogue_connection.py
+# (_PLAINTEXT_BRIDGES).
+plaintext_bridge_network() {
+  local environment="$1" identity="$2"
+  case "$environment" in
+    development) [[ "$identity" == "VM1124/trevarn" ]] && echo trevarn-net ;;
+    production)  [[ "$identity" == "VPS3/trevarn" ]] && echo trevarn-net ;;
+  esac
+  return 0
+}
 if [[ "${CATALOGUE_SOURCE_SSLMODE:-${PGSSLMODE:-}}" == "disable" ]]; then
-  [[ "${CATALOGUE_ENVIRONMENT:-}" == "development" \
-    && "${CATALOGUE_SOURCE_IDENTITY:-}" == "VM1124/trevarn" \
-    && " ${network_names[*]} " == *" trevarn-net "* ]] \
-    || fail "sslmode=disable is allowed only for VM1124 Trevarn on trevarn-net"
-  export CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED=trevarn-net
+  expected_network="$(plaintext_bridge_network "${CATALOGUE_ENVIRONMENT:-}" "${CATALOGUE_SOURCE_IDENTITY:-}")"
+  [[ -n "$expected_network" && " ${network_names[*]} " == *" $expected_network "* ]] \
+    || fail "sslmode=disable is allowed only for an allowlisted Trevarn Docker bridge (VM1124 development, VPS3 production)"
+  export CATALOGUE_SOURCE_DOCKER_NETWORK_VERIFIED="$expected_network"
 fi
 
-exec python3 "$repository_root/scripts/schema_catalogue.py" "$@"
+# Projection-status metrics for node_exporter, one file per database, through the shared
+# writer (the same three series and alerts as every generated projection). A dry run never
+# writes them; a host without the textfile directory skips them and says so.
+metrics_args=()
+if [[ " $* " != *" --dry-run "* ]]; then
+  metrics_file="${DOCPLANE_SCHEMA_CATALOGUE_METRICS_FILE:-/var/lib/node_exporter/textfile_collector/docplane_schema_catalogue_${CATALOGUE_DB_KEY}.prom}"
+  if [[ -d "$(dirname "$metrics_file")" ]]; then
+    metrics_args=(--metrics-file "$metrics_file")
+  else
+    echo "schema-catalogue wrapper: metrics directory $(dirname "$metrics_file") is absent; projection status metrics not written" >&2
+  fi
+fi
+
+exec python3 "$repository_root/scripts/schema_catalogue.py" "${metrics_args[@]}" "$@"
