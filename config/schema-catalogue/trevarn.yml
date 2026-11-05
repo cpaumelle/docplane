@@ -9,7 +9,8 @@
 # Runtime contract (settings file, not this file):
 #   CATALOGUE_ENVIRONMENT=production
 #   CATALOGUE_SOURCE_IDENTITY=VPS3/trevarn
-#   CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+#   CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,glanik,glanik_staff,cbre_compat,public
+#     (every schema of the production database; owner decision 2026-11-05)
 #   CATALOGUE_LEDGER_TABLE=public.schema_migrations   (optional, needs the ledger grant)
 #
 # The candidate catalogue for an unreleased tree is a SEPARATE db_key
@@ -20,8 +21,11 @@
 # NOT_YET_COMPARED, NOT_AVAILABLE. Trevarn has one ordered migration source
 # (trevarn-core db/baseline/*.sql applied by db/migrate.sh, recorded in
 # public.schema_migrations), so a clean-apply comparison is possible but has not
-# been built: every schema is NOT_YET_COMPARED. The deployed ledger head is
-# captured at runtime when CATALOGUE_LEDGER_TABLE is set; it is never copied here.
+# been built: every baseline schema is NOT_YET_COMPARED. cbre_compat is the one
+# exception: it is provisioned outside trevarn-core's migration ledger (no
+# schema_migrations row names it), so its canonical status is NOT_AVAILABLE. The
+# deployed ledger head is captured at runtime when CATALOGUE_LEDGER_TABLE is set;
+# it is never copied here.
 
 schemas:
   platform:
@@ -91,6 +95,50 @@ schemas:
         trevarn-core db/baseline/*.sql applied by db/migrate.sh; ledger public.schema_migrations.
       reason: >-
         Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
+  glanik:
+    description: >-
+      Glanik, the feedback and cleaning solution (schema per use-case, doctrine D8):
+      panel presses, traffic events and device status read from the shared ingest
+      past Glanik's own watermark; feedback envelopes, dispositions and conflicts;
+      activities, location roles and grants; contracts, templates, KPI periods,
+      visits (bundles, alerts, reminders, subscriptions, supervisors, explanations),
+      reports and report files, notification rules. Design:
+      docs/proposals/2026-10-09-glanik (trevarn-core). Semantics: services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: >-
+        trevarn-core db/baseline/*.sql (288 onward) applied by db/migrate.sh; ledger public.schema_migrations.
+      reason: >-
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
+  glanik_staff:
+    description: >-
+      Glanik staff attendance: employer tenants, explicit per-user and per-permission
+      access grants with an append-only audit log, employees and credential
+      assignments, work schedules, shifts and exceptions, time-clock devices, badge
+      assignments, activations, attestations and wording, report policy and
+      organisation agreements. Authorisation is gate-function based (trevarn-core
+      issue 402, Slice A onward). Semantics: services/trevarn/database.md.
+    canonical:
+      status: NOT_YET_COMPARED
+      source: >-
+        trevarn-core db/baseline/*.sql (306 onward) applied by db/migrate.sh; ledger public.schema_migrations.
+      reason: >-
+        Clean apply reproducible in CI; canonical-versus-deployed comparison not built.
+  cbre_compat:
+    description: >-
+      CBRE legacy compatibility layer behind ms-compat (the microshare.eu replica):
+      device_cluster_map and device_clusters replicate hub2's frozen CBRE twinning
+      (real Mongo cluster ids, dashed EUI wire format), inference_sensor_config, and
+      the people_counter_agg_cbre_contract view read by the parity run.
+      Semantics: services/trevarn/parity.md (docs mirror) and services/trevarn/database.md.
+    canonical:
+      status: NOT_AVAILABLE
+      source: >-
+        Provisioned on production outside trevarn-core's db/baseline and migrate.sh ledger
+        (no public.schema_migrations row names it); owned by postgres.
+      reason: >-
+        No ordered migration source exists for this schema, so a canonical-versus-deployed
+        comparison cannot be defined. The page shows deployed production structure only.
   public:
     description: >-
       PostgreSQL's default schema, included as a whole by projection-contract 2.
