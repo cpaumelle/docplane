@@ -167,7 +167,7 @@ DOCPLANE_API=https://docplane.charliehub.internal
 DOCPLANE_SCHEMA_CATALOGUE_TOKEN_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-generator/docplane-token
 CATALOGUE_DB_KEY=trevarn
 CATALOGUE_DB_DISPLAY='Trevarn PostgreSQL'
-CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,glanik,glanik_staff,cbre_compat,public
 CATALOGUE_SOURCE_DB=trevarn
 CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_reader
 CATALOGUE_SOURCE_PASSWORD_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-generator/db-password
@@ -182,7 +182,7 @@ CATALOGUE_SOURCE_SSLMODE=disable
 DOCPLANE_API=https://docplane.charliehub.internal
 DOCPLANE_SCHEMA_OBSERVER_TOKEN_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-observer/docplane-token
 CATALOGUE_DB_KEY=trevarn
-CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,glanik,glanik_staff,cbre_compat,public
 CATALOGUE_SOURCE_DB=trevarn
 CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_observer
 CATALOGUE_SOURCE_PASSWORD_FILE=/run/charliehub/secrets/trevarn-schema-catalogue-observer/db-password
@@ -387,8 +387,14 @@ above. Nothing in this section is new mechanism.
 |---|---|---|---|---|
 | `trevarn` | `production` | `VPS3/trevarn` | vps3 host, root, `docplane-schema-catalogue@trevarn` and `docplane-schema-catalogue-observer@trevarn` from a read-only `/opt/docplane` checkout at the reviewed tag | live `trevarn-core/postgres` container `trevarn-postgres`, database `trevarn`, PostgreSQL 16.13, roles `trevarn_schema_catalogue_reader` / `_observer` (trevarn-core `ops/metadata-reader`, CONNECT-only, `pg_catalog` reads) |
 
-`CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public`
-(`cbre_compat` is deliberately excluded, as in the presentation config). Candidate
+`CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,glanik,glanik_staff,cbre_compat,public`:
+every schema of the production database. Until 2026-11-05 the list stopped at the
+seven schemas that predate Glanik and excluded `cbre_compat`; the owner's decision
+that day ("all three need to be included, they're all our code") added `glanik`,
+`glanik_staff` and `cbre_compat`, the last with canonical status `NOT_AVAILABLE`
+because it is provisioned outside the migration ledger. The attended writer
+(`vm1124-schema-catalogue-env.sh`) carries this list for the `vps3` profile and the
+nine baseline schemas (no `cbre_compat`) for the `vm1124` profile. Candidate
 and staging coverage is a **separate** catalogue and a separate decision; see
 *Trevarn: staging catalogue* below. Main's unapplied migrations are never
 presented as production structure under `trevarn`.
@@ -419,7 +425,7 @@ DOCPLANE_API=https://docplane.charliehub.internal
 DOCPLANE_SCHEMA_CATALOGUE_TOKEN_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-generator/docplane-token
 CATALOGUE_DB_KEY=trevarn
 CATALOGUE_DB_DISPLAY='Trevarn PostgreSQL'
-CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,glanik,glanik_staff,cbre_compat,public
 CATALOGUE_SOURCE_DB=trevarn
 CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_reader
 CATALOGUE_SOURCE_PASSWORD_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-generator/db-password
@@ -435,7 +441,7 @@ CATALOGUE_SOURCE_SSLMODE=disable
 DOCPLANE_API=https://docplane.charliehub.internal
 DOCPLANE_SCHEMA_OBSERVER_TOKEN_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-observer/docplane-token
 CATALOGUE_DB_KEY=trevarn
-CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,public
+CATALOGUE_SCHEMAS=platform,ingest,occupancy,analytics,parking,contact,glanik,glanik_staff,cbre_compat,public
 CATALOGUE_SOURCE_DB=trevarn
 CATALOGUE_SOURCE_USER=trevarn_schema_catalogue_observer
 CATALOGUE_SOURCE_PASSWORD_FILE=/etc/trevarn/secrets/trevarn-schema-catalogue-observer/db-password
@@ -650,6 +656,8 @@ release would change; they never read `trevarn_staging` as production structure.
 
 **Execution blocked pending Charles's scoped approval. Bound to WORK update `a5b985d9` on initiative docplane-knowledge-reality-loop, item trevarn-production-catalogue. Nothing is merged, deployed or activated under this review.**
 
+Revision 4.1 (2026-11-05, after gate 7b) records two execution findings without changing any gate: the 7b expectation below now states what the generator does (all pages republish on a ledger-only change; observed 2026-11-05T17:34Z, fingerprint unchanged); and the schema set is widened from seven schemas to all ten production schemas (`glanik`, `glanik_staff`, `cbre_compat` added, owner decision) through the two governed changes this page prescribes for a new schema: presentation config (this repository) and the protected settings on vps3 (attended writer, both consumers), followed by one structure capture before gate 8 acceptance.
+
 Revision 4 carries three corrections from the review of revision 3: gate 0 stops on a changed runner; gate 11 reconciles against the gate-2 baseline, the gate-6 release receipt and the gate-7b capture; the in-flight rollback treats an interrupted publication as incomplete until the receipts say otherwise.
 
 Heads: docplane #228 (this PR; scripts, units and configuration as at `dcf9033f`, verify / fresh-instance success), trevarn-core #556 `bce89675` (build run 41933094023 success, nine jobs), charliehub-hub2 #1383 `f3e315a3` (18 of 18 workflows success, including secrets-v3-safety and both doc-citation-gate runs). This section is a docs-only commit on top of `dcf9033f`; no script, unit or configuration changes.
@@ -669,7 +677,7 @@ Reviewed runner identity (content, independent of merge strategy): `db/migrate.s
 | 5 Structure-only canary | vps3 operator + owner | Confirm again that the generator settings carry no `CATALOGUE_LEDGER_TABLE` and that `--dry-run` prints no `ledger` line. One generation → `PUBLISHED`, `migration_ledger.status = NOT_CAPTURED`; one observation → `NOMINAL`; provenance FRESH / MATCH / CURRENT; second generation → `UNCHANGED`. Record fingerprint F1. | wrapper output, provenance | retire the artifact through the owning authority |
 | 6 Lock-aware runner effective on vps3 | release owner | Promote a trevarn-core release whose target commit carries the reviewed runner. Record in the release receipt `git show <target>:db/migrate.sh \| sha256sum` and require it to equal the reviewed checksum. After the deploy's checkout, verify the **effective** runner by content on vps3: `sha256sum /opt/trevarn-core/db/migrate.sh` equals that value (the deploy tool copies this file into the container and executes it), and the deploy-ledger `end` record's `after_commit` equals the release target. If that release migrated, the record shows `catalogue_refresh.reason = "not activated"`. Follow-up (not blocking): extend `release_packet.py` to pin `db/migrate.sh` by content as it already pins `vps3_deploy.py`. | release receipt, checksums, ledger record | ordinary release rollback; the lock is harmless without a collector |
 | 7a Fresh structure-only capture after the release | vps3 operator | One generation: `PUBLISHED` with new fingerprint F2 if the release changed schema, else `UNCHANGED` (F2 = F1). Record F2 and the DocPlane revisions of all seven schema pages. | wrapper output, page revisions | none needed |
-| 7b Ledger-enabled capture | DB owner, vps3 operator, owner | Only after 6 and 7a. Apply the column-level ledger grant and its boundary test. `sc-env.sh remove generator` then `install generator` with `SC_ENV_LEDGER_TABLE=public.schema_migrations` (re-enter the two generator values; re-verify both receipts). One generation: fingerprint **equals F2**; overview republished; the seven schema-page revisions **unchanged**; projection version +1; `migration_ledger.status = CAPTURED`, `capture.consistent = true`, guard names the advisory lock. Record rows, head filename and set-digest prefix beside the release receipt's migration list, labelled truncated comparison identifiers. | provenance JSON, page revisions before/after | `remove`/`install generator` without the variable (structure-only resumes); optionally revoke the grant |
+| 7b Ledger-enabled capture | DB owner, vps3 operator, owner | Only after 6 and 7a. Apply the column-level ledger grant and its boundary test. `sc-env.sh remove generator` then `install generator` with `SC_ENV_LEDGER_TABLE=public.schema_migrations` (re-enter the two generator values; re-verify both receipts). One generation: fingerprint **equals F2**; every catalogue page republished (the ledger setting is part of the render identity, decision D2, so a ledger-only change republishes openly; page content carries the same fingerprint and no ledger text); projection version +1; `migration_ledger.status = CAPTURED`, `capture.consistent = true`, guard names the advisory lock. Record rows, head filename and set-digest prefix beside the release receipt's migration list, labelled truncated comparison identifiers. | provenance JSON, page revisions before/after | `remove`/`install generator` without the variable (structure-only resumes); optionally revoke the grant |
 | 8 Owner acceptance | owner | Accept 5, 6, 7a, 7b in WORK. | WORK update | — |
 | 9 Activate | owner, vps3 operator, hub2 operator | Execution contract → `SCHEDULED` (2 h max evidence age). `systemctl enable --now` both Trevarn timers; this one act also arms the deployment tool's refresh request. Promote the staged alert into `rules/` (hub2 PR), rules-only deploy, reload. | `is-enabled` → `enabled`, rule receipt | see rollback section |
 | 10 Soak 24 h, scheduled operation only | monitoring | Both timers fire every 30 min; provenance stays FRESH; `reconcile_success{artifact="schema-catalogue-trevarn"} == 1` on hub2; no `DocPlaneGeneratedProjection*` alert for the artifact; at least one observer cycle after each generation. Deployment-triggered refresh is **not** exercised by the soak: it is covered by the unit tests of `_request_catalogue_refresh` (activated and not-activated) and the dev end-to-end; the next independently authorised production migration is observed when it occurs and its `catalogue_refresh` record and the resulting regeneration (`capture.consistent = true`) are added to WORK then. | Prometheus, journal | see rollback section |
