@@ -64,6 +64,7 @@ def test_model_routes_exist_and_prior_surfaces_survive():
         "/api/v1/model/artifacts/{predecessor_id}/handoff",
         "/api/v1/model/artifacts/{artifact_id}/retire",
         "/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody",
+        "/api/v1/bootstrap/model/artifacts/{artifact_id}/execution-contract",
     ):
         assert new in paths, new
     for prior in ("/api/v1/initiatives", "/api/v1/work/queues", "/api/v1/work/captures"):
@@ -86,6 +87,10 @@ def test_model_mutations_declare_required_idempotency_header():
 
     custody = schema["paths"]["/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody"]["post"]
     names = {item["name"] for item in custody.get("parameters", [])}
+    assert {"Idempotency-Key", "X-DocPlane-Bootstrap-Token"} <= names
+
+    contract = schema["paths"]["/api/v1/bootstrap/model/artifacts/{artifact_id}/execution-contract"]["put"]
+    names = {item["name"] for item in contract.get("parameters", [])}
     assert {"Idempotency-Key", "X-DocPlane-Bootstrap-Token"} <= names
 
 
@@ -297,3 +302,36 @@ def test_model_migration_is_additive_and_gapless():
     assert "create schema model" in lowered
     for forbidden in ("alter table", "drop ", "update docs.", "update work.", "delete from"):
         assert forbidden not in lowered, forbidden
+
+
+def test_bootstrap_execution_contract_requires_purpose_and_version():
+    import pytest
+    from pydantic import ValidationError
+    from app.model_models import ArtifactExecutionContractBootstrapSet
+    base = {
+        "observation_owner_principal_id": "00000000-0000-0000-0000-000000000001",
+        "observation_trigger": "SCHEDULED", "observation_max_age_seconds": 7200,
+        "generation_owner_principal_id": "00000000-0000-0000-0000-000000000002",
+        "generation_trigger": "SCHEDULED", "exclusion_domain": "schema-catalogue",
+    }
+    ok = ArtifactExecutionContractBootstrapSet(**base, expected_version=3, purpose="first activation gate 9")
+    assert ok.generation_trigger == "SCHEDULED"
+    for missing in ("purpose", "expected_version"):
+        values = {**base, "expected_version": 3, "purpose": "first activation gate 9"}
+        values.pop(missing)
+        with pytest.raises(ValidationError):
+            ArtifactExecutionContractBootstrapSet(**values)
+    with pytest.raises(ValidationError):
+        ArtifactExecutionContractBootstrapSet(**base, expected_version=3, purpose="short")
+
+
+def test_bootstrap_contract_route_does_not_widen_the_scoped_allowlist():
+    """#208 stays intact: the new surface is bootstrap-only, never a scoped-token write route."""
+    from starlette.requests import Request
+    from app import agent_auth
+    for path in (
+        "/api/v1/model/artifacts/00000000-0000-0000-0000-000000000001/execution-contract",
+        "/api/v1/bootstrap/model/artifacts/00000000-0000-0000-0000-000000000001/execution-contract",
+    ):
+        request = Request({"type": "http", "method": "PUT", "path": path, "headers": [], "query_string": b""})
+        assert not agent_auth._scoped_write_route_allowed(request), path

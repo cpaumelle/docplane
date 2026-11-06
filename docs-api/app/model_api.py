@@ -17,6 +17,7 @@ from app.event_store import append_event
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.model_contracts import CARD_CONTRACTS, checklist_errors, contracts_document, secret_findings
 from app.model_models import (
+    ArtifactExecutionContractBootstrapSet,
     ArtifactDeclare,
     ArtifactCustodyReassign,
     ArtifactExecutionContract,
@@ -982,6 +983,87 @@ def reassign_artifact_custody(
                 "artifact_key": artifact["artifact_key"],
                 "previous_principal_id": previous_principal_id,
                 "destination_principal_id": str(request.destination_principal_id),
+                "purpose": request.purpose,
+                "expected_version": request.expected_version,
+                "response": response,
+            },
+        )
+        conn.commit()
+        return response
+
+
+@router.put("/api/v1/bootstrap/model/artifacts/{artifact_id}/execution-contract")
+def bootstrap_set_artifact_execution_contract(
+    artifact_id: UUID,
+    request: ArtifactExecutionContractBootstrapSet,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    bootstrap_token: str | None = Header(default=None, alias="X-DocPlane-Bootstrap-Token"),
+) -> dict[str, Any]:
+    """Operator-authority execution contract for a declared generated artifact.
+
+    The ordinary route accepts only the declaring principal, and a scoped declarer may not change its
+    own contract (#208): an artifact declared by a scoped generator without a contract could otherwise
+    never receive one. This surface leaves both rules intact. It is CAS-bound, validates the owners
+    exactly like the ordinary route, attributes the stored row to the artifact's declaring principal
+    (on whose behalf it acts; the columns are principal-typed) and records the bootstrap authority,
+    the previous contract and the purpose in an append-only audit event.
+    """
+    require_bootstrap_token(bootstrap_token)
+    key = _key(idempotency_key)
+    payload = {"route": "artifact-execution-contract-bootstrap-set", "artifact_id": str(artifact_id), **request.model_dump(mode="json")}
+    digest = receipt_digest(payload)
+    event_key = f"MODEL_ARTIFACT_EXECUTION_CONTRACT_SET_BY_BOOTSTRAP:{key}"
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 74))", (f"bootstrap:{key}",))
+        cur.execute(
+            "SELECT metadata FROM docplane.events WHERE producer_id = 'docplane-bootstrap' AND idempotency_key = %s",
+            (event_key,),
+        )
+        prior = cur.fetchone()
+        if prior is not None:
+            if (prior[0] or {}).get("request_hash") != digest:
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED", "original_operation": "MODEL_ARTIFACT_EXECUTION_CONTRACT_BOOTSTRAP_SET"})
+            return prior[0]["response"]
+
+        cur.execute(_artifact_select() + " WHERE artifact_id = %s FOR UPDATE", (str(artifact_id),))
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail={"code": "MODEL_ARTIFACT_NOT_FOUND"})
+        artifact = _artifact(row)
+        if artifact["status"] != "DECLARED":
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_NOT_DECLARED", "status": artifact["status"]})
+        if artifact["version"] != request.expected_version:
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_VERSION_STALE", "current": artifact["version"]})
+        previous_contract, previous_status = _execution_contract(conn, str(artifact_id))
+        contract = ArtifactExecutionContract.model_validate(
+            request.model_dump(exclude={"expected_version", "purpose"})
+        )
+        _store_execution_contract(conn, str(artifact_id), contract, artifact["declared_by"])
+        cur.execute(
+            "UPDATE model.generated_artifacts SET version = version + 1, updated_at = now() WHERE artifact_id = %s AND version = %s",
+            (str(artifact_id), request.expected_version),
+        )
+        if cur.rowcount != 1:
+            raise HTTPException(status_code=409, detail={"code": "MODEL_ARTIFACT_VERSION_STALE", "current": artifact["version"]})
+        cur.execute(_artifact_select() + " WHERE artifact_id = %s", (str(artifact_id),))
+        response = jsonable_encoder(_artifact_with_contract(conn, cur.fetchone()))
+        append_event(
+            conn,
+            event_type="MODEL_ARTIFACT_EXECUTION_CONTRACT_SET_BY_BOOTSTRAP",
+            # Bootstrap is the authorization surface, not an event transport (see reassign-custody).
+            channel="API",
+            producer_id="docplane-bootstrap",
+            idempotency_key=event_key,
+            resource_type="MODEL_ARTIFACT",
+            resource_id=str(artifact_id),
+            metadata={
+                "request_hash": digest,
+                "artifact_key": artifact["artifact_key"],
+                "authority": "bootstrap",
+                "attributed_to_principal_id": artifact["declared_by"],
+                "previous_contract": jsonable_encoder(previous_contract),
+                "previous_contract_status": previous_status,
                 "purpose": request.purpose,
                 "expected_version": request.expected_version,
                 "response": response,

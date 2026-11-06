@@ -652,9 +652,37 @@ page per schema. Agents compare `schema_provenance trevarn` and
 `schema_provenance trevarn_staging` (fingerprint, ledger rows/head/digest) to see what a
 release would change; they never read `trevarn_staging` as production structure.
 
+### Execution contract for a scoped declarer
+
+A generated artifact declared by a **scoped** automation principal (every production schema catalogue
+since #207) can carry an execution contract from declaration, but cannot change it afterwards: the
+ordinary `PUT /api/v1/model/artifacts/{artifact_id}/execution-contract` accepts only the declaring
+principal, and #208 forbids a scoped generator to change its own contract. The operator sets or
+changes it with the bootstrap credential:
+
+```text
+PUT /api/v1/bootstrap/model/artifacts/{artifact_id}/execution-contract
+X-DocPlane-Bootstrap-Token: <operator bootstrap credential>
+Idempotency-Key: <unique logical mutation key>
+
+{"contract_schema_version": 1,
+ "observation_owner_principal_id": "<observer automation uuid>", "observation_trigger": "SCHEDULED",
+ "observation_max_age_seconds": 7200,
+ "generation_owner_principal_id": "<generator automation uuid>", "generation_trigger": "SCHEDULED",
+ "exclusion_domain": "schema-catalogue", "expected_version": <current artifact version>,
+ "purpose": "<why, at least 10 characters>"}
+```
+
+The route is CAS-bound on the artifact version, validates both owners as active `AUTOMATION`
+principals exactly like the ordinary route, attributes the stored row to the artifact's declaring
+principal (the columns are principal-typed) and appends a `MODEL_ARTIFACT_EXECUTION_CONTRACT_SET_BY_BOOTSTRAP`
+event with the previous contract and the purpose. It does not widen any scoped-token write route.
+
 ## Trevarn production: first-activation plan (revision 4, operator's execution copy)
 
 **Execution blocked pending Charles's scoped approval. Bound to WORK update `a5b985d9` on initiative docplane-knowledge-reality-loop, item trevarn-production-catalogue. Nothing is merged, deployed or activated under this review.**
+
+Revision 4.2 (2026-11-06, at gate 9): the execution contract cannot be set by the scoped declarer (#208) and the ordinary route accepts only the declarer, so gate 9 sets it through the new bootstrap-authority route described under *Execution contract for a scoped declarer* below. No gate order changed.
 
 Revision 4.1 (2026-11-05, after gate 7b) records two execution findings without changing any gate: the 7b expectation below now states what the generator does (all pages republish on a ledger-only change; observed 2026-11-05T17:34Z, fingerprint unchanged); and the schema set is widened from seven schemas to all ten production schemas (`glanik`, `glanik_staff`, `cbre_compat` added, owner decision) through the two governed changes this page prescribes for a new schema: presentation config (this repository) and the protected settings on vps3 (attended writer, both consumers), followed by one structure capture before gate 8 acceptance.
 
@@ -679,7 +707,7 @@ Reviewed runner identity (content, independent of merge strategy): `db/migrate.s
 | 7a Fresh structure-only capture after the release | vps3 operator | One generation: `PUBLISHED` with new fingerprint F2 if the release changed schema, else `UNCHANGED` (F2 = F1). Record F2 and the DocPlane revisions of all seven schema pages. | wrapper output, page revisions | none needed |
 | 7b Ledger-enabled capture | DB owner, vps3 operator, owner | Only after 6 and 7a. Apply the column-level ledger grant and its boundary test. `sc-env.sh remove generator` then `install generator` with `SC_ENV_LEDGER_TABLE=public.schema_migrations` (re-enter the two generator values; re-verify both receipts). One generation: fingerprint **equals F2**; every catalogue page republished (the ledger setting is part of the render identity, decision D2, so a ledger-only change republishes openly; page content carries the same fingerprint and no ledger text); projection version +1; `migration_ledger.status = CAPTURED`, `capture.consistent = true`, guard names the advisory lock. Record rows, head filename and set-digest prefix beside the release receipt's migration list, labelled truncated comparison identifiers. | provenance JSON, page revisions before/after | `remove`/`install generator` without the variable (structure-only resumes); optionally revoke the grant |
 | 8 Owner acceptance | owner | Accept 5, 6, 7a, 7b in WORK. | WORK update | — |
-| 9 Activate | owner, vps3 operator, hub2 operator | Execution contract → `SCHEDULED` (2 h max evidence age). `systemctl enable --now` both Trevarn timers; this one act also arms the deployment tool's refresh request. Promote the staged alert into `rules/` (hub2 PR), rules-only deploy, reload. | `is-enabled` → `enabled`, rule receipt | see rollback section |
+| 9 Activate | owner, vps3 operator, hub2 operator | Execution contract → `SCHEDULED` (2 h max evidence age), set through the bootstrap authority (`PUT /api/v1/bootstrap/model/artifacts/{artifact_id}/execution-contract`): the artifact's declarer is the scoped generator, which may not change its own contract (#208). `systemctl enable --now` both Trevarn timers; this one act also arms the deployment tool's refresh request. Promote the staged alert into `rules/` (hub2 PR), rules-only deploy, reload. | `is-enabled` → `enabled`, rule receipt | see rollback section |
 | 10 Soak 24 h, scheduled operation only | monitoring | Both timers fire every 30 min; provenance stays FRESH; `reconcile_success{artifact="schema-catalogue-trevarn"} == 1` on hub2; no `DocPlaneGeneratedProjection*` alert for the artifact; at least one observer cycle after each generation. Deployment-triggered refresh is **not** exercised by the soak: it is covered by the unit tests of `_request_catalogue_refresh` (activated and not-activated) and the dev end-to-end; the next independently authorised production migration is observed when it occurs and its `catalogue_refresh` record and the resulting regeneration (`capture.consistent = true`) are added to WORK then. | Prometheus, journal | see rollback section |
 | 11 KNOW links | docs owner | Data-model blocks on the Trevarn Database and Architecture pages point at `model/schema-catalogue/trevarn/`. Reconcile the pages' deployment claims against three records: the gate-2 receipt as the pre-release baseline; the successful gate-6 release receipt (release target, `after_commit`, migrations applied); and the gate-7b capture (rows, head filename, set-digest prefix). The pages state deployment facts in the deploy ledger's terms and must agree with all three; any disagreement is recorded in WORK before the pages change. | page revisions, the three records | revert pages |
 
@@ -687,7 +715,7 @@ Reviewed runner identity (content, independent of merge strategy): `db/migrate.s
 
 - **Stop future triggers:** `systemctl disable --now docplane-schema-catalogue@trevarn.timer docplane-schema-catalogue-observer@trevarn.timer`. The deployment tool then records `not activated` again.
 - **In-flight run:** do not kill a generator mid-publication. Wait for `docplane-schema-catalogue@trevarn.service` to leave `activating`/`active` (bounded by `TimeoutStartSec=5min` and the per-database lock); if it must be stopped, `systemctl stop` sends SIGTERM. An interrupted run can leave publication incomplete: the publication steps (pages+ownership, CATALOGUES, projection, GENERATION) commit separately, so a stop between them leaves the earlier steps committed and the later ones absent. After any interruption, inspect the receipts before anything else: the unit journal, `schema_provenance trevarn` (generation state, projection version) and the artifact's GENERATION evidence; record in WORK which steps committed. Then reconcile through the supported retry path only: the next run of the same unit for the same transition, whose transition-bound idempotency keys complete the missing steps without duplicating the committed ones. Idempotency aids recovery; it does not make the interrupted run atomic. Never hand-edit pages or evidence to finish a run. The shared advisory lock is session-level and is released with the connection.
-- **Execution contract:** set it back to `MANUAL` through the owning authority so DocPlane does not report scheduled evidence as overdue; record the change. Leaving it `SCHEDULED` is also honest (freshness turns stale after 2 h) but noisier.
+- **Execution contract:** set it back to `MANUAL` through the bootstrap authority route (the owning authority for a scoped declarer) so DocPlane does not report scheduled evidence as overdue; record the change. Leaving it `SCHEDULED` is also honest (freshness turns stale after 2 h) but noisier.
 - **Published MODEL evidence:** pages, projection and GENERATION evidence stay as they are, correctly dated, with `schema_provenance` reporting staleness. If the catalogue must be withdrawn, retire the artifact through `POST /api/v1/model/artifacts/{id}/retire` (generated pages become GENERATED tombstones); never hand-edit generated pages.
 - **Credentials:** `sc-env.sh remove` deletes the four files and two settings files only; the four `escrow-verify` receipts stay in WORK (ids, timestamps, `match: true`), never values; role and principal revocation go through their owners.
 - **Alert:** move the rule back to `rules-staged/` and redeploy; the three label-agnostic alerts simply stop seeing the artifact once its metric file ages out.
