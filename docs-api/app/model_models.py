@@ -188,6 +188,16 @@ class GeneratedOwnershipPlan(BaseModel):
         return self
 
 
+class ArtifactExecutionContractBootstrapSet(ArtifactExecutionContractUpdate):
+    """Operator-set execution contract for an artifact whose declarer is a scoped automation principal.
+
+    Scoped generators may not change their own contract (#208), and the ordinary route accepts only the
+    declaring principal, so without this surface such an artifact could never receive a contract after
+    declaration. ``purpose`` is recorded in the audit event.
+    """
+    purpose: str = Field(min_length=10, max_length=4000)
+
+
 class ArtifactCustodyReassign(BaseModel):
     expected_version: int = Field(ge=1)
     destination_principal_id: UUID
