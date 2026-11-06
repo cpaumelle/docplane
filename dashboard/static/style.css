@@ -86,6 +86,8 @@ main { padding:1.4rem 1.6rem; min-width:0; }
 .heading { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; margin-bottom:1.1rem; }
 .heading p { color:var(--text-muted); }
 .muted { color:var(--text-muted); }
+.recent-change { display:flex; justify-content:space-between; gap:1rem; text-align:left; }
+.recent-change span { flex-shrink:0; }
 .status { border:1px solid var(--border); border-radius:var(--radius-pill); padding:.3rem .7rem; color:var(--text-muted); font-size:.85rem; background:var(--bg-surface); }
 
 /* ── Cards / panels (ch-card feel) ────────────────────────────────────── */
@@ -254,7 +256,8 @@ button.chip-filter:hover { border-color:var(--action); }
 
 /* WORK vertical slice: one selected initiative, one authoritative brief. */
 .work-layout { display:grid; grid-template-columns:minmax(240px, 0.8fr) minmax(0, 2fr); gap:1rem; align-items:start; }
-.work-browser { position:sticky; top:1rem; max-height:85vh; overflow:auto; }
+.work-browser { position:sticky; top:1rem; }
+#work-initiatives { max-height:60vh; overflow:auto; }
 .work-choice { display:block; width:100%; text-align:left; margin:.4rem 0; }
 .work-choice[aria-pressed="true"] { border-color:var(--action); background:var(--cat-work-wash); }
 .work-choice strong,.work-choice small { display:block; }
@@ -266,4 +269,14 @@ button.chip-filter:hover { border-color:var(--action); }
 .work-history { white-space:pre-wrap; overflow-wrap:anywhere; }
 .work-notice { border-left:3px solid var(--action); padding:.6rem .8rem; background:var(--bg-sunken); }
 #work-update-panel { margin-top:1rem; }
-@media(max-width:800px) { .work-layout { grid-template-columns:1fr; } .work-browser { position:static; max-height:320px; } }
+@media(max-width:800px) {
+  .sidebar { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; }
+  .sidebar .nav-group { display:none; }
+  .sidebar .nav { white-space:normal; }
+  main { padding:1rem; }
+  .work-layout { grid-template-columns:1fr; }
+  .work-browser { position:static; }
+  #work-initiatives { max-height:16rem; }
+  #work-brief .panel-heading { flex-wrap:wrap; }
+  #work-new-item { white-space:normal; }
+}
