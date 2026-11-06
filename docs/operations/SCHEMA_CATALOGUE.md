@@ -652,6 +652,23 @@ page per schema. Agents compare `schema_provenance trevarn` and
 `schema_provenance trevarn_staging` (fingerprint, ledger rows/head/digest) to see what a
 release would change; they never read `trevarn_staging` as production structure.
 
+### Schema coverage (new schemas are reported, never silently missed)
+
+`CATALOGUE_SCHEMAS` is an explicit list, so a schema created by a later migration is not
+catalogued until it is added (presentation entry in `config/schema-catalogue/<db_key>.yml`,
+then the protected settings of both consumers). To make that a visible to-do, every
+generation also lists the database's user schemas from the world-readable `pg_namespace`
+(no new privilege) and exports, beside the projection metrics:
+
+- `docplane_schema_catalogue_unlisted_schemas{artifact}`: how many schemas exist but are
+  neither listed nor in `CATALOGUE_SCHEMAS_IGNORED` (optional, comma-separated, for
+  deliberate exclusions);
+- `docplane_schema_catalogue_unlisted_schema{artifact,schema}` = 1, one per such schema.
+
+The check never fails a run: if it cannot read the list the series are omitted (unknown,
+not "complete"). The hub2 alert `DocPlaneSchemaCatalogueUnlistedSchema` fires after one hour
+of an unlisted schema and names it.
+
 ### Execution contract for a scoped declarer
 
 A generated artifact declared by a **scoped** automation principal (every production schema catalogue
