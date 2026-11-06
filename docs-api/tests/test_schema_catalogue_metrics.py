@@ -136,3 +136,37 @@ def test_wrapper_skips_metrics_when_the_textfile_directory_is_absent(tmp_path):
     assert result.returncode == 0, result.stderr
     assert receipt == {"args": []}
     assert "metrics directory" in result.stderr and "not written" in result.stderr
+
+
+def test_unlisted_schemas_excludes_listed_and_ignored():
+    from schema_catalogue_source import unlisted_schemas
+    existing = ["platform", "glanik", "public", "new_solution", "scratch"]
+    assert unlisted_schemas(existing, ["platform", "glanik", "public"], ["scratch"]) == ["new_solution"]
+    assert unlisted_schemas(existing, existing, []) == []
+
+
+def test_user_schema_query_excludes_system_namespaces():
+    from schema_catalogue_source import USER_SCHEMAS_SQL
+    assert "pg_namespace" in USER_SCHEMAS_SQL and "information_schema" in USER_SCHEMAS_SQL
+    assert "NOT LIKE 'pg\\_%'" in USER_SCHEMAS_SQL
+
+
+def test_coverage_metric_series_per_unlisted_schema(tmp_path):
+    target = tmp_path / "m.prom"
+    schema_catalogue.write_projection_metrics(str(target), artifact="schema-catalogue-trevarn", drift=False,
+                                              success=True, unlisted=["new_solution", "zz"])
+    series = _series(target)
+    assert series['docplane_schema_catalogue_unlisted_schemas{artifact="schema-catalogue-trevarn"}'] == "2"
+    assert series['docplane_schema_catalogue_unlisted_schema{artifact="schema-catalogue-trevarn",schema="new_solution"}'] == "1"
+    assert series['docplane_generated_projection_reconcile_success{artifact="schema-catalogue-trevarn"}'] == "1"
+
+
+def test_coverage_metric_zero_and_unknown(tmp_path):
+    target = tmp_path / "m.prom"
+    schema_catalogue.write_projection_metrics(str(target), artifact="a", drift=False, success=True, unlisted=[])
+    series = _series(target)
+    assert series['docplane_schema_catalogue_unlisted_schemas{artifact="a"}'] == "0"
+    assert not any(k.startswith("docplane_schema_catalogue_unlisted_schema{") for k in series)
+    schema_catalogue.write_projection_metrics(str(target), artifact="a", drift=False, success=True)
+    assert not any(k.startswith("docplane_schema_catalogue_unlisted") for k in _series(target))
+
