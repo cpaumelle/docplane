@@ -22,7 +22,7 @@ CREATE TABLE work.collaboration_grants (
     revoked_at timestamptz,
     PRIMARY KEY (initiative_id, principal_id)
 );
--- The grant row lock serializes each recipient feed through transaction commit.
+-- The inbox_positions row lock serializes each recipient feed through transaction commit.
 -- Unlike a standalone sequence, an allocated but uncommitted position cannot
 -- be overtaken by a later committed delivery for the same recipient and scope.
 CREATE TABLE work.inbox_positions (

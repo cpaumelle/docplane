@@ -22,18 +22,33 @@ A failed transaction leaves none of these writes behind.
 
 `GET` on the same path reads a bounded page after an opaque principal- and
 initiative-bound cursor. Every read rechecks current grants and verifies the
-stored envelope signature, row binding and body digest before canonical WORK
-redaction. `POST .../{delivery}/ack` idempotently records receipt; it does not
+stored envelope HMAC, row binding and body digest before canonical WORK
+redaction. A failed integrity check returns a flagged item with its body and
+unverified envelope withheld; its scoped database position allows pagination
+to continue. Investigate such a failure before acting on the affected message. `POST .../{delivery}/ack` idempotently records receipt; it does not
 resolve the task or notify the sender. Read from the beginning to replay, and
 use delivery IDs for deduplication. Cursors are positions, not authorization.
 
-Set independent high-entropy `DOCPLANE_WORK_INBOX_CURSOR_SECRET` and
-`DOCPLANE_WORK_INBOX_SIGNING_SECRET` (at least 32 bytes) through the deployment
-secret manager. Missing secrets fail closed. This initial version has no key
-ring: changing the cursor secret invalidates cursors and changing the signing
-secret makes existing deliveries unreadable. Key rotation and retention must be
-specified before production use. The HMAC is verified by DocPlane, not an
-independent third-party signature or proof of the correctness of a message.
+Configure an independent high-entropy `DOCPLANE_WORK_INBOX_CURSOR_SECRET` and
+`DOCPLANE_WORK_INBOX_SIGNING_KEYS` (a JSON object mapping key IDs to separate
+secrets of at least 32 bytes), with `DOCPLANE_WORK_INBOX_ACTIVE_KID` selecting
+the current key. Missing or invalid configuration fails closed. Retain every
+old key while messages signed under it must remain readable; removing one makes
+those items integrity failures. Rotate by adding a key before switching the
+active ID. Cursor-key rotation separately invalidates existing cursors, so
+clients must restart from the beginning and deduplicate by delivery ID.
+
+The HMAC allows DocPlane to check that stored content is intact; clients cannot
+verify it and it does not prove the message is correct or authorized. Provenance
+comes from the authenticated sender principal and its server-side grant. A
+participant token defaults to 90 days unless an expiry is supplied. ACK writes
+one audit event on first receipt, without publishing an inbox notification.
+
+Under the `private_fabric` profile, fabric access to `/api/v1/auth/self-issue`
+can create a general contributor credential. A browser architect's network and
+facade path must not reach that endpoint; the scoped token alone does not prevent
+self-issuance through a separate reachable path. Qualify this isolation before
+any browser production use.
 
 Messages are data, never authority: they cannot expand a brief, approve a
 production action, impersonate a human, or resume a paused task. The current

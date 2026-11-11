@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -55,10 +55,28 @@ def _grant(conn, initiative: str, principal: str, *, write: bool = False) -> str
     return row[0]
 
 
-def _signature(envelope: dict[str, Any]) -> str:
-    secret = os.environ.get("DOCPLANE_WORK_INBOX_SIGNING_SECRET", "").encode()
-    if len(secret) < 32:
-        raise HTTPException(status_code=503, detail={"code": "INBOX_SIGNING_SECRET_UNAVAILABLE"})
+def _keyring() -> dict[str, bytes]:
+    try:
+        raw = json.loads(os.environ.get("DOCPLANE_WORK_INBOX_SIGNING_KEYS", ""))
+        if not isinstance(raw, dict) or not raw or any(
+            not isinstance(k, str) or not k or len(k) > 64 or not isinstance(v, str) or len(v.encode()) < 32
+            for k, v in raw.items()
+        ):
+            raise ValueError("invalid keyring")
+        return {k: v.encode() for k, v in raw.items()}
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=503, detail={"code": "INBOX_SIGNING_KEYS_UNAVAILABLE"}) from None
+
+
+def _active_key() -> tuple[str, bytes]:
+    keys = _keyring()
+    kid = os.environ.get("DOCPLANE_WORK_INBOX_ACTIVE_KID", "")
+    if kid not in keys:
+        raise HTTPException(status_code=503, detail={"code": "INBOX_SIGNING_KEYS_UNAVAILABLE"})
+    return kid, keys[kid]
+
+
+def _signature(envelope: dict[str, Any], secret: bytes) -> str:
     content = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hmac.new(secret, b"docplane-inbox-envelope-v1\0" + content, hashlib.sha256).hexdigest()
 
@@ -68,6 +86,7 @@ def create_participant(request: Participant, bootstrap: str | None = Header(defa
     require_bootstrap_token(bootstrap)
     if not request.display_name.strip():
         raise HTTPException(status_code=422, detail={"code": "PARTICIPANT_INVALID"})
+    expires_at = request.expires_at or (datetime.now(timezone.utc) + timedelta(days=90))
     clear, digest, prefix = issue_token()
     with get_conn() as conn:
         cur = conn.cursor()
@@ -75,10 +94,10 @@ def create_participant(request: Participant, bootstrap: str | None = Header(defa
             VALUES ('AGENT', %s, 'WORK_COLLABORATOR') RETURNING principal_id::text""", (request.display_name.strip(),))
         pid = cur.fetchone()[0]
         cur.execute("""INSERT INTO docplane.api_tokens (principal_id, token_hash, token_prefix, description, expires_at)
-            VALUES (%s, %s, %s, 'WORK collaboration participant', %s)""", (pid, digest, prefix, request.expires_at))
+            VALUES (%s, %s, %s, 'WORK collaboration participant', %s)""", (pid, digest, prefix, expires_at))
         append_event(conn, event_type="WORK_PARTICIPANT_CREATED", channel="API", producer_id="work-inbox-bootstrap", idempotency_key=str(uuid4()), resource_type="PRINCIPAL", resource_id=pid)
         conn.commit()
-    return {"principal_id": pid, "token": clear, "expires_at": request.expires_at}
+    return {"principal_id": pid, "token": clear, "expires_at": expires_at}
 
 
 @router.put("/api/v1/bootstrap/work-grants/{initiative_id}/{principal_id}")
@@ -155,11 +174,12 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
             VALUES (%s,%s,%s,'NOTE',%s,%s) RETURNING activity_id::text""", (initiative, principal.principal_id, key, activity.body, _json({"reported_producer": producer})))
         aid = cur.fetchone()[0]
         delivery = str(uuid4())
-        envelope = {"version": 1, "delivery_id": delivery, "initiative_id": initiative, "recipient_id": recipient,
+        kid, signing_key = _active_key()
+        envelope = {"version": 1, "kid": kid, "delivery_id": delivery, "initiative_id": initiative, "recipient_id": recipient,
                     "position": position, "activity_id": aid, "sender_id": principal.principal_id,
                     "sender_role": role, "reported_producer": producer,
                     "body_sha256": hashlib.sha256(activity.body.encode()).hexdigest()}
-        sig = _signature(envelope)
+        sig = _signature(envelope, signing_key)
         cur.execute("""INSERT INTO work.inbox_deliveries (delivery_id,initiative_id,recipient_id,position,activity_id,sender_id,sender_role,envelope,signature)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (delivery, initiative, recipient, position, aid, principal.principal_id, role, _json(envelope), sig))
         append_event(conn, event_type="WORK_INBOX_MESSAGE", channel="API", producer_id="work-inbox:" + principal.principal_id,
@@ -184,15 +204,32 @@ def inbox(initiative_id: UUID, cursor: str | None = None, limit: int = Query(def
           WHERE d.initiative_id=%s AND d.recipient_id=%s AND d.position>%s ORDER BY d.position LIMIT %s""",
           (initiative, principal.principal_id, position, limit))
         items = []
+        keys = _keyring()
         for envelope, signature, body, ack, delivery_id, db_position, activity_id, sender_id, sender_role in cur.fetchall():
             expected_scope = {"delivery_id": delivery_id, "initiative_id": initiative, "recipient_id": principal.principal_id, "position": db_position, "activity_id": activity_id, "sender_id": sender_id, "sender_role": sender_role}
-            if any(envelope.get(k) != v for k, v in expected_scope.items()):
-                raise HTTPException(status_code=503, detail={"code": "INBOX_INTEGRITY_FAILURE"})
-            if not hmac.compare_digest(_signature(envelope), signature) or not hmac.compare_digest(envelope["body_sha256"], hashlib.sha256(body.encode()).hexdigest()):
-                raise HTTPException(status_code=503, detail={"code": "INBOX_INTEGRITY_FAILURE"})
+            # Never project unverified envelope fields, including claimed sender.
+            # The database position is independently scoped by the query and lets
+            # a recipient progress past a damaged row without trusting it.
+            valid = False
+            try:
+                kid = envelope.get("kid")
+                key = keys.get(kid) if isinstance(kid, str) else None
+                valid = (key is not None and all(envelope.get(k) == v for k, v in expected_scope.items())
+                         and hmac.compare_digest(_signature(envelope, key), signature)
+                         and hmac.compare_digest(envelope["body_sha256"], hashlib.sha256(body.encode()).hexdigest()))
+            except (AttributeError, KeyError, TypeError, ValueError):
+                valid = False
+            position = db_position
+            if not valid:
+                items.append({"delivery_id": delivery_id, "position": db_position, "integrity_failed": True,
+                              "envelope": None, "signature": None, "body": None, "body_withheld": True,
+                              "acknowledged": ack is not None})
+                continue
             redacted, withheld = _redacted_activity_body(body)
-            items.append({"envelope": envelope, "signature": signature, "body": redacted, "body_withheld": withheld, "acknowledged": ack is not None})
-            position = envelope["position"]
+            items.append({"delivery_id": delivery_id, "position": db_position, "integrity_failed": False,
+                          "envelope": envelope, "signature": signature, "body": redacted,
+                          "body_withheld": withheld, "acknowledged": ack is not None})
+
         return {"messages": items, "next_cursor": encode_cursor(position, principal_id=principal.principal_id, initiative_id=initiative)}
 
 
@@ -201,11 +238,22 @@ def acknowledge(initiative_id: UUID, delivery_id: UUID, principal: Principal = D
     with get_conn() as conn:
         _grant(conn, str(initiative_id), principal.principal_id)
         cur = conn.cursor()
-        cur.execute("""UPDATE work.inbox_deliveries SET acknowledged_at=COALESCE(acknowledged_at,now())
-          WHERE initiative_id=%s AND recipient_id=%s AND delivery_id=%s RETURNING acknowledged_at""",
+        cur.execute("""UPDATE work.inbox_deliveries SET acknowledged_at=now()
+          WHERE initiative_id=%s AND recipient_id=%s AND delivery_id=%s AND acknowledged_at IS NULL RETURNING acknowledged_at""",
           (str(initiative_id), principal.principal_id, str(delivery_id)))
         row = cur.fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail={"code": "DELIVERY_NOT_FOUND"})
+        if row is not None:
+            append_event(conn, event_type="WORK_INBOX_ACKNOWLEDGED", channel="API",
+                         producer_id="work-inbox-ack:" + principal.principal_id,
+                         idempotency_key=str(delivery_id), principal=principal,
+                         resource_type="INITIATIVE", resource_id=str(initiative_id),
+                         metadata={"delivery_id": str(delivery_id)})
+        else:
+            cur.execute("SELECT acknowledged_at FROM work.inbox_deliveries WHERE initiative_id=%s AND recipient_id=%s AND delivery_id=%s",
+                        (str(initiative_id), principal.principal_id, str(delivery_id)))
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail={"code": "DELIVERY_NOT_FOUND"})
+
         conn.commit()
     return {"delivery_id": str(delivery_id), "acknowledged_at": row[0].isoformat(), "meaning": "RECEIVED"}
