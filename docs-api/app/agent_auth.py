@@ -43,6 +43,7 @@ class Principal:
     display_name: str
     token_id: str
     artifact_scopes: tuple[ArtifactScope, ...] | None = None
+    authorization_mode: str = 'CONTRIBUTOR'
 
     @property
     def role(self) -> str:
@@ -138,6 +139,7 @@ def authenticate(authorization: str | None) -> Principal:
         display_name=display_name,
         token_id=token_id,
         artifact_scopes=scopes,
+        authorization_mode=authorization_mode,
     )
 
 
@@ -173,6 +175,8 @@ def require_contributor(
     # Parse the raw header ourselves to preserve DocPlane's precise error codes;
     # the Security dependency exists to publish the bearer contract in OpenAPI.
     principal = authenticate(authorization)
+    if principal.authorization_mode == 'WORK_COLLABORATOR':
+        raise HTTPException(status_code=403, detail={'code': 'PRINCIPAL_WRITE_SCOPE_DENIED'})
     if principal.artifact_scopes is not None and not _scoped_write_route_allowed(request):
         raise HTTPException(
             status_code=403,
