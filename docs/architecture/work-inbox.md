@@ -29,14 +29,15 @@ to continue. Investigate such a failure before acting on the affected message. `
 resolve the task or notify the sender. Read from the beginning to replay, and
 use delivery IDs for deduplication. Cursors are positions, not authorization.
 
-Configure an independent high-entropy `DOCPLANE_WORK_INBOX_CURSOR_SECRET` and
-`DOCPLANE_WORK_INBOX_SIGNING_KEYS` (a JSON object mapping key IDs to separate
-secrets of at least 32 bytes), with `DOCPLANE_WORK_INBOX_ACTIVE_KID` selecting
-the current key. Missing or invalid configuration fails closed. Retain every
-old key while messages signed under it must remain readable; removing one makes
-those items integrity failures. Rotate by adding a key before switching the
-active ID. Cursor-key rotation separately invalidates existing cursors, so
-clients must restart from the beginning and deduplicate by delivery ID.
+Configure `DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE` and
+`DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE` as protected, mode 0600-or-tighter files.
+`DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR` contains one protected file per key ID;
+files must be regular, non-symlink and 0600 or tighter. Secret values never
+belong in environment variables in production. An environment value and its
+file configuration together are rejected. Add a key file before switching the
+active key ID; retain old key files while their messages must remain readable.
+Removing a key flags its messages as unverifiable. Rotating the cursor secret
+invalidates old cursors; clients restart and deduplicate by delivery ID.
 
 The HMAC allows DocPlane to check that stored content is intact; clients cannot
 verify it and it does not prove the message is correct or authorized. Provenance

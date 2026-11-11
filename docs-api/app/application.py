@@ -56,6 +56,22 @@ app.include_router(observe_router)
 app.include_router(verification_router)
 app.include_router(trust_router)
 app.include_router(reorganisation_router)
+@app.on_event("startup")
+def validate_inbox_secret_configuration():
+    # Missing unconfigured secrets leave the optional inbox unavailable; any
+    # configured file or ambiguous source must fail before serving traffic.
+    import os
+    from app.inbox_secrets import read_secret, read_key_directory, InboxSecretError
+    for name in ("DOCPLANE_WORK_INBOX_CURSOR_SECRET", "DOCPLANE_WORK_INBOX_ACTIVE_KID"):
+        if os.environ.get(name + "_FILE"):
+            read_secret(name)
+    directory = os.environ.get("DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR")
+    if directory:
+        if "DOCPLANE_WORK_INBOX_SIGNING_KEYS" in os.environ:
+            raise InboxSecretError("ambiguous signing key sources")
+        read_key_directory(directory)
+
+
 install_agent_contract(app)
 install_operation_contract(app)
 install_discriminated_operation_requests(app)

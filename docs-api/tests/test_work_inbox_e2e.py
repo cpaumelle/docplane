@@ -17,9 +17,14 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def setup(monkeypatch):
+def setup(monkeypatch, tmp_path):
     monkeypatch.setenv("DOCPLANE_WORK_INBOX_CURSOR_SECRET", "cursor-secret-for-synthetic-tests-12345")
-    monkeypatch.setenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS", json.dumps({"v1":"signing-secret-for-synthetic-tests-1234"}))
+    keys = tmp_path / "keys"
+    keys.mkdir()
+    key = keys / "v1"
+    key.write_text("signing-secret-for-synthetic-tests-1234")
+    key.chmod(0o400)
+    monkeypatch.setenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR", str(keys))
     monkeypatch.setenv("DOCPLANE_WORK_INBOX_ACTIVE_KID", "v1")
     tokens = ["synthetic-" + uuid4().hex for _ in range(3)]
     with get_conn() as conn:
@@ -106,7 +111,8 @@ def test_refusal_expiry_and_rollback(setup, monkeypatch):
     root = f"/api/v1/work-inbox/{initiative}/messages"
     key = str(uuid4())
     payload = {"recipient_id": ids[1], "body": "synthetic rollback"}
-    monkeypatch.delenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS")
+    directory = os.environ["DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR"]
+    monkeypatch.delenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR")
     failed = client.post(root, headers={**headers[0], "Idempotency-Key": key}, json=payload)
     assert failed.status_code == 503
     with get_conn() as conn:
@@ -115,7 +121,7 @@ def test_refusal_expiry_and_rollback(setup, monkeypatch):
         assert cur.fetchone()[0] == 0
         cur.execute("SELECT count(*) FROM work.inbox_deliveries WHERE initiative_id=%s", (initiative,))
         assert cur.fetchone()[0] == 0
-    monkeypatch.setenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS", json.dumps({"v1":"signing-secret-for-synthetic-tests-1234"}))
+    monkeypatch.setenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR", directory)
     monkeypatch.setenv("DOCPLANE_WORK_INBOX_ACTIVE_KID", "v1")
     assert client.post(root, headers={**headers[0], "Idempotency-Key": key}, json=payload).status_code == 201
     unsafe = client.post(root, headers={**headers[0], "Idempotency-Key": str(uuid4())}, json={**payload, "body": "ghp_" + "a" * 36})
@@ -204,7 +210,10 @@ def test_key_rotation_and_corrupt_item_cursor_progress(setup, monkeypatch):
         assert result.status_code == 201, result.text
         return result.json()
     first = send("old key")
-    monkeypatch.setenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS", json.dumps({"v1":"signing-secret-for-synthetic-tests-1234", "v2":"another-signing-secret-for-testing-1234"}))
+    from pathlib import Path
+    new_key = Path(os.environ["DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR"]) / "v2"
+    new_key.write_text("another-signing-secret-for-testing-1234")
+    new_key.chmod(0o400)
     monkeypatch.setenv("DOCPLANE_WORK_INBOX_ACTIVE_KID", "v2")
     send("new key")
     page = client.get(root, headers=headers[1]).json()
@@ -218,7 +227,7 @@ def test_key_rotation_and_corrupt_item_cursor_progress(setup, monkeypatch):
     assert bad["messages"][0]["body"] is None
     good = client.get(root, headers=headers[1], params={"limit": 1, "cursor": bad["next_cursor"]}).json()
     assert good["messages"][0]["body"] == "new key"
-    monkeypatch.setenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS", json.dumps({"v2":"another-signing-secret-for-testing-1234"}))
+    (new_key.parent / "v1").unlink()
     assert client.get(root, headers=headers[1]).json()["messages"][0]["integrity_failed"] is True
 
 
@@ -250,3 +259,37 @@ def test_collaborator_cannot_mutate_other_routes(setup):
             assert response.status_code == 403, (method, route.path, response.status_code)
             tested += 1
     assert tested > 50
+
+
+def test_file_backed_inbox_and_key_rotation(setup, monkeypatch, tmp_path):
+    initiative, ids, headers = setup
+    keys = tmp_path / "alternate-keys"
+    keys.mkdir()
+    old = keys / "k1"
+    old.write_text("a" * 32)
+    old.chmod(0o400)
+    active = tmp_path / "active"
+    active.write_text("k1")
+    active.chmod(0o600)
+    cursor = tmp_path / "cursor"
+    cursor.write_text("c" * 32)
+    cursor.chmod(0o600)
+    monkeypatch.delenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR")
+    monkeypatch.delenv("DOCPLANE_WORK_INBOX_ACTIVE_KID")
+    monkeypatch.delenv("DOCPLANE_WORK_INBOX_CURSOR_SECRET")
+    monkeypatch.setenv("DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR", str(keys))
+    monkeypatch.setenv("DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE", str(active))
+    monkeypatch.setenv("DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE", str(cursor))
+    root = f"/api/v1/work-inbox/{initiative}/messages"
+    def send(text):
+        return client.post(root, headers={**headers[0], "Idempotency-Key": str(uuid4())},
+                           json={"recipient_id": ids[1], "body": text})
+    assert send("first").status_code == 201
+    new = keys / "k2"
+    new.write_text("b" * 32)
+    new.chmod(0o400)
+    active.write_text("k2")
+    assert send("second").status_code == 201
+    response = client.get(root, headers=headers[1])
+    assert response.status_code == 200
+    assert [m["envelope"]["kid"] for m in response.json()["messages"]] == ["k1", "k2"]
