@@ -5,7 +5,7 @@ import json
 import base64
 import binascii
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -377,7 +377,7 @@ def issue_principal_token(
             )
         cur = conn.cursor()
         cur.execute(
-            "SELECT principal_kind, display_name, status FROM docplane.principals WHERE principal_id = %s FOR UPDATE",
+            "SELECT principal_kind, display_name, status, authorization_mode FROM docplane.principals WHERE principal_id = %s FOR UPDATE",
             (str(principal_id),),
         )
         principal = cur.fetchone()
@@ -385,6 +385,9 @@ def issue_principal_token(
             raise HTTPException(status_code=404, detail={"code": "PRINCIPAL_NOT_FOUND"})
         if principal[2] != "ACTIVE":
             raise HTTPException(status_code=409, detail={"code": "PRINCIPAL_NOT_ACTIVE", "status": principal[2]})
+        expires_at = request.expires_at
+        if principal[3] == "WORK_COLLABORATOR" and expires_at is None:
+            expires_at = datetime.now(timezone.utc) + timedelta(days=90)
         clear, token_hash, prefix = issue_token()
         cur.execute(
             """
@@ -393,7 +396,7 @@ def issue_principal_token(
             VALUES (%s, %s, %s, %s, %s)
             RETURNING token_id, token_prefix, description, issued_at, expires_at, last_used_at, revoked_at
             """,
-            (str(principal_id), token_hash, prefix, request.description, request.expires_at),
+            (str(principal_id), token_hash, prefix, request.description, expires_at),
         )
         metadata = {"principal_id": str(principal_id), **_token_metadata(cur.fetchone())}
         append_event(
