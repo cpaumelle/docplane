@@ -16,6 +16,11 @@ def test_file_modes_conflicts_and_missing(tmp_path, monkeypatch):
     with pytest.raises(InboxSecretError): read_secret("TEST_INBOX")
     p.unlink()
     with pytest.raises(InboxSecretError): read_secret("TEST_INBOX")
+    target = tmp_path / "target"
+    target.write_text("synthetic-secret")
+    target.chmod(0o400)
+    p.symlink_to(target)
+    with pytest.raises(InboxSecretError): read_secret("TEST_INBOX")
 
 
 def test_key_directory_retains_old_keys_and_rejects_unsafe(tmp_path):

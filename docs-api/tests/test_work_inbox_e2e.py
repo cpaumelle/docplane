@@ -242,6 +242,7 @@ def test_collaborator_cannot_mutate_other_routes(setup):
         ("POST", "/api/v1/bootstrap/principals/{principal_id}/tokens"),
         ("POST", "/api/v1/bootstrap/principals/{principal_id}/tokens/{token_id}/revoke"),
         ("POST", "/api/v1/bootstrap/work-participants"),
+        ("POST", "/api/v1/bootstrap/work-participant-identities"),
         ("PUT", "/api/v1/bootstrap/work-grants/{initiative_id}/{principal_id}"),
         ("DELETE", "/api/v1/bootstrap/work-grants/{initiative_id}/{principal_id}"),
         ("POST", "/api/v1/bootstrap/model/artifacts/{artifact_id}/reassign-custody"),
@@ -293,3 +294,21 @@ def test_file_backed_inbox_and_key_rotation(setup, monkeypatch, tmp_path):
     response = client.get(root, headers=headers[1])
     assert response.status_code == 200
     assert [m["envelope"]["kid"] for m in response.json()["messages"]] == ["k1", "k2"]
+
+
+def test_identity_only_creation_replays_before_governed_token_issue(setup, monkeypatch):
+    monkeypatch.setenv("DOCPLANE_BOOTSTRAP_TOKEN", "synthetic-bootstrap")
+    headers = {"X-DocPlane-Bootstrap-Token": "synthetic-bootstrap", "Idempotency-Key": str(uuid4())}
+    path = "/api/v1/bootstrap/work-participant-identities"
+    payload = {"display_name": "synthetic participant"}
+    first = client.post(path, headers=headers, json=payload)
+    assert first.status_code == 201 and "token" not in first.json()
+    assert client.post(path, headers=headers, json=payload).json() == first.json()
+    assert client.post(path, headers=headers, json={"display_name": "changed"}).status_code == 409
+    pid = first.json()["principal_id"]
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM docplane.api_tokens WHERE principal_id=%s", (pid,))
+        assert cur.fetchone()[0] == 0
+    issued = client.post(f"/api/v1/bootstrap/principals/{pid}/tokens", headers={"X-DocPlane-Bootstrap-Token":"synthetic-bootstrap", "Idempotency-Key":str(uuid4())}, json={"description":"governed capture"})
+    assert issued.status_code == 201 and issued.json()["expires_at"] is not None

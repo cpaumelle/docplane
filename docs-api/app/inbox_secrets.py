@@ -15,7 +15,7 @@ def read_file(path: str) -> str:
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
         try:
             st = os.fstat(fd)
-            if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o177 or not st.st_mode & 0o400:
+            if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o7177 or not st.st_mode & 0o400:
                 raise InboxSecretError("invalid secret file mode or type")
             with os.fdopen(fd, "rb", closefd=False) as stream:
                 raw = stream.read(65537)
