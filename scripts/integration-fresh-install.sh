@@ -199,9 +199,9 @@ PY
 
 log "8. generated site serves the page with configured identity and HTML discovery"
 HTML=$(curl -fsS "$FRONT/work/itest/")
-printf '%s' "$HTML" | grep -q "Synthetic fresh-install probe" || fail "generated page missing expected content"
-printf '%s' "$HTML" | grep -q "Integration DocPlane" || fail "DOCPLANE_SITE_NAME did not reach MkDocs"
-printf '%s' "$HTML" | grep -q 'rel="describedby" href="/.well-known/docplane.json"' || fail "HTML discovery link missing"
+[[ "$HTML" == *"Synthetic fresh-install probe"* ]] || fail "generated page missing expected content"
+[[ "$HTML" == *"Integration DocPlane"* ]] || fail "DOCPLANE_SITE_NAME did not reach MkDocs"
+[[ "$HTML" == *'rel="describedby" href="/.well-known/docplane.json"'* ]] || fail "HTML discovery link missing"
 
 log "9. routed human and agent surfaces"
 curl -fsS "$FRONT/dashboard/" >/dev/null || fail "dashboard route failed"

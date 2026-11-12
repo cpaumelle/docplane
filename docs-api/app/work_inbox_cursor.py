@@ -16,10 +16,14 @@ import os
 from uuid import UUID
 
 from fastapi import HTTPException
+from app.inbox_secrets import InboxSecretError, read_secret
 
 
 def _secret() -> bytes:
-    value = os.environ.get("DOCPLANE_WORK_INBOX_CURSOR_SECRET", "")
+    try:
+        value = read_secret("DOCPLANE_WORK_INBOX_CURSOR_SECRET")
+    except InboxSecretError as exc:
+        raise HTTPException(status_code=503, detail={"code": "INBOX_CURSOR_SECRET_UNAVAILABLE"}) from exc
     if len(value.encode("utf-8")) < 32:
         raise HTTPException(status_code=503, detail={"code": "INBOX_CURSOR_SECRET_UNAVAILABLE"})
     return value.encode("utf-8")

@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.agent_auth import Principal, authenticate, issue_token, require_bootstrap_token
 from app.db import get_conn
+from app.inbox_secrets import InboxSecretError, read_secret, read_key_directory
 from app.event_store import append_event
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.work_api import _activity_key, _activity_request, _json, _redacted_activity_body, _redacted_short_text
@@ -57,20 +58,26 @@ def _grant(conn, initiative: str, principal: str, *, write: bool = False) -> str
 
 def _keyring() -> dict[str, bytes]:
     try:
-        raw = json.loads(os.environ.get("DOCPLANE_WORK_INBOX_SIGNING_KEYS", ""))
+        directory = os.environ.get("DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR", "")
+        if "DOCPLANE_WORK_INBOX_SIGNING_KEYS" in os.environ or not directory:
+            raise InboxSecretError("signing key directory required")
+        raw = read_key_directory(directory)
         if not isinstance(raw, dict) or not raw or any(
             not isinstance(k, str) or not k or len(k) > 64 or not isinstance(v, str) or len(v.encode()) < 32
             for k, v in raw.items()
         ):
             raise ValueError("invalid keyring")
         return {k: v.encode() for k, v in raw.items()}
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, InboxSecretError):
         raise HTTPException(status_code=503, detail={"code": "INBOX_SIGNING_KEYS_UNAVAILABLE"}) from None
 
 
 def _active_key() -> tuple[str, bytes]:
     keys = _keyring()
-    kid = os.environ.get("DOCPLANE_WORK_INBOX_ACTIVE_KID", "")
+    try:
+        kid = read_secret("DOCPLANE_WORK_INBOX_ACTIVE_KID")
+    except InboxSecretError as exc:
+        raise HTTPException(status_code=503, detail={"code": "INBOX_SIGNING_KEYS_UNAVAILABLE"}) from exc
     if kid not in keys:
         raise HTTPException(status_code=503, detail={"code": "INBOX_SIGNING_KEYS_UNAVAILABLE"})
     return kid, keys[kid]
@@ -79,6 +86,48 @@ def _active_key() -> tuple[str, bytes]:
 def _signature(envelope: dict[str, Any], secret: bytes) -> str:
     content = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hmac.new(secret, b"docplane-inbox-envelope-v1\0" + content, hashlib.sha256).hexdigest()
+
+
+@router.post("/api/v1/bootstrap/work-participant-identities", status_code=201)
+def create_participant_identity(request: Participant,
+                                idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+                                bootstrap: str | None = Header(default=None, alias="X-DocPlane-Bootstrap-Token")):
+    """Create only a principal. Issue its first token through governed capture.
+
+    The receipt contains no credential, so a lost response can be replayed
+    without generating an orphan bearer. The existing idempotent token-issue
+    endpoint and SecretHandle rotation adapter then own credential capture.
+    """
+    require_bootstrap_token(bootstrap)
+    key = _activity_key(idempotency_key)
+    if not request.display_name.strip() or request.expires_at is not None:
+        raise HTTPException(status_code=422, detail={"code": "PARTICIPANT_IDENTITY_INVALID"})
+    _activity_request({"activity_type": "NOTE", "body": request.display_name.strip()})
+    clean, withheld = _redacted_short_text(request.display_name.strip(), 200)
+    if withheld or clean != request.display_name.strip():
+        raise HTTPException(status_code=422, detail={"code": "PARTICIPANT_IDENTITY_INVALID"})
+    digest = receipt_digest({"display_name": request.display_name.strip()})
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 75))", ("work-participant-identity:" + key,))
+        cur.execute("SELECT metadata FROM docplane.events WHERE producer_id=%s AND idempotency_key=%s",
+                    ("work-participant-identity", key))
+        row = cur.fetchone()
+        if row:
+            if row[0].get("request_hash") != digest:
+                raise HTTPException(status_code=409, detail={"code": "IDEMPOTENCY_KEY_REUSED"})
+            return row[0]["response"]
+        cur.execute("""INSERT INTO docplane.principals (principal_kind,display_name,authorization_mode)
+                       VALUES ('AGENT',%s,'WORK_COLLABORATOR') RETURNING principal_id::text""",
+                    (request.display_name.strip(),))
+        pid = cur.fetchone()[0]
+        response = {"principal_id": pid, "authorization_mode": "WORK_COLLABORATOR"}
+        append_event(conn, event_type="WORK_PARTICIPANT_IDENTITY_CREATED", channel="API",
+                     producer_id="work-participant-identity", idempotency_key=key,
+                     resource_type="PRINCIPAL", resource_id=pid,
+                     metadata={"request_hash": digest, "response": response})
+        conn.commit()
+        return response
 
 
 @router.post("/api/v1/bootstrap/work-participants", status_code=201)

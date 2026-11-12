@@ -16,10 +16,14 @@ LABEL org.opencontainers.image.revision=${GIT_SHA} \
 
 WORKDIR /app
 COPY docs-api/requirements.txt ./requirements.txt
+# docplane-secrets (GID 10012) names the governed SECRETS-V3 group so in-container
+# ownership checks resolve root:docplane-secrets. The docplane user is NOT a
+# member; the inbox-secrets Compose overlay grants it via group_add only.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends rsync curl \
     && pip install --no-cache-dir -r requirements.txt \
     && useradd --create-home --uid 10001 docplane \
+    && groupadd --system --gid 10012 docplane-secrets \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docs-api/app ./app
