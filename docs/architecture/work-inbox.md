@@ -34,9 +34,9 @@ Configure `DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE` and
 `DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR` contains one protected file per key ID;
 hidden names (such as a materializer's `.chsec-*.tmp` staging file) are
 ignored. Files must be regular and non-symlink, and either owner-only (0400 or
-0600) or exactly 0440 owned by `root` and GID 10012 (`docplane-secrets`), the
-governed group-read contract that lets the API read them through a
-supplemental group. Any other group or world access is refused. Secret values never
+0600) or exactly 0440 owned by `root` and by a group the API process holds
+(the deployment grants it as a supplementary group). Any other group or world
+access, or a group the process does not hold, is refused. Secret values never
 belong in environment variables in production. An environment value and its
 file configuration together are rejected. Add a key file before switching the
 active key ID; retain old key files while their messages must remain readable.
@@ -46,7 +46,10 @@ invalidates old cursors; clients restart and deduplicate by delivery ID.
 On a host using SECRETS-V3, enable `docker-compose.inbox-secrets.yml`
 (`COMPOSE_FILE=docker-compose.yml:docker-compose.inbox-secrets.yml`). It
 bind-mounts the governed `docplane-inbox-api` and `docplane-inbox-signing`
-directories read-only and adds supplemental GID 10012 to the API, so a new key
+directories read-only and adds the store's group as a supplementary group of
+the API. Set `DOCPLANE_SECRETS_GID` to that group's numeric host GID (10012,
+`docplane-secrets`, on CharlieHub hub2); the overlay refuses to start without
+it. Directories are mounted rather than files, so a new key
 file or an atomic replacement is visible without recreating the container.
 Switching the overlay on or off changes the container definition and needs
 `docker compose up -d docs-api`.
