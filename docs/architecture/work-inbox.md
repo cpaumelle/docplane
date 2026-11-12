@@ -30,9 +30,13 @@ resolve the task or notify the sender. Read from the beginning to replay, and
 use delivery IDs for deduplication. Cursors are positions, not authorization.
 
 Configure `DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE` and
-`DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE` as protected, mode 0600-or-tighter files.
+`DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE` as protected files.
 `DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR` contains one protected file per key ID;
-files must be regular, non-symlink and 0600 or tighter. Secret values never
+hidden names (such as a materializer's `.chsec-*.tmp` staging file) are
+ignored. Files must be regular and non-symlink, and either owner-only (0400 or
+0600) or exactly 0440 owned by `root` and GID 10012 (`docplane-secrets`), the
+governed group-read contract that lets the API read them through a
+supplemental group. Any other group or world access is refused. Secret values never
 belong in environment variables in production. An environment value and its
 file configuration together are rejected. Add a key file before switching the
 active key ID; retain old key files while their messages must remain readable.
