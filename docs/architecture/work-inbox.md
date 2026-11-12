@@ -43,6 +43,14 @@ active key ID; retain old key files while their messages must remain readable.
 Removing a key flags its messages as unverifiable. Rotating the cursor secret
 invalidates old cursors; clients restart and deduplicate by delivery ID.
 
+On a host using SECRETS-V3, enable `docker-compose.inbox-secrets.yml`
+(`COMPOSE_FILE=docker-compose.yml:docker-compose.inbox-secrets.yml`). It
+bind-mounts the governed `docplane-inbox-api` and `docplane-inbox-signing`
+directories read-only and adds supplemental GID 10012 to the API, so a new key
+file or an atomic replacement is visible without recreating the container.
+Switching the overlay on or off changes the container definition and needs
+`docker compose up -d docs-api`.
+
 The HMAC allows DocPlane to check that stored content is intact; clients cannot
 verify it and it does not prove the message is correct or authorized. Provenance
 comes from the authenticated sender principal and its server-side grant. A

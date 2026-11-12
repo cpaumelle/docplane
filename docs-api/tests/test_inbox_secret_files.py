@@ -125,3 +125,29 @@ def test_key_directory_with_only_staging_files_is_empty(tmp_path):
     staging.chmod(0o400)
     with pytest.raises(InboxSecretError):
         read_key_directory(str(tmp_path))
+
+
+def test_inbox_secrets_overlay_contract():
+    """The opt-in overlay mounts whole governed directories read-only via GID 10012."""
+    from pathlib import Path
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    overlay = yaml.safe_load((root / "docker-compose.inbox-secrets.yml").read_text())
+    api = overlay["services"]["docs-api"]
+    assert api["group_add"] == ["10012"]
+    env = api["environment"]
+    assert set(env) == {"DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE",
+                        "DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE",
+                        "DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR"}
+    mounts = {m["target"]: m for m in api["volumes"]}
+    assert set(mounts) == {"/run/docplane-inbox/api", "/run/docplane-inbox/signing"}
+    for target, mount in mounts.items():
+        assert mount["type"] == "bind" and mount["read_only"] is True
+        assert mount["bind"] == {"create_host_path": False}
+    assert mounts["/run/docplane-inbox/api"]["source"].endswith("/docplane-inbox-api")
+    assert mounts["/run/docplane-inbox/signing"]["source"].endswith("/docplane-inbox-signing")
+    assert env["DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR"] == "/run/docplane-inbox/signing"
+    for name in ("DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE", "DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE"):
+        assert env[name].startswith("/run/docplane-inbox/api/")
+    base = yaml.safe_load((root / "docker-compose.yml").read_text())["services"]["docs-api"]
+    assert "group_add" not in base
