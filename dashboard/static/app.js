@@ -226,7 +226,12 @@ function activate(name, arg = null) {
   $(`view-${view}`)?.classList.add("active");
   document.querySelector(`.nav[data-view="${view}"]`)?.classList.add("active");
   if (view === "overview") loadOverview();
-  if (view === "work") { if (arg && /^[0-9a-f-]{36}$/.test(arg)) selectedWorkId = arg; loadWork(); }
+  if (view === "work") {
+    if (arg && /^[0-9a-f-]{36}$/.test(arg)) {
+      selectWork(arg);
+      if (!workInitiatives.length) loadWork({refreshBrief: false});
+    } else loadWork();
+  }
   if (view === "explore") {
     if (arg !== null) explorePath = arg;
     loadExplore();
@@ -344,6 +349,7 @@ let workInitiatives = [];
 let selectedWorkId = null;
 let currentWorkBrief = null;
 let workBriefRequest = 0;
+let workBoardRequest = 0;
 let pendingWorkUpdate = null;
 
 function workLabel(value) { return String(value || "").replaceAll("_", " ").toLowerCase(); }
@@ -362,9 +368,10 @@ function renderWorkChoices() {
   }));
 }
 function workItemHTML(item, editable) {
-  return `<div class="work-item ${["HELD", "DEFERRED"].includes(item.stance) ? "work-hold" : ""}">
-    <strong>${esc(item.title)}</strong><p class="muted">${esc(workLabel(item.state))} · ${esc(workLabel(item.stance))}${item.owner ? ` · ${esc(item.owner)}` : ""}</p>
-    ${item.next_action ? `<p>${esc(item.next_action)}</p>` : ""}<p>${esc(item.reason)}</p>
+  const terminal = ["DONE_IN_RECORD", "SUPERSEDED", "WITHDRAWN"].includes(item.state);
+  return `<div class="work-item ${!terminal && ["HELD", "DEFERRED"].includes(item.stance) ? "work-hold" : ""}">
+    <strong>${esc(item.title)}</strong><p class="muted">${esc(workLabel(item.state))}${terminal ? "" : ` · ${esc(workLabel(item.stance))}`}${item.owner ? ` · ${esc(item.owner)}` : ""}</p>
+    ${item.next_action ? `<p>${terminal ? "Earlier next action (historical): " : ""}${esc(item.next_action)}</p>` : ""}<p>${esc(item.reason)}</p>
     <details><summary>Evidence and identity</summary><p class="muted">${esc(item.item_id)}</p>${item.references.map((ref) => `<p class="work-evidence">${esc(ref.reference_type)}: ${esc(ref.reference_id)}</p>`).join("")}</details>
     ${editable ? `<div class="actions"><button class="work-edit" data-id="${esc(item.item_id)}">Update this item</button></div>` : ""}</div>`;
 }
@@ -372,7 +379,12 @@ function renderWorkBrief(brief) {
   const initiative = brief.initiative;
   const editable = !brief.checkpoint_withheld && !["COMPLETE", "ABANDONED"].includes(initiative.work_state);
   const groups = [["next_actions", "Next actions"], ["held", "Held — decision required"], ["deferred", "Deferred — deliberately later"],
-    ["uncertain", "Needs clarification"], ["paused_actions", "Actions paused by initiative state"], ["recorded_done", "Done, superseded or withdrawn in the record"]];
+    ["uncertain", "Needs clarification"], ["paused_actions", "Actions paused by initiative state"]];
+  const displayBrief = {...brief};
+  for (const [state, label] of [["DONE_IN_RECORD", "Done according to the record"], ["SUPERSEDED", "Superseded — historical"], ["WITHDRAWN", "Withdrawn — historical"]]) {
+    displayBrief[state] = (brief.recorded_done || []).filter((id) => brief.items.find((item) => item.item_id === id)?.state === state);
+    groups.push([state, label]);
+  }
   const empty = brief.checkpoint_status === "NOT_SET"
     ? `<p class="work-notice">No structured work brief has been recorded yet. Existing history has not been classified automatically. Read it before adding the first actions or holds.</p>`
     : brief.checkpoint_withheld ? `<p class="work-notice">The checkpoint cannot be safely displayed. Its work state is unknown; updates are unavailable.</p>` : "";
@@ -380,7 +392,7 @@ function renderWorkBrief(brief) {
     <p>${esc(initiative.objective || "Objective unavailable")}</p>${initiative.scope ? `<details><summary>Scope</summary><p class="work-history">${esc(initiative.scope)}</p></details>` : ""}
     ${initiative.blocker_summary ? `<p class="work-notice">Blocked: ${esc(initiative.blocker_summary)}</p>` : ""}
     ${initiative.parked_reason ? `<p class="work-notice">Parked: ${esc(initiative.parked_reason)}</p>` : ""}
-    ${empty}${brief.activities_since_checkpoint > 0 ? `<p class="work-notice">${brief.activities_since_checkpoint} activities were added after this checkpoint. Review their evidence before relying on its recorded state.</p>` : ""}${groups.filter(([key]) => brief[key]?.length).map(([key, title]) => `<section class="work-group"><h3>${title} <span class="muted">(${brief[key].length})</span></h3>${brief[key].map((id) => workItemHTML(brief.items.find((item) => item.item_id === id), editable)).join("")}</section>`).join("")}
+    ${empty}${brief.activities_since_checkpoint > 0 ? `<p class="work-notice">${brief.activities_since_checkpoint} activities were added after this checkpoint. Review their evidence before relying on its recorded state.</p>` : ""}${groups.filter(([key]) => displayBrief[key]?.length).map(([key, title]) => `<section class="work-group"><h3>${title} <span class="muted">(${displayBrief[key].length})</span></h3>${displayBrief[key].map((id) => workItemHTML(brief.items.find((item) => item.item_id === id), editable)).join("")}</section>`).join("")}
     <section class="work-group"><h3>Recent evidence</h3><p class="muted">Notes do not change actions or release holds automatically.</p>${brief.recent_activity.length ? brief.recent_activity.map((item) => `<details><summary>${esc(workLabel(item.activity_type))} · ${esc(item.created_at)}</summary><p class="work-history">${esc(item.body_withheld ? "Body withheld" : item.body_in_history ? "Full body available in the activity history." : item.body)}</p><p class="muted">Activity ${esc(item.activity_id)} · writer ${esc(item.author_principal_id)}</p></details>`).join("") : `<p>No activities recorded.</p>`}<button id="work-history-open">Read activity history</button><div id="work-history-content"></div></section>
     <p class="muted">${esc(brief.evidence_policy)}${brief.checkpoint ? ` Checkpoint recorded ${esc(brief.checkpoint.created_at)}; producer ${esc(brief.checkpoint.reported_producer || "not stated")} (self-reported).` : ""}</p>`;
   $("work-new-item")?.addEventListener("click", () => openWorkItem(null));
@@ -394,16 +406,18 @@ async function loadWorkHistory() {
   try {
     const data = await api(`/api/control-plane/initiatives/${id}/history`);
     if (selectedWorkId !== id) return;
-    const activity = data.activities || [];
-    target.innerHTML = activity.map((item) => `<details><summary>${esc(workLabel(item.activity_type))} · ${esc(item.created_at)}</summary><p class="work-history">${esc(item.body_withheld ? "Body withheld" : item.body)}</p><p class="muted">Activity ${esc(item.activity_id)}</p></details>`).join("") || "No activity history.";
+    const activity = [...(data.activities || [])].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    target.innerHTML = activity.map((item) => `<details><summary>${esc(workLabel(item.activity_type))} · ${esc(item.created_at)} — ${esc(item.body_withheld ? "Body withheld" : String(item.body || "").split("\n").find((line) => line.trim())?.slice(0, 140) || "No text")}</summary><p class="work-history">${esc(item.body_withheld ? "Body withheld" : item.body)}</p><p class="muted">Activity ${esc(item.activity_id)}</p></details>`).join("") || "No activity history.";
   } catch (error) { if (selectedWorkId === id) target.textContent = error.message; }
 }
 async function selectWork(id) {
   if (!id) return;
   const request = ++workBriefRequest;
+  if (id !== selectedWorkId) $("work-update-panel").hidden = true;
   selectedWorkId = id;
   currentWorkBrief = null;
   renderWorkChoices();
+  $("work-brief").setAttribute("aria-busy", "true");
   $("work-brief").textContent = "Loading work brief…";
   try {
     const data = await api(`/api/control-plane/initiatives/${id}/brief`);
@@ -412,6 +426,7 @@ async function selectWork(id) {
     currentWorkBrief = data;
     renderWorkBrief(data);
   } catch (error) { if (request === workBriefRequest) $("work-brief").textContent = error.message; }
+  finally { if (request === workBriefRequest) $("work-brief").setAttribute("aria-busy", "false"); }
 }
 function openWorkItem(id) {
   if (!currentWorkBrief || currentWorkBrief.checkpoint_withheld) return;
@@ -487,14 +502,17 @@ async function saveWorkUpdate(event) {
   }
 }
 
-async function loadWork() {
+async function loadWork({refreshBrief = true} = {}) {
   if (!authentication?.token()) return;
+  const request = ++workBoardRequest;
+  const briefLoad = refreshBrief && selectedWorkId ? selectWork(selectedWorkId) : Promise.resolve();
   try {
     const [queues, inbox, initiatives] = await Promise.all([
       api("/api/control-plane/work/queues"),
       api("/api/control-plane/work/captures?status=INBOX"),
       api("/api/control-plane/initiatives?limit=200"),
     ]);
+    if (request !== workBoardRequest) return;
     const states = queues.by_state || {};
     const wip = queues.wip_limit ?? 0;
     const active = states.ACTIVE ?? 0;
@@ -521,7 +539,7 @@ async function loadWork() {
     document.querySelectorAll(".capture-discard").forEach((button) => button.addEventListener("click", () => triageCapture(button.dataset.id, "discard").catch((error) => { $("work-inbox").textContent = error.message; })));
     workInitiatives = open;
     renderWorkChoices();
-    await selectWork(selectedWorkId || open.find((item) => item.work_state === "ACTIVE")?.initiative_id || open[0]?.initiative_id);
+    await briefLoad;
   } catch (error) {
     $("work-inbox").textContent = error.message;
   }
@@ -1368,6 +1386,7 @@ function clearAuthenticatedView() {
   $("changes").textContent = "Connect to load.";
   currentWorkBrief = null;
   workBriefRequest++;
+  workBoardRequest++;
   $("work-brief").textContent = "Connect to load.";
   $("work-update-panel").hidden = true;
   $("work-cards").innerHTML = "";

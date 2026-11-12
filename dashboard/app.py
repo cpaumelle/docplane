@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
+import re
 from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .control_plane import ControlPlaneClient, ControlPlaneError
@@ -14,7 +16,19 @@ from .control_plane import ControlPlaneClient, ControlPlaneError
 app = FastAPI(title="DocPlane Dashboard", version="1.0.0")
 client = ControlPlaneClient()
 _STATIC = Path(__file__).resolve().parent / "static"
-app.mount("/assets", StaticFiles(directory=_STATIC), name="assets")
+class DashboardStaticFiles(StaticFiles):
+    """Deploys must not reuse assets whose filesystem dates survived the build."""
+
+    def is_not_modified(self, response_headers, request_headers) -> bool:
+        return False
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+app.mount("/assets", DashboardStaticFiles(directory=_STATIC), name="assets")
 
 
 def _auth(value: str | None) -> str:
@@ -28,8 +42,19 @@ def _raise(exc: ControlPlaneError) -> None:
 
 
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(_STATIC / "index.html")
+def index() -> HTMLResponse:
+    # Content hashes bypass previously cached unversioned assets on a normal
+    # reload. Shared docs assets that are not in this image keep their own URLs.
+    def version(match):
+        path = _STATIC / match[3]
+        if not path.is_file():
+            return match[0]
+        digest = sha256(path.read_bytes()).hexdigest()[:16]
+        return f'{match[1]}="{match[2]}?v={digest}"'
+
+    html = re.sub(r'(src|href)="(/assets/([^"?]+))"', version,
+                  (_STATIC / "index.html").read_text(encoding="utf-8"))
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/healthz")
