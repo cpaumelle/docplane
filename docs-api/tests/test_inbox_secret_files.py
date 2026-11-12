@@ -48,15 +48,16 @@ def test_startup_rejects_ambiguous_or_bad_file(monkeypatch, tmp_path):
 
 
 def _group_read_identity(monkeypatch, path):
-    """Bind the fixed group-read identity to the test file's real owner.
+    """Treat the synthetic file's real owner as root.
 
-    chown to root:10012 needs privilege CI does not have, so the module's fixed
-    identity is pointed at whatever owns the synthetic file instead.
+    chown to root needs privilege CI does not have, so the required owner is
+    pointed at whatever owns the file. The file's group is this process's own
+    group, which the process holds, exactly as a granted supplementary group is.
     """
     import app.inbox_secrets as inbox_secrets
     st = os.stat(path)
-    monkeypatch.setattr(inbox_secrets, "GROUP_READ_UID", st.st_uid)
-    monkeypatch.setattr(inbox_secrets, "GROUP_READ_GID", st.st_gid)
+    monkeypatch.setattr(inbox_secrets, "GROUP_READ_OWNER_UID", st.st_uid)
+    assert st.st_gid in inbox_secrets._held_groups()
     return inbox_secrets
 
 
@@ -80,24 +81,32 @@ def test_other_group_modes_refused_even_with_governed_identity(tmp_path, monkeyp
         read_secret("TEST_INBOX")
 
 
-def test_group_read_refused_for_wrong_group_or_owner(tmp_path, monkeypatch):
+def test_group_read_refused_for_group_not_held_or_non_root_owner(tmp_path, monkeypatch):
     p = tmp_path / "cursor"
     p.write_text("x" * 32)
     p.chmod(0o440)
     inbox_secrets = _group_read_identity(monkeypatch, p)
     monkeypatch.setenv("TEST_INBOX_FILE", str(p))
-    monkeypatch.setattr(inbox_secrets, "GROUP_READ_GID", os.stat(p).st_gid + 1)
+    file_gid = os.stat(p).st_gid
+    # The process does not hold the file's group: refused even though the mode is right.
+    monkeypatch.setattr(inbox_secrets, "_held_groups", lambda: {file_gid + 1})
     with pytest.raises(InboxSecretError):
         read_secret("TEST_INBOX")
-    _group_read_identity(monkeypatch, p)
-    monkeypatch.setattr(inbox_secrets, "GROUP_READ_UID", os.stat(p).st_uid + 1)
+    monkeypatch.undo()
+    monkeypatch.setenv("TEST_INBOX_FILE", str(p))
+    inbox_secrets = _group_read_identity(monkeypatch, p)
+    # A non-root owner could widen the mode itself: refused.
+    monkeypatch.setattr(inbox_secrets, "GROUP_READ_OWNER_UID", os.stat(p).st_uid + 1)
     with pytest.raises(InboxSecretError):
         read_secret("TEST_INBOX")
 
 
-def test_group_read_identity_is_the_secrets_v3_contract():
+def test_group_read_takes_its_group_from_the_process_not_a_constant():
+    """DocPlane carries no host GID: the deployment's group grant is the authority."""
     import app.inbox_secrets as inbox_secrets
-    assert (inbox_secrets.GROUP_READ_UID, inbox_secrets.GROUP_READ_GID) == (0, 10012)
+    assert inbox_secrets.GROUP_READ_OWNER_UID == 0
+    assert not hasattr(inbox_secrets, "GROUP_READ_GID")
+    assert inbox_secrets._held_groups() == set(os.getgroups()) | {os.getegid()}
 
 
 def test_key_directory_accepts_governed_group_read_keys(tmp_path, monkeypatch):
@@ -134,7 +143,8 @@ def test_inbox_secrets_overlay_contract():
     root = Path(__file__).resolve().parents[2]
     overlay = yaml.safe_load((root / "docker-compose.inbox-secrets.yml").read_text())
     api = overlay["services"]["docs-api"]
-    assert api["group_add"] == ["10012"]
+    [group] = api["group_add"]
+    assert group.startswith("${DOCPLANE_SECRETS_GID:?"), "the GID must come from the deployment"
     env = api["environment"]
     assert set(env) == {"DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE",
                         "DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE",

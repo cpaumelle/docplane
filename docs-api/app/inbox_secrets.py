@@ -3,13 +3,16 @@
 Two file contracts are accepted, nothing else:
 
 * owner-only: a regular file with no group/other/special bits (0400 or 0600);
-* governed group-read: exactly 0440, owned by root and the dedicated
-  ``docplane-secrets`` group (GID 10012). This is the SECRETS-V3 materializer's
-  DocPlane opt-in (charliehub-hub2 #1420), which lets the API read the file
-  through a supplemental group without the host naming the container UID.
+* group-read: exactly 0440, owned by root, and owned by a group this process
+  holds. The deployment grants that group (for example a Compose ``group_add``
+  of the host secret store's group), so DocPlane carries no host GID of its
+  own. This matches a governed store such as CharlieHub SECRETS-V3's
+  group-read opt-in, which lets the API read the file through a supplemental
+  group without the host naming the container UID.
 
-Any other group bit, world access, a different group, or a non-root owner of a
-group-readable file is refused.
+Any other group bit, world access, a group this process does not hold, or a
+non-root owner of a group-readable file is refused. Root ownership matters
+because a file's owner can widen its mode; only root may own a shared secret.
 """
 from __future__ import annotations
 import os
@@ -22,16 +25,20 @@ class InboxSecretError(RuntimeError):
     pass
 
 
-# Fixed by the SECRETS-V3 group-read contract; deliberately not configurable.
-GROUP_READ_UID = 0
-GROUP_READ_GID = 10012
+# Root (uid 0) is the only owner allowed for a group-readable secret.
+GROUP_READ_OWNER_UID = 0
 _OWNER_ONLY_FORBIDDEN = 0o7177
+
+
+def _held_groups() -> set[int]:
+    """Groups this process actually holds: its effective group and supplementary groups."""
+    return set(os.getgroups()) | {os.getegid()}
 
 
 def _mode_allowed(st: os.stat_result) -> bool:
     mode = stat.S_IMODE(st.st_mode)
     if mode == 0o440:
-        return st.st_uid == GROUP_READ_UID and st.st_gid == GROUP_READ_GID
+        return st.st_uid == GROUP_READ_OWNER_UID and st.st_gid in _held_groups()
     return not mode & _OWNER_ONLY_FORBIDDEN and bool(mode & 0o400)
 
 
