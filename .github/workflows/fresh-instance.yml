@@ -143,7 +143,8 @@ jobs:
             mcp/tests \
             dashboard/tests \
             migration/tests \
-            scripts/tests
+            scripts/tests \
+            docplane-mcp-shim/tests
       - name: Static legacy scan
         run: |
           ! grep -R -nE 'DOCS_API_KEY|X-API-Key|/api/agent-config|/api/docs/|workspace_memberships|change_proposals|reorganisation_reviews|Submit for review|SUBMITTED|APPROVED' \
