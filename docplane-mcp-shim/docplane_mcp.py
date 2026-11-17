@@ -300,12 +300,27 @@ CLIENT = DocPlaneClient()
 # Path resolution
 # --------------------------------------------------------------------------
 
-def _looks_like_uuid(s):
-    try:
-        uuid.UUID(str(s))
-        return True
-    except (ValueError, AttributeError, TypeError):
-        return False
+# Every caller- or server-supplied value that becomes a URL PATH segment must pass
+# one of these validators first. Query parameters go through urlencode only.
+_CANONICAL_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+# DocPlane heading IDs: explicit IDs are [A-Za-z0-9_-]+, generated slugs are a subset.
+_HEADING_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
+
+
+def _canonical_uuid(s):
+    """Lowercase canonical UUID text, or None. Rejects braces, URNs and bare hex."""
+    if not isinstance(s, str) or not _CANONICAL_UUID_RE.match(s):
+        return None
+    return str(uuid.UUID(s))
+
+
+def _page_rid(rec):
+    """The page resource_id as a path segment; refuse anything not a canonical UUID."""
+    rid = _canonical_uuid(str((rec or {}).get("resource_id") or ""))
+    if rid is None:
+        raise DocPlaneError("DocPlane returned a page without a canonical resource_id; refusing to use it.")
+    return rid
 
 
 def resolve_page(path):
@@ -317,8 +332,9 @@ def resolve_page(path):
     when the given path has no extension at all — so a genuine typo still fails
     rather than being silently rewritten. The matched form is reported back.
     """
-    if _looks_like_uuid(path):
-        status, page, n = CLIENT.request("GET", "/api/v1/pages/%s?view=summary" % path)
+    rid = _canonical_uuid(path)
+    if rid is not None:
+        status, page, n = CLIENT.request("GET", "/api/v1/pages/%s?view=summary" % rid)
         return page, "resource_id", n
 
     attempts = [path]
@@ -543,7 +559,7 @@ def tool_docplane_outline(args):
     if not path:
         raise DocPlaneError("outline requires 'path'.")
     rec, matched, _ = resolve_page(path)
-    rid = rec["resource_id"]
+    rid = _page_rid(rec)
     status, page, n = CLIENT.request("GET", "/api/v1/pages/%s?view=outline" % rid)
     out = dict(_meta(page, matched))
     out["outline"] = page.get("outline") or []
@@ -556,12 +572,16 @@ def tool_docplane_section(args):
     heading_id = args.get("heading_id")
     if not path or not heading_id:
         raise DocPlaneError("section requires 'path' and 'heading_id'.")
+    if not isinstance(heading_id, str) or not _HEADING_ID_RE.match(heading_id):
+        raise DocPlaneError(
+            "heading_id must be a DocPlane heading ID (letters, digits, '_' and '-'). "
+            "Use a heading_id value returned by 'outline'.")
     rec, matched, _ = resolve_page(path)
-    rid = rec["resource_id"]
+    rid = _page_rid(rec)
     try:
         status, sec, n = CLIENT.request(
             "GET",
-            "/api/v1/pages/%s/sections/%s" % (rid, urllib.parse.quote(str(heading_id))),
+            "/api/v1/pages/%s/sections/%s" % (rid, urllib.parse.quote(heading_id, safe="")),
         )
     except DocPlaneError as exc:
         if exc.status in (404, 422):
@@ -606,7 +626,7 @@ def tool_docplane_read(args):
     if not path:
         raise DocPlaneError("read requires 'path'.")
     rec, matched, _ = resolve_page(path)
-    rid = rec["resource_id"]
+    rid = _page_rid(rec)
 
     status, page, n = CLIENT.request("GET", "/api/v1/pages/%s?view=full" % rid)
     rev = page.get("revision")
@@ -935,6 +955,30 @@ TOOLS = [
         "fn": tool_work_history,
     },
 ]
+
+def _typed(tool):
+    """Refuse arguments whose JSON type differs from the tool's declared schema."""
+    props = tool["inputSchema"].get("properties", {})
+    fn = tool["fn"]
+
+    def checked(args):
+        if not isinstance(args, dict):
+            raise DocPlaneError("arguments must be an object.")
+        for key, value in args.items():
+            kind = (props.get(key) or {}).get("type")
+            if value is None or kind is None:
+                continue
+            ok = (isinstance(value, str) if kind == "string" else
+                  isinstance(value, int) and not isinstance(value, bool) if kind == "integer" else True)
+            if not ok:
+                raise DocPlaneError("argument %r must be of type %s." % (key, kind))
+        return fn(args)
+    checked.__name__ = getattr(fn, "__name__", "tool")
+    return checked
+
+
+for _tool in TOOLS:
+    _tool["fn"] = _typed(_tool)
 
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 
