@@ -103,6 +103,44 @@ curl -fsS -X POST \
   -d "$(jq -n --arg rev "$REVISION" --arg content '# Example\n\nCorrected.' '{expected_revision:$rev,content:$content,purpose:"Keep the example accurate"}')"
 ```
 
+## Addressed WORK inbox (agent-to-agent)
+
+Agents and architects that don't share a session can send each other durable, addressed messages about one initiative. This is not the capture inbox (`work_capture` / `work_inbox`), which parks unsorted ideas for triage. It is a pull-based mailbox: DocPlane stays the only writer, and every message is also an ordinary WORK activity on the initiative.
+
+**Participants and grants.** Each participant is a separate `WORK_COLLABORATOR` principal with its own credential. That credential is refused on the general contributor endpoints. An operator holding the bootstrap token manages the participants and their per-initiative grants:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/bootstrap/work-participant-identities` | Create a participant principal. The receipt holds no credential; issue its token through governed capture. |
+| `PUT /api/v1/bootstrap/work-grants/{initiative}/{principal}` | Grant access to one initiative: `role` is `AGENT` or `ARCHITECT`, plus `can_contribute` and an optional `expires_at`. |
+| `DELETE /api/v1/bootstrap/work-grants/{initiative}/{principal}` | Revoke that grant. |
+
+Expiry and revocation of tokens, principals and grants are checked on every request. The server binds the sender and role from the authenticated principal, never from message fields.
+
+**Messages.** With the participant's own token:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/work-inbox/{initiative}/messages` | Send `recipient_id`, `body` and an optional `reported_producer` (recorded as a claim only), with a UUID `Idempotency-Key`. |
+| `GET /api/v1/work-inbox/{initiative}/messages` | Read a bounded page after an opaque cursor. |
+| `POST /api/v1/work-inbox/{initiative}/messages/{delivery}/ack` | Record receipt. |
+
+- **Sending.** Both grants are checked, then one transaction writes the WORK activity, audit event, signed envelope, delivery and receipt. Identical retries replay; reusing a key with a different request is refused.
+- **Reading.** Every read rechecks grants and verifies the stored envelope. A message that fails the check comes back flagged, with its body withheld.
+- **ACK.** It records receipt only: it doesn't resolve the task or notify the sender.
+- **Replay.** Read from the start again, and deduplicate by delivery ID. A cursor is a position, not an authorisation.
+
+**Messages are data, never authority.** They cannot expand a brief, approve a production action, impersonate a human or resume a paused task. Delivery is pull-only: generic MCP SSE is not a wake-up guarantee, and client push adapters are separate, later work.
+
+**Enabling it.** The inbox is optional, and an install without its secrets starts with it unavailable. Set the secret *files* in `.env`:
+- `DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE`
+- `DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE`
+- `DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR` (one file per key ID)
+
+Secret values never go in environment variables. On a host with a governed secret store, `docker-compose.inbox-secrets.yml` mounts those directories read-only (it needs `DOCPLANE_SECRETS_GID`). Expose the inbox to a browser or hosted agent only through a restricted facade that registers just the read, contribute and ACK tools for one participant, never the aggregate MCP credential.
+
+The full contract covers key rotation, file-permission rules and the `private_fabric` self-issue caveat: [Addressed WORK inbox](docs/architecture/work-inbox.md).
+
 ## Recovery
 
 - Page history: `GET /api/v1/pages/{resource_id}/history`
@@ -129,5 +167,6 @@ curl -fsS -X POST \
 - [Guiding philosophy](docs/architecture/GUIDING_PHILOSOPHY.md) — the principles every design decision must satisfy.
 - [Authentication profiles](docs/architecture/authentication-profiles.md) — managed vs private-fabric, threat model included.
 - [Reorganisation control plane](docs/architecture/REORGANISATION_CONTROL_PLANE.md) — governed structural change.
+- [Addressed WORK inbox](docs/architecture/work-inbox.md) — participants, grants, signed delivery, ACK and replay.
 - [Redaction invariants](docs/architecture/REDACTION_INVARIANTS.md) — how secrets are kept out of the corpus, fail-closed.
 - [Meter-list importer](docs/operations/METER_LIST_IMPORTER.md) — operator guide for the monitoring importer.
