@@ -1,5 +1,21 @@
 # Domain model implementation plan
 
+> **Historical record** of the four-domain sprint plan as of 2026-07-31.
+> Current behaviour: [The four-domain model](DOMAIN_MODEL.md), whose
+> [Implementation status](DOMAIN_MODEL.md#implementation-status) table says
+> which sprints shipped. In short: sprints 0 to 4 and 7 shipped; sprint 5
+> shipped with a bespoke `pg_catalog` generator instead of `tbls`
+> ([Schema catalogue](../operations/SCHEMA_CATALOGUE.md)); sprint 6 shipped its
+> first half plus a coverage burn-down, and the runbook-discipline half is still
+> open; sprint 8 is partly done (invariants register, `knowledge_class` CHECK)
+> and partly not (ADR `SUPERSEDES` links, search `domain` field, `model_*` and
+> `observe_*` MCP tools, lifecycle-parser removal). Work coordination added
+> since this plan (briefs, safe reads, the addressed inbox, the Librarian design)
+> is not covered here. The compatibility gate below still describes how the
+> project adds capability; it is restated in
+> [Guiding philosophy](GUIDING_PHILOSOPHY.md) ("One authority, evolved by
+> addition").
+
 Sprint sequence for [The four-domain model](DOMAIN_MODEL.md), governed by
 the [guiding philosophy](GUIDING_PHILOSOPHY.md). Every sprint is a bounded,
 independently shippable change that ends with the compatibility gate

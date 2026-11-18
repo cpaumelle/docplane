@@ -24,6 +24,15 @@ transformed hash, identical revision-minting decision, and identical
 malformed / refusal outcome. This makes it structurally impossible for two
 transforms to silently diverge.
 
+## Other consumers of the canonical transform
+
+The same entrypoint guards agent reads of WORK. Initiative history read with
+`activity_bodies=redacted`, single-capture reads, WORK brief text and addressed
+inbox reads all pass text through `migration.redaction.redact`, and withhold a
+field the transform refuses rather than return it raw
+([Safe WORK reads](WORK_CAPTURE_READS.md)). WORK brief updates refuse authored
+text the transform would change ([WORK briefs](WORK_BRIEF.md)).
+
 ## Marker grammar
 
 A redaction marker is exactly:

@@ -283,6 +283,7 @@ All settings live in `.env`; `.env.example` lists them with comments.
 8. [Organise and classify](docs/tutorials/08-organise-and-classify.md)
 
 **Architecture:**
+- [Architecture index](docs/architecture/README.md): every architecture page, grouped by domain, including the Librarian's status.
 - [The four-domain model](docs/architecture/DOMAIN_MODEL.md): work, know, model and observe over one authority.
 - [Guiding philosophy](docs/architecture/GUIDING_PHILOSOPHY.md): the principles every design decision must satisfy.
 - [Authentication profiles](docs/architecture/authentication-profiles.md): managed and private-fabric, with the threat model.

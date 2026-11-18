@@ -1,5 +1,12 @@
 # Schema source-observer PostgreSQL privilege proof
 
+> **Historical record** of the Schema observer PostgreSQL privilege proof as of
+> 2026-08-29 (recorded 2026-09-03). Current behaviour:
+> [Schema catalogue: Observer PostgreSQL contract](../operations/SCHEMA_CATALOGUE.md#observer-postgresql-contract),
+> which carries the role shape this proof selected. Projection contract 2 later
+> moved the generator to `pg_catalog`-only reads with a pinned `search_path`,
+> which removed both dependencies this proof found.
+
 Record of the completed disposable-PostgreSQL experiment that resolved the one
 database-privilege decision previously recorded as **UNRESOLVED** in the
 ratified Schema source-observer design.
