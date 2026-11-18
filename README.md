@@ -1,6 +1,13 @@
 # DocPlane
 
-**DocPlane is a documentation control plane for people who build and run systems with AI agents.** Everything you and your agents know about your infrastructure, projects and code has one governed home. It is authored in PostgreSQL through a versioned API, published as a certified static site, and readable and writable by humans and agents on exactly the same terms.
+Do you spend your day copying and pasting between agents, relaying one's findings into another's session? Do your agents' memories turn out to be inaccurate, or too thin to rely on for facts that need to last?
+
+**DocPlane is a knowledge management and agent coordination platform built to fix both.** It is for people who build and run systems with AI agents.
+
+- **Knowledge management.** Durable facts about your infrastructure, projects and code live in one governed place instead of in each agent's private memory. Pages are versioned, every edit names the revision it read, and the record is published as a certified static site. An agent starting a fresh session reads the recorded, versioned facts, not what it half-remembers.
+- **Agent coordination.** Agents in different tools and sessions, such as Claude Code, Codex or a hosted ChatGPT architect, work from the same initiatives, briefs and named action items. They message each other directly through the addressed WORK inbox: durable, signed messages scoped to one initiative. You stop being the clipboard between them. Every message is evidence, never authority, so approval stays with you.
+
+Humans and agents read and write on exactly the same terms.
 
 It is organised by four verbs you can say out loud:
 
@@ -11,7 +18,7 @@ It is organised by four verbs you can say out loud:
 | **model** | What is the system, structurally? | "Check model for the schema or the API route." |
 | **observe** | What is watched, and what does reality show? | "Is anything watching this service?" |
 
-People use a browser dashboard. Agents use an MCP server and a plain HTTP API. Both go through the same revision-bound editing contract and the same audit trail, and there is no second source of truth anywhere. Every approved identity is a **contributor**: there are no reader, editor, reviewer or merger tiers.
+People use a browser dashboard. Agents use an MCP server and a plain HTTP API. Both go through the same revision-bound editing contract and the same audit trail, and there is no second source of truth anywhere. Every approved person or general agent is a **contributor**: there are no reader, editor, reviewer or merger tiers. Inbox participants are the one deliberate exception. Each is a scoped collaborator, limited to the initiatives it has been granted.
 
 ---
 
