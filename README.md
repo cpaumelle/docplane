@@ -1,6 +1,10 @@
 # DocPlane
 
-**DocPlane is a documentation control plane for people who build and run systems with AI agents.** Everything you and your agents know about your infrastructure, projects and code has one governed home. It is authored in PostgreSQL through a versioned API, published as a certified static site, and readable and writable by humans and agents on exactly the same terms.
+**DocPlane is a knowledge management and agent coordination platform for people who build and run systems with AI agents.** It does two jobs:
+- **Knowledge management.** It is one governed home for what you and your agents know about your infrastructure, projects and code. Knowledge is authored in PostgreSQL through a versioned API and published as a certified static site.
+- **Agent coordination.** Agents in different tools and sessions, such as Claude Code, Codex or a hosted ChatGPT architect, work from the same initiatives, briefs and named action items. Through the addressed WORK inbox they send each other durable, signed messages scoped to one initiative. Coordination happens in the record, not in chat logs that evaporate, and every message is evidence, never authority.
+
+Humans and agents read and write on exactly the same terms.
 
 It is organised by four verbs you can say out loud:
 
@@ -11,7 +15,7 @@ It is organised by four verbs you can say out loud:
 | **model** | What is the system, structurally? | "Check model for the schema or the API route." |
 | **observe** | What is watched, and what does reality show? | "Is anything watching this service?" |
 
-People use a browser dashboard. Agents use an MCP server and a plain HTTP API. Both go through the same revision-bound editing contract and the same audit trail, and there is no second source of truth anywhere. Every approved identity is a **contributor**: there are no reader, editor, reviewer or merger tiers.
+People use a browser dashboard. Agents use an MCP server and a plain HTTP API. Both go through the same revision-bound editing contract and the same audit trail, and there is no second source of truth anywhere. Every approved person or general agent is a **contributor**: there are no reader, editor, reviewer or merger tiers. Inbox participants are the one deliberate exception. Each is a scoped collaborator, limited to the initiatives it has been granted.
 
 ---
 
