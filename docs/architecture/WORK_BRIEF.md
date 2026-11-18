@@ -1,116 +1,155 @@
-# WORK brief and update: first vertical slice
+# WORK briefs and named updates
 
-## Outcome and boundary
+A **brief** is a compact, current view of one initiative: its objective, scope
+and a short list of named items (next actions, holds, deferrals, open questions
+and recorded completions). A human and an agent read the same brief and record
+progress against the same stable item IDs. This is how agents in different
+tools and sessions pick up where the last one left off without a person relaying
+the context.
 
-One initiative can carry a compact, explicit set of actions and holds. A human
-and an agent read the same brief and record progress against the same stable
-item IDs. Daily operation uses ordinary Python/PostgreSQL and no model calls,
-embeddings, inference services, schedulers or external network verification.
+Briefs are deterministic. They use ordinary Python and PostgreSQL. No model,
+embedding, inference service, scheduler or external check is involved.
 
-This uses existing WORK authority, authentication, activities and mutation
-receipts. It does not import the historical inbox, alter initiative lifecycle,
-authorise deployments, or automatically infer completion from a report.
+A brief does not change an initiative's lifecycle state, authorise a deployment,
+or infer that work is complete from a report. Items record claims with evidence;
+they are not live verification.
 
-## Contract
+Code: `docs-api/app/work_brief.py` (item model, merge and grouping) and
+`docs-api/app/work_brief_api.py` (routes).
 
-- `GET /api/v1/initiatives/{id}/brief` returns `work-brief-v1`: objective,
-  scope, initiative state, named items, next-action/held/deferred/uncertain/done
-  groups, a context token and five recent activities. Group entries are item IDs,
-  so an agent does not receive every item's text twice.
-- `POST /api/v1/initiatives/{id}/updates` takes a canonical UUID
-  `Idempotency-Key`, the brief's `expected_context`, a summary, self-reported
-  producer, and one to ten named item changes. OpenAPI publishes its full schema.
-- Items keep a stable `item_id`, title, state, posture, reason, evidence,
-  optional owner, and a concrete next action for active open work. Existing
-  Librarian obligation IDs may be retained when deliberately entered; no old
-  bundle is ingested or modified automatically.
-- State is `OPEN`, `DONE_IN_RECORD`, `UNCLEAR`, `SUPERSEDED` or `WITHDRAWN`.
-  Posture is independently `ACTIVE`, `HELD`, `DEFERRED` or `UNKNOWN`.
-  This preserves the distinction the supervised reviews found missing.
-- An omitted item is unchanged. No deletion operation exists. A hold/deferral
-  cannot be released, completed or have its decision basis replaced without an
-  explicit decision with a reason and resolvable WORK activity/capture or page
-  reference. Reopening recorded completed work needs the same decision record.
-- Typed references identify evidence. Local activity/capture/page identities are
-  existence-checked. Content, external PRs, commits, artifacts and host state are
-  still recorded claims, not independently verified truth or execution grants.
-  Canonical secret refusal applies to all authored text and references. A long
-  bare hash may be refused under the existing redaction policy; this change does
-  not weaken that policy. The server-generated context hash is a dedicated typed
-  field, excluded from authored-text scanning.
+## Reading a brief
 
-A current brief is needed before each logical update. Its token binds initiative
-version and activity count/latest identity. Ordinary notes invalidate the token
-without changing actions automatically. A stale update returns
-`WORK_CONTEXT_STALE`; read, rebase and use a new key. An identical retry returns
-its original receipt even if the brief has since changed. Changed intent with
-an old key is refused. The dashboard preserves the original key/payload when a
-request's outcome is unknown.
+`GET /api/v1/initiatives/{id}/brief` returns the `work-brief-v1` contract:
 
-## Persistence and concurrency
+- the initiative's identity, state, objective and scope;
+- `items`, each with a stable `item_id`, title, `state`, `stance`, reason,
+  evidence references, an optional owner and a `next_action`;
+- groups that list item IDs (not full items, so text is not sent twice):
+  `next_actions`, `held`, `deferred`, `uncertain` and `recorded_done`;
+- `execution_eligible` and `paused_actions` (see below);
+- a `context_token` that binds the next update to this read;
+- the five most recent activities, `recent_activity_has_more`, and
+  `activities_since_checkpoint`, so evidence added after the last update is
+  visible rather than silently treated as reconciled.
 
-There is no migration or second work database. Each update appends one NOTE
-containing a readable report plus a typed `work_checkpoint` in the existing
-activity metadata. The checkpoint merges named changes with the previous
-snapshot, preserves untouched items, and records the exact changes and any
-hold decisions. Older checkpoints and filing receipts remain immutable.
+`checkpoint_status` is `NOT_SET` when no update has ever been recorded. That
+means the history has not been organised into items. It does **not** mean there
+is no work left.
 
-Checkpoint writes lock the initiative, increment its existing version, and append
-an event and replay receipt in the same transaction. The latest checkpoint is
-selected by that monotonically increasing revision, not a transaction-start
-clock. Normal note/attach paths use the same initiative lock. The brief also
-reports how many activities arrived after its checkpoint, so later evidence is
-visible rather than silently treated as reconciled.
+## Item state and stance
 
-An initiative may carry at most 50 checkpoint items and 64 KiB of item JSON;
-updates allow ten changes and 32 KiB of request JSON, with a readable activity
-body capped at 20 KiB. Limits refuse the whole update rather than truncate or
-lose work. The first slice does not compact completed items automatically.
-Unsupported/malformed checkpoints fail closed. Withheld checkpoints are shown
-as unknown, never as an empty todo list.
+Two independent fields describe an item:
 
-## Human surface and agent rollout
+- **state**: `OPEN`, `DONE_IN_RECORD`, `UNCLEAR`, `SUPERSEDED` or `WITHDRAWN`;
+- **stance**: `ACTIVE`, `HELD`, `DEFERRED` or `UNKNOWN`.
 
-The dashboard opens on the Work board. Choose an initiative, read its purpose,
-next actions, holds, deferrals and recent evidence, then use a labelled form to
-add or update one item. Full text is preserved; the form is not a JSON editor.
-The inbox remains available separately for genuinely new concerns.
+Keeping them apart lets a brief say "still open, but on hold" without losing
+either fact.
 
-Initially existing initiatives show `NOT_SET`: history has not been interpreted.
-Pilot on one reviewed initiative. Read its objective/scope and decision history,
-then deliberately record the starting actions and holds. Do not infer an empty
-backlog from the absence of a checkpoint. No production fixtures are installed.
+Grouping is explicit and never based on similarity or recency:
 
-The canonical consolidated MCP requires its companion adapter change exposing
-`docplane_work_brief` and `docplane_work_update` with the existing WORK-evidence
-identity. Deploy the API first. Do not substitute the loopback bundled MCP or
-self-issued credentials when the consolidated tools are unavailable.
+- `DONE_IN_RECORD`, `SUPERSEDED` and `WITHDRAWN` items are listed as recorded
+  done;
+- otherwise `HELD` and `DEFERRED` items go to their own groups;
+- `UNCLEAR` items, and items with stance `UNKNOWN`, are uncertain;
+- everything else is a next action.
 
-## Deployment and acceptance
+An item never overrides its initiative's state. Next actions are offered only
+when the initiative is `ACTIVE` or `BACKLOG` (`execution_eligible: true`). For a
+parked, blocked or closed initiative, open active items appear under
+`paused_actions` instead.
 
-No DB migration, importer version change, generation, publication or timer is
-required. Follow the owning deployment runbook: back up the database, preserve
-outgoing API **and dashboard** image tags, verify the existing migration ledger,
-fast-forward to the merged, CI-green exact commit, and rebuild/recreate only
-`docs-api` and `dashboard` using the existing production Compose overlay.
-Preserve PostgreSQL, named volumes, `.env`, site publication and unrelated services.
+An `OPEN` item with stance `ACTIVE` must have a concrete `next_action`.
 
-Before production, exercise the synthetic transaction tests on disposable
-PostgreSQL and accept the UI on VM8555. Then verify health/provenance at the merged
-SHA, dashboard and discovery, unchanged migration ledger, no model dependency,
-a brief on an existing initiative, and the reviewed pilot update/replay/hold case.
-Writing the pilot starting state is a deliberate governed WORK mutation, separate
-from installing code. Record receipts; do not repeat a write to test idempotency
-with a new key.
+## Recording an update
 
-Rollback restores both preserved application images through the existing Compose
-model. The additive checkpoint records remain in PostgreSQL as readable NOTE
-activities; old clients ignore their new metadata. Do not restore the database
-or delete evidence merely to roll back application code.
+`POST /api/v1/initiatives/{id}/updates` takes:
+
+- an `Idempotency-Key` header holding a canonical UUID;
+- `expected_context`: the `context_token` from the brief just read;
+- a `summary` and a `reported_producer` (who or what says it produced the work,
+  recorded as a claim);
+- one to ten `changes`, each naming one item and, where needed, a `decision`.
+
+Rules the server enforces:
+
+- **Omitted items are unchanged.** There is no delete operation.
+- **Held, deferred and finished items are protected.** Changing an item whose
+  stance is `HELD` or `DEFERRED`, or whose state is terminal, needs a decision
+  with a reason and evidence. Without it the update fails with
+  `WORK_DECISION_REQUIRED`. This covers releasing a hold, completing held work
+  and reopening recorded completion. The decision must cite at least one local
+  record (an `ACTIVITY`, `CAPTURE` or `PAGE`), otherwise
+  `WORK_DECISION_SOURCE_REQUIRED`.
+- **Evidence is typed.** Reference types are `ACTIVITY`, `CAPTURE`, `PR`,
+  `COMMIT`, `ARTIFACT`, `PAGE` and `CONDITION`. Local activities, captures and
+  pages (by path) are checked for existence (`WORK_EVIDENCE_NOT_FOUND`). Pull
+  requests, commits, artifacts and host state are recorded claims only.
+- **Secrets are refused.** All authored text passes the canonical redaction
+  policy; text it would change is refused (`WORK_UPDATE_TEXT_REFUSED`). The
+  server-generated context token is a typed field and is not scanned as text.
+- **Closed initiatives refuse updates** (`WORK_INITIATIVE_CLOSED`).
+
+### Concurrency and retries
+
+The context token binds the initiative version and its activity count and latest
+activity. Any later note or update makes it stale. A stale update fails with
+`WORK_CONTEXT_STALE`: read the brief again, rebase the change, and use a new
+idempotency key.
+
+An identical retry with the same key returns its original receipt, even if the
+brief has changed since. Reusing a key with a different request is refused. The
+dashboard keeps the original key and payload when a request's outcome is
+unknown, so a retry recovers the same request.
+
+## Storage
+
+There is no separate work database and no migration for briefs. Each update
+appends one `NOTE` activity to the initiative. The note holds a readable report
+and a typed `work_checkpoint` in the activity metadata. The checkpoint merges the
+named changes into the previous snapshot and records the exact changes and any
+decisions. Older checkpoints remain as immutable history.
+
+The write locks the initiative, increments its version, and appends an event
+(`WORK_CHECKPOINT_RECORDED`) and a replay receipt in the same transaction. The
+latest checkpoint is chosen by its revision number, not by a clock.
+
+Limits refuse the whole update rather than truncate it:
+
+| Limit | Value |
+| --- | --- |
+| Items per initiative | 50 |
+| Item JSON per initiative | 64 KiB |
+| Changes per update | 10 |
+| Update request JSON | about 32 KB |
+| Readable activity body | about 20 KB |
+
+Completed items are not compacted automatically. A malformed or unsupported
+checkpoint fails closed. A checkpoint that cannot be shown safely is reported as
+withheld, never as an empty to-do list.
+
+## Clients
+
+- **HTTP** is the complete contract; OpenAPI publishes the full update schema.
+- **Dashboard.** The Work board shows the brief and offers a labelled form to add
+  or update one item. Notes do not change items or release holds.
+- **Read-only shim.** [`docplane-mcp-shim`](../../docplane-mcp-shim/README.md)
+  exposes `work_brief` with the context token removed, because it has no update
+  tool.
+- **Bundled MCP server.** `mcp/tools/work.py` does not expose brief or update
+  tools today. A deployment that wants agents to update briefs through MCP needs
+  its own adapter over these two routes.
+
+## Adopting briefs on an existing initiative
+
+Existing initiatives start as `NOT_SET`. Read the objective, scope and decision
+history first, then deliberately record the starting actions and holds. Do not
+infer an empty backlog from a missing checkpoint.
 
 ## Regression evidence
 
-The reviewed examples drive tests for preserved held/deferred work, no next-action
-nudge on held/unclear/parked work, no silent reopening, stable IDs, attributable
+`docs-api/tests/test_work_brief.py` and `test_work_brief_e2e.py` cover preserved held and deferred work, no next-action nudge
+on held, unclear or paused work, no silent reopening, stable IDs, attributable
 updates, invalid evidence, stale context, exact retries and concurrent writers.
-They do not claim to solve semantic contradictions or classify old captures.
+These tests do not claim to resolve contradictions between items or to classify
+old captures; that is the [Librarian](LIBRARIAN.md)'s design problem.

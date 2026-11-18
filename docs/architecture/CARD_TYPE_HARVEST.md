@@ -1,5 +1,14 @@
 # Card-type harvest brief
 
+> **Historical record** of the card-type harvest brief as of 2026-07-30.
+> The harvest informed the model genesis migration
+> (`db/migrations/002_model_genesis.sql`), whose kind and relation vocabularies
+> are now enforced by database CHECK constraints. Current behaviour:
+> [The four-domain model](DOMAIN_MODEL.md#the-model-domain--a-harvested-card-index)
+> and `GET /api/v1/model/contracts`. The principle that card types are harvested,
+> not invented, still applies to new kinds. The examples below come from one
+> deployment.
+
 Executable brief for the on-fabric survey that shapes the model domain's
 card types. This is the entry work of Sprint 2 in the
 [implementation plan](DOMAIN_MODEL_IMPLEMENTATION_PLAN.md), extracted here
