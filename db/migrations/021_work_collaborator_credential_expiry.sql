@@ -50,11 +50,11 @@ COMMENT ON VIEW work.collaborator_grant_expiry IS
     'Every unrevoked collaboration grant of an ACTIVE WORK_COLLABORATOR principal, with its expiry (NULL = no expiry). Lapsed grants stay listed until renewed or revoked, so an expiry alert cannot resolve merely because the grant ran out.';
 
 -- The observer role. LOGIN without a password: under the deployed pg_hba it can
--- connect only over the container-local socket (trust), i.e. only by a caller
--- that can already `docker exec` into the database container. Every TCP rule is
--- scram-sha-256, which a password-less role cannot satisfy. So the role adds no
--- network-reachable credential and needs no secret, and it narrows what the
--- host-side producer can read to these two views.
+-- authenticate over the container-local Unix socket and container-loopback TCP
+-- under the target HBA observed 2026-11-20 (both trust). Non-loopback TCP uses
+-- SCRAM, and no host port was published at that check. Access to the container
+-- or its network namespace therefore crosses this boundary; it is not a socket-only
+-- identity. Re-verify effective HBA, network exposure and privileges at acceptance.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'docplane_credential_expiry_observer') THEN
