@@ -77,10 +77,11 @@ def test_success_publishes_participant_series_and_liveness(tmp_path):
             'initiative_key="docplane-work-agent-notifications"} 1797534858') in text
     # A NULL-expiry grant has no expiry series.
     assert 'grant_expiry_timestamp_seconds{participant="chatgpt-architect"' not in text
+    assert 'docplane_work_collaborator_grant_active{participant="chatgpt-architect",initiative_key="docplane-work-agent-notifications"} 1' in text
     assert "docplane_work_credential_expiry_probe_ok 1" in text
     assert "docplane_work_credential_expiry_last_run_timestamp_seconds " in text
     # Every family is declared; no producer-set job/instance label.
-    assert text.count("# TYPE") == text.count("# HELP") == 7
+    assert text.count("# TYPE") == text.count("# HELP") == 8
     assert "job=" not in text and "instance=" not in text
 
 
@@ -255,3 +256,12 @@ def test_source_explicitly_selects_container_unix_socket(monkeypatch):
     assert producer.read_source("fixture-container", "docs") == {"tokens": [], "grants": []}
     argv = captured["argv"]
     assert argv[argv.index("-h") + 1] == "/var/run/postgresql"
+
+
+def test_grant_active_distinguishes_lapsed_from_nonexpiring():
+    text = producer.render({"tokens": [], "grants": [
+        {"participant": "p", "initiative_key": "old", "expires_at": 100},
+        {"participant": "p", "initiative_key": "permanent", "expires_at": None},
+    ]}, 101)
+    assert 'docplane_work_collaborator_grant_active{participant="p",initiative_key="old"} 0' in text
+    assert 'docplane_work_collaborator_grant_active{participant="p",initiative_key="permanent"} 1' in text

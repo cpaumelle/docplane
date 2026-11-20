@@ -154,6 +154,12 @@ def render(source: dict | None, now: int) -> str:
             [({"participant": p, "expiry": kind}, n) for p in sorted(counts) for kind, n in sorted(counts[p].items())],
         )
         family(
+            "docplane_work_collaborator_grant_active",
+            "Whether this participant and initiative have an unrevoked, unexpired collaboration grant.",
+            [({"participant": g["participant"], "initiative_key": g["initiative_key"]},
+              1 if g["expires_at"] is None or g["expires_at"] > now else 0) for g in grants],
+        )
+        family(
             "docplane_work_collaborator_grant_expiry_timestamp_seconds",
             "Unix time a dated, unrevoked collaboration grant expires; stays present (in the past) after it lapses until renewed or revoked.",
             [({"participant": g["participant"], "initiative_key": g["initiative_key"]}, g["expires_at"])
