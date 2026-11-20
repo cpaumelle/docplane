@@ -98,7 +98,7 @@ def read_source(container: str, database: str) -> dict:
     out = _run([
         "docker", "exec", "-i", container,
         "psql", "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1",
-        "-U", OBSERVER_ROLE, "-d", database,
+        "-h", "/var/run/postgresql", "-U", OBSERVER_ROLE, "-d", database,
     ], stdin=QUERY)
     try:
         return json.loads(out)

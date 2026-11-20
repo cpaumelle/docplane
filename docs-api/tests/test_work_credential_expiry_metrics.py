@@ -244,3 +244,14 @@ def test_observer_role_is_password_less_read_only_and_unprivileged():
     assert login and no_password
     assert not (superuser or createrole or createdb or replication or bypassrls)
     assert "default_transaction_read_only=on" in config
+
+
+def test_source_explicitly_selects_container_unix_socket(monkeypatch):
+    captured = {}
+    def fake(argv, **kwargs):
+        captured["argv"] = argv
+        return json.dumps({"tokens": [], "grants": []})
+    monkeypatch.setattr(producer, "_run", fake)
+    assert producer.read_source("fixture-container", "docs") == {"tokens": [], "grants": []}
+    argv = captured["argv"]
+    assert argv[argv.index("-h") + 1] == "/var/run/postgresql"

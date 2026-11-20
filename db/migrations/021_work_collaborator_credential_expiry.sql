@@ -57,9 +57,10 @@ COMMENT ON VIEW work.collaborator_grant_expiry IS
 -- host-side producer can read to these two views.
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'docplane_credential_expiry_observer') THEN
-        CREATE ROLE docplane_credential_expiry_observer LOGIN NOINHERIT CONNECTION LIMIT 2;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'docplane_credential_expiry_observer') THEN
+        RAISE EXCEPTION 'credential expiry observer role already exists; reconcile privileges before migration';
     END IF;
+    CREATE ROLE docplane_credential_expiry_observer LOGIN NOINHERIT CONNECTION LIMIT 2;
 END $$;
 ALTER ROLE docplane_credential_expiry_observer
     NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD NULL;
@@ -69,3 +70,55 @@ ALTER ROLE docplane_credential_expiry_observer SET statement_timeout = '10s';
 GRANT USAGE ON SCHEMA work TO docplane_credential_expiry_observer;
 GRANT SELECT ON work.collaborator_token_expiry, work.collaborator_grant_expiry
     TO docplane_credential_expiry_observer;
+
+-- Fail the migration, rather than altering shared PUBLIC grants, if the fresh
+-- role can access application objects through PUBLIC or an unexpected default.
+-- pg_catalog is PostgreSQL's built-in metadata surface; application schemas are
+-- audited separately. The operator must also verify the effective pg_hba rules.
+DO $$
+DECLARE observer oid := 'docplane_credential_expiry_observer'::regrole;
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_auth_members WHERE member = observer OR roleid = observer) THEN
+        RAISE EXCEPTION 'credential expiry observer has unexpected role membership';
+    END IF;
+    IF has_database_privilege(observer, current_database(), 'CREATE') THEN
+        RAISE EXCEPTION 'credential expiry observer can create database objects';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_namespace n
+               WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
+                 AND has_schema_privilege(observer, n.oid, 'CREATE')) THEN
+        RAISE EXCEPTION 'credential expiry observer can create in an application schema';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE c.relkind IN ('r','p','v','m','f')
+                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
+                 AND (n.nspname, c.relname) NOT IN (('work','collaborator_token_expiry'),('work','collaborator_grant_expiry'))
+                 AND (has_table_privilege(observer,c.oid,'SELECT') OR has_table_privilege(observer,c.oid,'INSERT')
+                      OR has_table_privilege(observer,c.oid,'UPDATE') OR has_table_privilege(observer,c.oid,'DELETE')
+                      OR has_table_privilege(observer,c.oid,'TRUNCATE') OR has_table_privilege(observer,c.oid,'TRIGGER')
+                      OR has_table_privilege(observer,c.oid,'REFERENCES'))) THEN
+        RAISE EXCEPTION 'credential expiry observer has unexpected application table privilege';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE (n.nspname, c.relname) IN (( 'work','collaborator_token_expiry'),('work','collaborator_grant_expiry'))
+                 AND (has_table_privilege(observer,c.oid,'INSERT') OR has_table_privilege(observer,c.oid,'UPDATE')
+                      OR has_table_privilege(observer,c.oid,'DELETE') OR has_table_privilege(observer,c.oid,'TRUNCATE')
+                      OR has_table_privilege(observer,c.oid,'TRIGGER') OR has_table_privilege(observer,c.oid,'REFERENCES'))) THEN
+        RAISE EXCEPTION 'credential expiry observer has write privilege on an expiry view';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE c.relkind = 'S' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
+                 AND (has_sequence_privilege(observer,c.oid,'SELECT') OR has_sequence_privilege(observer,c.oid,'USAGE')
+                      OR has_sequence_privilege(observer,c.oid,'UPDATE'))) THEN
+        RAISE EXCEPTION 'credential expiry observer has unexpected sequence privilege';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE p.prosecdef AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
+                 AND has_function_privilege(observer,p.oid,'EXECUTE')) THEN
+        RAISE EXCEPTION 'credential expiry observer can execute an application security-definer function';
+    END IF;
+END $$;
