@@ -101,6 +101,26 @@ BEGIN
                       OR has_table_privilege(observer,c.oid,'REFERENCES'))) THEN
         RAISE EXCEPTION 'credential expiry observer has unexpected application table privilege';
     END IF;
+    -- Table-level checks do not include grants on individual columns. Check
+    -- effective column privileges too, including grants inherited from PUBLIC.
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE c.relkind IN ('r','p','v','m','f')
+                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
+                 AND (n.nspname, c.relname) NOT IN (('work','collaborator_token_expiry'),('work','collaborator_grant_expiry'))
+                 AND (has_any_column_privilege(observer,c.oid,'SELECT')
+                      OR has_any_column_privilege(observer,c.oid,'INSERT')
+                      OR has_any_column_privilege(observer,c.oid,'UPDATE')
+                      OR has_any_column_privilege(observer,c.oid,'REFERENCES'))) THEN
+        RAISE EXCEPTION 'credential expiry observer has unexpected application column privilege';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE (n.nspname, c.relname) IN (('work','collaborator_token_expiry'),('work','collaborator_grant_expiry'))
+                 AND (has_any_column_privilege(observer,c.oid,'INSERT')
+                      OR has_any_column_privilege(observer,c.oid,'UPDATE')
+                      OR has_any_column_privilege(observer,c.oid,'REFERENCES'))) THEN
+        RAISE EXCEPTION 'credential expiry observer has column write privilege on an expiry view';
+    END IF;
     IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                WHERE (n.nspname, c.relname) IN (( 'work','collaborator_token_expiry'),('work','collaborator_grant_expiry'))
                  AND (has_table_privilege(observer,c.oid,'INSERT') OR has_table_privilege(observer,c.oid,'UPDATE')
