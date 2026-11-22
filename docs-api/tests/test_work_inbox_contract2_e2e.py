@@ -267,3 +267,67 @@ def test_send_does_not_move_the_initiative_version(lane):
     before = state()
     lane.send("arch", "agent", kind="TASK")
     assert state() == before
+
+
+def test_declining_a_question_leaves_the_task_open(lane):
+    task = lane.send("arch", "agent", kind="TASK")["delivery_id"]
+    asked = lane.send("arch", "agent", kind="QUESTION", in_reply_to=task)["delivery_id"]
+    sibling = lane.send("arch", "agent", kind="QUESTION", in_reply_to=task)["delivery_id"]
+    lane.send("agent", "arch", kind="DECLINED", in_reply_to=asked)
+    assert lane.open("agent") == [task, sibling]
+
+
+def test_altered_reply_neither_closes_work_nor_reports_a_result(lane):
+    task = lane.send("arch", "agent", kind="TASK")["delivery_id"]
+    progress = lane.send("agent", "arch", kind="PROGRESS", in_reply_to=task)["delivery_id"]
+    lane.sql("UPDATE work.inbox_message_context SET kind='RESULT' WHERE delivery_id=%s", (progress,))
+    assert lane.open("agent") == [task]
+    assert lane.get("arch", "/sent", delivery_id=task)["sent"][0]["latest_reply"] is None
+
+
+def test_altered_task_stays_visible_and_takes_no_replies(lane):
+    task = lane.send("arch", "agent", kind="TASK")["delivery_id"]
+    lane.ack("agent", task)
+    lane.sql("UPDATE work.inbox_message_context SET kind='NOTE' WHERE delivery_id=%s", (task,))
+    assert lane.open("agent") == [task]
+    assert lane.get("agent", contract=2, view="open")["messages"][0]["integrity_failed"]
+    assert lane.post("agent", "arch", kind="RESULT", in_reply_to=task).status_code == 422
+
+
+def test_open_and_full_cursors_are_not_interchangeable(lane):
+    lane.send("arch", "agent", kind="TASK")
+    opened = lane.get("agent", contract=2, view="open")["next_cursor"]
+    full = lane.get("agent", contract=2)["next_cursor"]
+    for params in ({"cursor": opened}, {"cursor": full, "view": "open"}):
+        response = client.get(lane.root + "/messages", headers=lane.headers["agent"], params={"contract": 2, **params})
+        assert response.status_code == 400 and response.json()["detail"]["code"] == "INBOX_CURSOR_INVALID"
+
+
+def test_open_view_pages_without_skipping(lane):
+    tasks = [lane.send("arch", "agent", kind="TASK")["delivery_id"] for _ in range(5)]
+    lane.send("agent", "arch", kind="RESULT", in_reply_to=tasks[1])
+    first = lane.get("agent", contract=2, view="open", limit=2)
+    second = lane.get("agent", contract=2, view="open", limit=2, cursor=first["next_cursor"])
+    assert [m["delivery_id"] for m in first["messages"] + second["messages"]] == [tasks[0], *tasks[2:]]
+    assert (first["remaining"], second["remaining"]) == (2, 0)
+
+
+def test_replay_is_visible_only_when_asked_for(lane):
+    key = str(uuid4())
+    request = dict(headers={**lane.headers["arch"], "Idempotency-Key": key}, json={"recipient_id": lane.ids["agent"], "body": "continue"})
+    url = lane.root + "/messages"
+    assert client.post(url, params={"contract": 2}, **request).json()["replayed"] is False
+    assert client.post(url, params={"contract": 2}, **request).json()["replayed"] is True
+    assert "replayed" not in client.post(url, **request).json()
+
+
+def test_every_sent_row_can_be_paged_to(lane):
+    sent = [lane.send("arch", "agent", body=f"s{n}")["delivery_id"] for n in range(7)]
+    seen, before = [], None
+    while True:
+        page = lane.get("arch", "/sent", limit=3, **({"before": before} if before else {}))
+        seen += [r["delivery_id"] for r in page["sent"]]
+        if not page["more"]:
+            break
+        before = page["sent"][-1]["delivery_id"]
+    assert seen == sent[::-1]

@@ -43,9 +43,13 @@ deployed or rolled back in either order.
 - `GET .../messages?contract=2` adds `context` to each message, and `remaining` and
   `view` to the page. `view=open` returns only open work: tasks without a terminal
   report, questions without an answer, and other messages not yet acknowledged.
-  Acknowledgement never closes a task, and a question never completes one.
+  Acknowledgement never closes a task, and a question never completes one. A decline
+  closes what it answers: decline a task by replying to the task itself.
+  Only intact context closes work. An open-view cursor cannot continue a full read.
+- `POST .../messages?contract=2` adds `replayed`, so a sender can tell an idempotent
+  replay from a new delivery.
 - `GET .../sent` shows the caller's own deliveries with receipt time and the recipient's
-  latest correlated reply, without bodies.
+  latest correlated reply, without bodies. Page older sends with `before=<delivery_id>`.
 - `GET .../participants` lists live participants on an initiative the caller holds.
   `GET /api/v1/work-inbox` lists the caller's initiatives with unacknowledged count and
   latest position, which is the feed to poll. A send deliberately does not change the
@@ -56,6 +60,12 @@ deployed or rolled back in either order.
 
 Bodies still pass the canonical secret scan: long hex such as full commit IDs and
 digests is refused. Send abbreviated identifiers.
+
+Message bodies are ordinary WORK notes, not private mail: anyone who can read the
+initiative's history can read them. Addressing controls delivery, not confidentiality.
+
+After rollback to an API image without byte-bounded pages, a page of large messages can
+exceed an adapter's response cap. Read with a smaller `limit`.
 
 The context signature detects alteration. It cannot detect deletion of the context
 row, which makes a delivery read as a plain NOTE, and it needs database write access.

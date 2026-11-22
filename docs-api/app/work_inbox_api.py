@@ -192,6 +192,7 @@ def revoke_grant(initiative_id: UUID, principal_id: UUID, bootstrap: str | None 
 @router.post("/api/v1/work-inbox/{initiative_id}/messages", status_code=201)
 def contribute(initiative_id: UUID, payload: Any = Body(...),
                idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+               contract: int = Query(default=1, ge=1, le=2),
                principal: Principal = Depends(collaborator)):
     # Validate without FastAPI reflecting rejected input (which could be secret).
     if not isinstance(payload, dict) or set(payload) - {"recipient_id", "body", "reported_producer", "kind", "in_reply_to"}:
@@ -224,7 +225,8 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
         role = _grant(conn, initiative, principal.principal_id, write=True)
         replay = load_receipt(conn, principal, key, "WORK_INBOX_CONTRIBUTE", digest)
         if replay is not None:
-            return replay
+            # Opt-in, so contract 1 adapters still see the receipt byte for byte.
+            return {**replay, "replayed": True} if contract == 2 else replay
         # After the replay: a committed send keeps its receipt if the recipient is later revoked.
         _grant(conn, initiative, recipient, refusal="RECIPIENT_NOT_GRANTED")
         cur = conn.cursor()
@@ -232,7 +234,8 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
         thread = None
         if extra is not None:
             thread = message_context.thread_for(cur, initiative=initiative, sender=principal.principal_id,
-                                                recipient=recipient, kind=extra[0], parent=extra[1], delivery=delivery)
+                                                recipient=recipient, kind=extra[0], parent=extra[1], delivery=delivery,
+                                                keys=_keyring() if extra[1] else {})
         cur.execute("INSERT INTO work.inbox_positions (initiative_id,recipient_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (initiative, recipient))
         cur.execute("UPDATE work.inbox_positions SET last_position=last_position+1 WHERE initiative_id=%s AND recipient_id=%s RETURNING last_position", (initiative, recipient))
         position = cur.fetchone()[0]
@@ -260,7 +263,7 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
             response["thread_id"] = thread
         save_receipt(conn, principal, key, "WORK_INBOX_CONTRIBUTE", initiative, digest, response)
         conn.commit()
-        return response
+        return {**response, "replayed": False} if contract == 2 else response
 
 
 @router.get("/api/v1/work-inbox/{initiative_id}/messages")
@@ -271,20 +274,24 @@ def inbox(initiative_id: UUID, cursor: str | None = None, limit: int = Query(def
     if view == "open" and contract < 2:
         raise HTTPException(status_code=422, detail={"code": "INBOX_CONTRACT_REQUIRED"})
     initiative = str(initiative_id)
-    position = decode_cursor(cursor, principal_id=principal.principal_id, initiative_id=initiative)
+    position = decode_cursor(cursor, principal_id=principal.principal_id, initiative_id=initiative, view=view)
     with get_conn() as conn:
         _grant(conn, initiative, principal.principal_id)
         cur = conn.cursor()
         scope = "d.initiative_id=%s AND d.recipient_id=%s AND d.position>%s"
+        params = [initiative, principal.principal_id, position]
+        open_ids = None
         if view == "open":
-            scope += " AND (" + message_context.OPEN_SQL + ")"
+            open_ids = message_context.Threads(cur, initiative, principal.principal_id, _keyring()).open_after(position)
+            scope += " AND d.delivery_id = ANY(%s::uuid[])"
+            params.append(open_ids)
         cur.execute(f"""SELECT d.envelope,d.signature,a.body,d.acknowledged_at,d.delivery_id::text,d.position,d.activity_id::text,d.sender_id::text,d.sender_role,
             c.kind,c.in_reply_to::text,c.thread_id::text,c.kid,c.signature
           FROM work.inbox_deliveries d
           JOIN work.initiative_activities a ON a.activity_id=d.activity_id
           LEFT JOIN work.inbox_message_context c ON c.delivery_id=d.delivery_id
           WHERE {scope} ORDER BY d.position LIMIT %s""",
-          (initiative, principal.principal_id, position, limit))
+          (*params, limit))
         items = []
         keys = _keyring()
         size = 0
@@ -324,12 +331,15 @@ def inbox(initiative_id: UUID, cursor: str | None = None, limit: int = Query(def
             position = db_position
             items.append(item)
 
-        page = {"messages": items, "next_cursor": encode_cursor(position, principal_id=principal.principal_id, initiative_id=initiative)}
+        page = {"messages": items, "next_cursor": encode_cursor(position, principal_id=principal.principal_id, initiative_id=initiative, view=view)}
         if contract == 2:
-            cur.execute(f"""SELECT count(*) FROM work.inbox_deliveries d
-              LEFT JOIN work.inbox_message_context c ON c.delivery_id=d.delivery_id
-              WHERE {scope}""", (initiative, principal.principal_id, position))
-            page.update(remaining=cur.fetchone()[0], view=view)
+            if open_ids is not None:
+                remaining = len(open_ids) - len(items)
+            else:
+                cur.execute("""SELECT count(*) FROM work.inbox_deliveries
+                  WHERE initiative_id=%s AND recipient_id=%s AND position>%s""", (initiative, principal.principal_id, position))
+                remaining = cur.fetchone()[0]
+            page.update(remaining=remaining, view=view)
         return page
 
 
@@ -398,36 +408,37 @@ def participants(initiative_id: UUID, principal: Principal = Depends(collaborato
 
 
 @router.get("/api/v1/work-inbox/{initiative_id}/sent")
-def sent(initiative_id: UUID, delivery_id: UUID | None = None, limit: int = Query(default=50, ge=1, le=100),
-         principal: Principal = Depends(collaborator)):
-    """The caller's own deliveries: receipt, and the recipient's latest reply. No bodies."""
+def sent(initiative_id: UUID, delivery_id: UUID | None = None, before: UUID | None = None,
+         limit: int = Query(default=50, ge=1, le=100), principal: Principal = Depends(collaborator)):
+    """The caller's own deliveries, newest first: receipt and latest verified reply. No bodies.
+
+    Page with `before`: the last delivery_id of the previous page.
+    """
     initiative = str(initiative_id)
     only = str(delivery_id) if delivery_id else None
     with get_conn() as conn:
         _grant(conn, initiative, principal.principal_id)
         cur = conn.cursor()
-        cur.execute("""SELECT d.envelope, d.delivery_id::text, d.activity_id::text, d.recipient_id::text, d.created_at,
-              d.acknowledged_at, c.kind, c.in_reply_to::text, c.thread_id::text, c.kid, c.signature,
-              reply.delivery_id, reply.kind, reply.created_at
-            FROM work.inbox_deliveries d
-            LEFT JOIN work.inbox_message_context c ON c.delivery_id = d.delivery_id
-            LEFT JOIN LATERAL (
-              SELECT r.delivery_id::text, rc.kind, r.created_at
-                FROM work.inbox_message_context rc JOIN work.inbox_deliveries r ON r.delivery_id = rc.delivery_id
-               WHERE r.initiative_id = d.initiative_id AND r.sender_id = d.recipient_id AND r.recipient_id = d.sender_id
-                 AND (rc.in_reply_to = d.delivery_id OR (c.kind = 'TASK' AND rc.thread_id = d.delivery_id))
-                 AND r.delivery_id <> d.delivery_id
-               ORDER BY r.position DESC LIMIT 1) reply ON true
-            WHERE d.initiative_id = %s AND d.sender_id = %s AND (%s::uuid IS NULL OR d.delivery_id = %s::uuid)
-            ORDER BY d.created_at DESC, d.delivery_id LIMIT %s""",
-                    (initiative, principal.principal_id, only, only, limit + 1))
+        edge = (None, None)
+        if before:
+            cur.execute("""SELECT created_at, delivery_id::text FROM work.inbox_deliveries
+                WHERE delivery_id=%s AND initiative_id=%s AND sender_id=%s""", (str(before), initiative, principal.principal_id))
+            edge = cur.fetchone()
+            if edge is None:
+                raise HTTPException(status_code=422, detail={"code": "INBOX_PAGE_INVALID"})
+        cur.execute("""SELECT delivery_id::text, activity_id::text, recipient_id::text, created_at, acknowledged_at
+            FROM work.inbox_deliveries
+            WHERE initiative_id = %s AND sender_id = %s AND (%s::uuid IS NULL OR delivery_id = %s::uuid)
+              AND (%s::timestamptz IS NULL OR created_at < %s::timestamptz
+                   OR (created_at = %s::timestamptz AND delivery_id > %s::uuid))
+            ORDER BY created_at DESC, delivery_id LIMIT %s""",
+                    (initiative, principal.principal_id, only, only, edge[0], edge[0], edge[0], edge[1], limit + 1))
         rows = cur.fetchall()
-        keys = _keyring()
+        threads = message_context.Threads(cur, initiative, principal.principal_id, _keyring())
         out = []
-        for row in rows[:limit]:
-            context, intact = message_context.verified(row[0], tuple(row[6:11]), keys)
-            out.append({"delivery_id": row[1], "activity_id": row[2], "recipient_id": row[3],
-                        "created_at": row[4], "acknowledged_at": row[5], "context": context if intact else None,
-                        "latest_reply": None if row[11] is None else
-                        {"delivery_id": row[11], "kind": row[12], "created_at": row[13]}})
+        for did, aid, recipient, created, acked in rows[:limit]:
+            row = threads.rows.get(did)
+            context = {k: row[k] for k in ("kind", "in_reply_to", "thread_id")} if row and row["intact"] else None
+            out.append({"delivery_id": did, "activity_id": aid, "recipient_id": recipient, "created_at": created,
+                        "acknowledged_at": acked, "context": context, "latest_reply": threads.latest_reply(did)})
     return {"sent": out, "more": len(rows) > limit}
