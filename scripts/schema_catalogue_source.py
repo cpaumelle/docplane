@@ -318,6 +318,32 @@ def introspect(conn, schemas: list[str]) -> dict[str, Any]:
     return structure
 
 
+USER_SCHEMAS_SQL = """
+SELECT n.nspname::text
+  FROM pg_catalog.pg_namespace n
+ WHERE n.nspname NOT LIKE 'pg\\_%' ESCAPE '\\'
+   AND n.nspname <> 'information_schema'
+ ORDER BY 1
+"""
+
+
+def database_schemas(conn) -> list[str]:
+    """Every user schema of the source database, from the world-readable catalog.
+
+    Used only for coverage reporting (which schemas exist but are not catalogued);
+    it never widens what is introspected or published.
+    """
+    with conn.cursor() as cur:
+        cur.execute(USER_SCHEMAS_SQL)
+        return [row[0] for row in cur.fetchall()]
+
+
+def unlisted_schemas(existing: list[str], listed: list[str], ignored: list[str]) -> list[str]:
+    """Schemas present in the database but neither catalogued nor deliberately ignored."""
+    skip = set(listed) | set(ignored)
+    return sorted(name for name in set(existing) if name not in skip)
+
+
 def fingerprint(structure: dict[str, Any]) -> str:
     """Canonical SHA-256 of the source structure.
 

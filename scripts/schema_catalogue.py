@@ -75,7 +75,7 @@ from schema_catalogue_connection import source_connection_parameters  # noqa: E4
 # imports the same seam without importing this mutation-capable generator.
 # This is the sole implementation of introspect()/fingerprint(); re-exporting
 # the names keeps `schema_catalogue.introspect` / `.fingerprint` working.
-from schema_catalogue_source import fingerprint, introspect  # noqa: E402,F401
+from schema_catalogue_source import database_schemas, fingerprint, introspect, unlisted_schemas  # noqa: E402,F401
 import schema_catalogue_projection as projection  # noqa: E402
 import schema_catalogue_ledger as ledger_module  # noqa: E402
 import schema_catalogue_capture as capture  # noqa: E402
@@ -423,7 +423,8 @@ def schema_catalogues_mappings(
     return desired
 
 
-def write_projection_metrics(path: str, *, artifact: str, drift: bool, success: bool) -> None:
+def write_projection_metrics(path: str, *, artifact: str, drift: bool, success: bool,
+                             unlisted: list[str] | None = None) -> None:
     """Atomically publish the generated-projection status metrics for node_exporter.
 
     ONE writer for every generated projection (work catalogue, meter list, ...), so a new
@@ -448,6 +449,22 @@ def write_projection_metrics(path: str, *, artifact: str, drift: bool, success: 
         "# TYPE docplane_generated_projection_last_run_unixtime gauge\n"
         f'docplane_generated_projection_last_run_unixtime{{artifact="{artifact}"}} {now}\n'
     )
+    # Schema catalogues only: coverage of the source database. `unlisted` is None when the
+    # coverage check did not run or failed, and then nothing is emitted (absence means unknown,
+    # never "complete"); an empty list emits the count 0.
+    if unlisted is not None:
+        content += (
+            "# HELP docplane_schema_catalogue_unlisted_schemas Schemas present in the source database but not catalogued and not deliberately ignored.\n"
+            "# TYPE docplane_schema_catalogue_unlisted_schemas gauge\n"
+            f'docplane_schema_catalogue_unlisted_schemas{{artifact="{artifact}"}} {len(unlisted)}\n'
+        )
+        if unlisted:
+            content += (
+                "# HELP docplane_schema_catalogue_unlisted_schema One series per schema present in the source database but not catalogued.\n"
+                "# TYPE docplane_schema_catalogue_unlisted_schema gauge\n"
+            )
+            for name in unlisted:
+                content += f'docplane_schema_catalogue_unlisted_schema{{artifact="{artifact}",schema="{name}"}} 1\n'
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=destination.parent, delete=False) as handle:
         handle.write(content)
         temporary = Path(handle.name)
@@ -760,7 +777,8 @@ def main(argv: list[str] | None = None) -> int:
         raise
     # Every successful path (published, repaired, or UNCHANGED) ends with the published
     # projection equal to the live source, so drift is 0 by construction.
-    write_projection_metrics(args.metrics_file, artifact=artifact, drift=False, success=status == 0)
+    write_projection_metrics(args.metrics_file, artifact=artifact, drift=False, success=status == 0,
+                             unlisted=getattr(args, "unlisted_schemas", None))
     return status
 
 
@@ -797,6 +815,17 @@ def _reconcile(args) -> int:
             metadata = source_metadata(source)
         migration_ledger = None
     structure_hash = fingerprint(structure)
+    # Coverage (reporting only): which schemas exist but are not in CATALOGUE_SCHEMAS. Never
+    # fatal: a failure leaves the metric absent and the catalogue run unaffected.
+    ignored = [name.strip() for name in os.environ.get("CATALOGUE_SCHEMAS_IGNORED", "").split(",") if name.strip()]
+    try:
+        with psycopg2.connect(**source_connection) as source:
+            args.unlisted_schemas = unlisted_schemas(database_schemas(source), schemas, ignored)
+        if args.unlisted_schemas:
+            print(f"coverage: {len(args.unlisted_schemas)} schema(s) present but not catalogued: {', '.join(args.unlisted_schemas)}")
+    except Exception as exc:  # noqa: BLE001 - reporting must never break publication
+        args.unlisted_schemas = None
+        print(f"coverage: schema list unavailable ({type(exc).__name__}); metric not emitted", file=sys.stderr)
     # The ledger is never part of the structural fingerprint (the observer stays
     # structure-only); it is folded into the render identity so a ledger-only change
     # republishes honestly while catalogues without the setting keep their exact
