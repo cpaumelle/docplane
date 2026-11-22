@@ -8,7 +8,7 @@ PLAN → ANALYZE IMPACT → VALIDATE → PUBLISH
 
 A plan records stable page identities, exact revisions, ordered structural operations, base and candidate state identities, navigation and redirect effects, collisions and inbound references. Validation re-runs those checks against current PostgreSQL state.
 
-Any authenticated contributor may publish a validated plan directly. Publication applies the structural change atomically through the same change engine used for ordinary edits, records prior page versions and audit events, builds the MkDocs release, and updates deployment certification. Optional comments never gate publication.
+Any contributor may publish a validated plan directly. Scoped automation and inbox participants cannot. Publication applies the structural change atomically through the same change engine used for ordinary edits, records prior page versions and audit events, builds the MkDocs release, and updates deployment certification. Optional comments never gate publication.
 
 No supported workflow performs direct SQL, manual filesystem edits or mutation of generated release files.
 
@@ -40,7 +40,11 @@ name them as separate operations. This keeps references atomic with the move
 without creating a second link-index authority. The scan is currently O(corpus)
 and must be revisited before corpus size makes validation latency material.
 
-Because `nav_order` participates in the corpus state identity, first deployment
-of this schema changes the working identity for the whole corpus. Drain or
-abandon open pre-deployment changes before rollout, then complete one governed
-publication so deployed certification is sealed against the new identity.
+### Rollout note (migration 012, historical)
+
+Because `nav_order` participates in the corpus state identity, the first
+deployment of migration `012_page_navigation_order.sql` changed the working
+identity for the whole corpus. Open pre-deployment changes had to be drained or
+abandoned before rollout, then one governed publication sealed deployed
+certification against the new identity. The same care applies to any future
+migration that changes the state identity.

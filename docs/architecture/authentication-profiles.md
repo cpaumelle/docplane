@@ -46,6 +46,21 @@ Successful issuance is logged as `event=self_issue_issued`; throttling is logged
 as `event=self_issue_rate_limited` with scope, counts, window and a truncated
 source fingerprint. Neither log contains a clear bearer or token hash.
 
+## What self-issue can and cannot create
+
+Self-issue creates only a short-lived `AGENT` contributor. The narrower
+identities are always operator-issued through the bootstrap administration
+path, whatever the profile:
+
+- `SCOPED_AUTOMATION` principals for generators and observers, limited to their
+  granted artifacts and operations;
+- `WORK_COLLABORATOR` participants of the [addressed WORK inbox](work-inbox.md),
+  limited to their granted initiatives.
+
+A self-issued token is a general contributor and can write. A client that must
+only read, such as the [`docplane-mcp-shim`](../../docplane-mcp-shim/README.md),
+gets its read-only property from its own fixed tool list, not from the token.
+
 ## Trust boundary
 
 `private_fabric` deliberately treats reachability of the routed internal hostname as the admission decision. This is the same high-level boundary used by the legacy internal Docs API it replaced, upgraded from a shared retrievable key to short-lived, individually attributable capabilities.
@@ -58,6 +73,11 @@ Admission is dual-gated:
 Neither gate is sufficient alone. Direct access to docs-api cannot self-issue, even in private-fabric mode. Caller-supplied internal admission headers are cleared on other API routes.
 
 Keep the direct docs-api port loopback-only or otherwise unreachable from untrusted networks. Enabling `private_fabric` on a publicly reachable routed hostname grants any reachable client the ability to mint a short-lived contributor credential.
+
+The same applies to scoped clients inside the fabric. A browser architect or
+other inbox participant whose network path can reach the self-issue route can
+mint a contributor token next to its scoped one. Keep such clients' paths away
+from `/api/v1/auth/self-issue`; see [Addressed WORK inbox](work-inbox.md#security-caveats).
 
 ## Configuration
 

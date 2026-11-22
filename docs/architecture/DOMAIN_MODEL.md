@@ -1,10 +1,15 @@
 # The four-domain model: work, know, model, observe
 
-Status: **RATIFIED** — architecture decision for issue #64, converged through
-owner review and merged in PR #70. Principles are in
-[Guiding philosophy and objectives](GUIDING_PHILOSOPHY.md); the sprint
-sequence is in the
-[implementation plan](DOMAIN_MODEL_IMPLEMENTATION_PLAN.md).
+Status: **RATIFIED** architecture decision (issue #64, PR #70). Most of it is
+now built; [Implementation status](#implementation-status) at the end says
+which parts are and which are not. Principles are in
+[Guiding philosophy](GUIDING_PHILOSOPHY.md). The original sprint plan is kept as
+a [historical record](DOMAIN_MODEL_IMPLEMENTATION_PLAN.md).
+
+DocPlane is knowledge management and agent coordination for people who build
+and run systems with AI agents. The four domains are how it organises both:
+**work** is where agents and people coordinate, and **know**, **model** and
+**observe** are where durable facts live.
 
 DocPlane remains one authority. This decision creates no new products, no
 second database and no new permission tiers. It names four **domains of
@@ -54,6 +59,27 @@ initiative, attach as an activity on an existing one, or discard guilt-free.
 The dashboard Work view surfaces the inbox count and the weekly-review
 queues (parked review due, soak review due, decisions needed), and applies a
 soft WIP limit on `ACTIVE` so "Now" stays an honest word.
+
+**Coordination.** Beyond capture and triage, the work domain is where agents
+in different tools and sessions coordinate without a human relaying text:
+
+- **Briefs and named updates.** An initiative carries a small set of named items
+  (next actions, holds, deferrals, uncertainties, recorded completions). Agents
+  read the brief before working and record outcomes against stable item IDs,
+  bound to the brief they read. See [WORK briefs](WORK_BRIEF.md).
+- **Safe reads.** Agents discover initiatives and read history and captures
+  through redacted, allowlisted reads. See
+  [Safe WORK reads](WORK_CAPTURE_READS.md).
+- **Addressed inbox.** Scoped participants send durable, signed messages about
+  one initiative; each message is also a WORK activity. See
+  [Addressed WORK inbox](work-inbox.md).
+- **The Librarian (designed, not finished).** A planned agent-plus-validator
+  that proposes how to organise scattered WORK records into coherent
+  deliverables. Only a read-only, manually run development worker exists. See
+  [The Librarian](LIBRARIAN.md).
+
+In every case a report or message is evidence, never authority: it cannot
+approve a production action or mark work complete on its own.
 
 **Closure gates** generalise the existing `promotion_state` pattern.
 Finishing an initiative requires one disposition per durable domain:
@@ -309,7 +335,9 @@ Guaranteed for the entire introduction of the domain model:
 
 ## Exemplars
 
-**A — `tbls` schema catalogue.** Work: one initiative (canary database →
+**A — schema catalogue.** (The decision named `tbls`; the built generator
+uses its own read-only `pg_catalog` introspection instead, see
+[Schema catalogue](../operations/SCHEMA_CATALOGUE.md).) Work: one initiative (canary database →
 soak → the rest). Model: database/schema entities, `STORES_IN` wires, one
 artifact declaration. Observe: `GENERATION` observations with source
 fingerprints; freshness/drift derived. Know: architecture page, redaction
@@ -347,3 +375,33 @@ through the same importer and receipts as a manual run. An unchanged tick
 replays one fingerprint-bound nominal observation and makes no model, Know or
 Work mutation. Work projection advances only when coverage changes or when an
 operator explicitly requests reconciliation.
+
+## Implementation status
+
+Checked against the code on main. "Built" means a route, migration, script or
+dashboard view exists; it does not mean every deployment runs it.
+
+| Area | Status | Where |
+| --- | --- | --- |
+| Capture inbox and triage | Built | `work.captures` (migrations 001, 011); `/api/v1/work/captures*`; MCP `work_capture`, `work_inbox`, `work_triage` |
+| GTD queues, soft WIP limit | Built | `/api/v1/work/queues` (`DOCPLANE_WIP_LIMIT`, default 5); dashboard Work board |
+| Closure dispositions and soak gate | Built | migration 004; `WORK_CLOSURE_DISPOSITIONS_INCOMPLETE`, `WORK_SOAK_REQUIRES_OBSERVABILITY` |
+| Briefs and named updates | Built | `/api/v1/initiatives/{id}/brief` and `/updates`; dashboard Work board |
+| Safe WORK reads for agents | Built | `?view=summary`, `?activity_bodies=redacted`, capture reads |
+| Addressed WORK inbox | Built, optional | migration 020; `/api/v1/work-inbox/*` |
+| Librarian | Designed; read-only development worker only | [The Librarian](LIBRARIAN.md) |
+| Model entities, links, page links, contracts | Built | migration 002; `/api/v1/model/*` |
+| Generated artifacts, provenance, execution contracts, projections | Built | migrations 004, 006, 007, 015 to 018 |
+| Artifact-scoped automation principals | Built | migration 019; `SCOPED_AUTOMATION` |
+| Structured schema projection | Built | `/api/v1/model/structure*` |
+| Observations and current status | Built | migration 003; `/api/v1/observations` |
+| Meter list, coverage view, coverage burn-down | Built | `scripts/meter_list.py`; `/api/v1/observe/coverage*`; migration 009 |
+| Verification requests and graph ripple | Built | migration 005; `/api/v1/verification-requests*` |
+| Invariants register | Built, as a generated page from YAML | [Invariant register](../operations/INVARIANT_REGISTER.md) |
+| `knowledge_class` CHECK constraint | Built | migration 010 |
+| Domain-first `docplane://` URIs | Partly: new resource families use them; pages still use `docplane://pages/{id}` | `docs-api/app/*_api.py` |
+| `domain` field and filter on search results | Not built | `docs-api/app/search.py` |
+| `model_*` / `observe_*` MCP tools, `know_*` aliases | Not built, except `know_classify_doc` | `mcp/tools/` |
+| ADR `SUPERSEDES` links for `DECISION` pages | Not built | — |
+| Runbook content contract, `RUNBOOK_EXERCISED` gating, coverage gaps as inbox captures | Not built; coverage reports them as `follow_up` | `docs-api/app/observe_api.py` |
+| Removal of the Markdown "lifecycle" parser | Not done | `docs-api/app/corpus_structure.py` |

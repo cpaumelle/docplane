@@ -1,6 +1,7 @@
 # Agent onboarding and first publication
 
-This guide is deployment-neutral. Replace `BASE` with the routed DocPlane URL supplied by the operator or platform. Do not assume a direct container port, a legacy documentation API, or a shared credential.
+This guide takes an agent from a bare URL to its first published page and its
+first WORK update. It is deployment-neutral. Replace `BASE` with the routed DocPlane URL supplied by the operator or platform. Do not assume a direct container port, a legacy documentation API, or a shared credential.
 
 DocPlane has one authored-state authority: PostgreSQL through the versioned DocPlane API. Rendered Markdown and the MkDocs site are derived, certified releases.
 
@@ -297,9 +298,72 @@ curl -fsS -H "$AUTH" "$BASE/api/v1/deployments/attempts?limit=10" | jq .
 
 A successful close-out records content-free identifiers such as page resource ID, old/new revisions, change ID, deployment cycle ID and release ID. It never records clear bearer tokens or secrets.
 
+## 9. Work with initiatives
+
+Knowledge is half the job; coordination is the other half. Before working on an
+initiative, read its [brief](WORK_BRIEF.md):
+
+```bash
+INITIATIVE='<initiative uuid>'
+BRIEF=$(curl -fsS -H "$AUTH" "$BASE/api/v1/initiatives/$INITIATIVE/brief")
+jq '{state: .initiative.work_state, next_actions, held, checkpoint_status}' <<<"$BRIEF"
+CONTEXT=$(jq -r .context_token <<<"$BRIEF")
+```
+
+`checkpoint_status: NOT_SET` means nobody has organised the history into items
+yet, not that nothing is left to do. Held and deferred items are not yours to
+act on.
+
+After the work, record a named update bound to that brief:
+
+```bash
+curl -fsS -X POST \
+  -H "$AUTH" \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen | tr 'A-Z' 'a-z')" \
+  "$BASE/api/v1/initiatives/$INITIATIVE/updates" \
+  -d "$(jq -n --arg ctx "$CONTEXT" '{
+    expected_context: $ctx,
+    summary: "Onboarding probe page published and archived",
+    reported_producer: "example-agent (self-reported)",
+    changes: [{item: {
+      item_id: "onboarding-probe",
+      title: "Prove the agent publication path",
+      state: "DONE_IN_RECORD",
+      stance: "ACTIVE",
+      reason: "Probe page created, verified and archived",
+      references: [{reference_type: "PAGE", reference_id: "reference/_agent-onboarding-probe.md"}]
+    }}]
+  }')" | jq .
+```
+
+On `WORK_CONTEXT_STALE`, read the brief again, rebase the change and use a new
+idempotency key. On `WORK_DECISION_REQUIRED`, you tried to change a held,
+deferred or finished item: that needs an explicit decision with evidence, which
+is usually not yours to make.
+
+To park an unrelated idea without losing your place, capture it in one call and
+carry on:
+
+```bash
+curl -fsS -X POST -H "$AUTH" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: capture-$(uuidgen)" \
+  "$BASE/api/v1/work/captures" -d '{"body":"The example page could link to the glossary"}' | jq .
+```
+
+For read-only discovery of initiatives and their history, use the
+[safe WORK reads](WORK_CAPTURE_READS.md).
+
 ## MCP boundary
 
-The bundled DocPlane MCP server is a client of the same contributor API; it does not own document state. Deployments may expose a local MCP adapter for convenient `search_docs`, `read_doc_outline`, `read_doc_section`, `patch_doc`, `replace_doc_section`, `insert_doc_before_heading`, `insert_doc_after_heading`, `read_doc`, `list_docs`, `write_doc` and `archive_doc` tools. `patch_doc` is the discoverable default for small text edits; `replace_doc_section` and the `insert_doc_*_heading` tools operate on a whole explicit-`{#id}` section with an exact revision and section hash. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
+The bundled DocPlane MCP server (`mcp/`) is a client of the same contributor API; it does not own document or work state. Its tools are:
+
+- **know:** `search_docs`, `read_doc`, `read_doc_outline`, `read_doc_section`, `patch_doc`, `replace_doc_section`, `insert_doc_before_heading`, `insert_doc_after_heading`, `list_docs`, `write_doc`, `archive_doc`, `know_classify_doc` and `resolve_concept`;
+- **work:** `work_capture`, `work_inbox` (the capture inbox, not the addressed inbox), `work_triage`, `work_promote`, `work_list`, `work_get`, `work_note`, `work_transition`, `work_link` and `work_dispositions`.
+
+`patch_doc` is the discoverable default for small text edits; `replace_doc_section` and the `insert_doc_*_heading` tools operate on a whole explicit-`{#id}` section with an exact revision and section hash. The bundled server has no brief, update or addressed-inbox tools; use HTTP for those. Raw HTTP remains the complete and authoritative contract, and MCP success must preserve the same revision, publication and certification semantics.
+
+For a client that must only read, use the [`docplane-mcp-shim`](../../docplane-mcp-shim/README.md): page reads plus `work_brief` and `work_history`, and no writes.
 
 ### Redacted pages
 
