@@ -18,9 +18,15 @@ from app.inbox_secrets import InboxSecretError, read_secret, read_key_directory
 from app.event_store import append_event
 from app.mutation_receipts import load_receipt, receipt_digest, save_receipt
 from app.work_api import _activity_key, _activity_request, _json, _redacted_activity_body, _redacted_short_text
+from app import work_inbox_context as message_context
 from app.work_inbox_cursor import decode_cursor, encode_cursor
 
 router = APIRouter(tags=["work-inbox-v1"])
+
+# Pages stop before the 1 MiB response cap that adapters enforce.
+PAGE_BYTES = 700_000
+_LIVE_GRANT = """g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now())
+          AND p.status = 'ACTIVE' AND p.authorization_mode = 'WORK_COLLABORATOR'"""
 
 
 class Grant(BaseModel):
@@ -43,7 +49,7 @@ def collaborator(authorization: str | None = Header(default=None, include_in_sch
     return principal
 
 
-def _grant(conn, initiative: str, principal: str, *, write: bool = False) -> str:
+def _grant(conn, initiative: str, principal: str, *, write: bool = False, refusal: str = "COLLABORATION_SCOPE_DENIED") -> str:
     cur = conn.cursor()
     cur.execute("""SELECT participant_role, can_contribute FROM work.collaboration_grants g
         JOIN docplane.principals p ON p.principal_id = g.principal_id
@@ -52,7 +58,7 @@ def _grant(conn, initiative: str, principal: str, *, write: bool = False) -> str
           AND p.authorization_mode = 'WORK_COLLABORATOR' FOR SHARE OF g, p""", (initiative, principal))
     row = cur.fetchone()
     if row is None or (write and not row[1]):
-        raise HTTPException(status_code=403, detail={"code": "COLLABORATION_SCOPE_DENIED"})
+        raise HTTPException(status_code=403, detail={"code": refusal})
     return row[0]
 
 
@@ -188,13 +194,14 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
                idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
                principal: Principal = Depends(collaborator)):
     # Validate without FastAPI reflecting rejected input (which could be secret).
-    if not isinstance(payload, dict) or set(payload) - {"recipient_id", "body", "reported_producer"}:
+    if not isinstance(payload, dict) or set(payload) - {"recipient_id", "body", "reported_producer", "kind", "in_reply_to"}:
         raise HTTPException(status_code=422, detail={"code": "INBOX_REQUEST_INVALID"})
     try:
         recipient = str(UUID(payload["recipient_id"]))
         producer = payload.get("reported_producer")
         if producer is not None and (not isinstance(producer, str) or not producer.strip() or len(producer) > 120):
             raise ValueError("producer")
+        extra = message_context.parse(payload)
         activity = _activity_request({"activity_type": "NOTE", "body": payload["body"]})
         _, body_withheld = _redacted_activity_body(activity.body)
         if body_withheld:
@@ -208,21 +215,30 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
         raise HTTPException(status_code=422, detail={"code": "INBOX_REQUEST_INVALID"}) from exc
     key = _activity_key(idempotency_key)
     initiative = str(initiative_id)
-    digest = receipt_digest({"initiative": initiative, "recipient": recipient, "body": activity.body, "reported_producer": producer})
+    intent = {"initiative": initiative, "recipient": recipient, "body": activity.body, "reported_producer": producer}
+    if extra is not None:
+        # Added only when present, so receipts written under contract 1 still replay.
+        intent.update(kind=extra[0], in_reply_to=extra[1])
+    digest = receipt_digest(intent)
     with get_conn() as conn:
         role = _grant(conn, initiative, principal.principal_id, write=True)
-        _grant(conn, initiative, recipient)
         replay = load_receipt(conn, principal, key, "WORK_INBOX_CONTRIBUTE", digest)
         if replay is not None:
             return replay
+        # After the replay: a committed send keeps its receipt if the recipient is later revoked.
+        _grant(conn, initiative, recipient, refusal="RECIPIENT_NOT_GRANTED")
         cur = conn.cursor()
+        delivery = str(uuid4())
+        thread = None
+        if extra is not None:
+            thread = message_context.thread_for(cur, initiative=initiative, sender=principal.principal_id,
+                                                recipient=recipient, kind=extra[0], parent=extra[1], delivery=delivery)
         cur.execute("INSERT INTO work.inbox_positions (initiative_id,recipient_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (initiative, recipient))
         cur.execute("UPDATE work.inbox_positions SET last_position=last_position+1 WHERE initiative_id=%s AND recipient_id=%s RETURNING last_position", (initiative, recipient))
         position = cur.fetchone()[0]
         cur.execute("""INSERT INTO work.initiative_activities (initiative_id,author_principal_id,idempotency_key,activity_type,body,metadata)
             VALUES (%s,%s,%s,'NOTE',%s,%s) RETURNING activity_id::text""", (initiative, principal.principal_id, key, activity.body, _json({"reported_producer": producer})))
         aid = cur.fetchone()[0]
-        delivery = str(uuid4())
         kid, signing_key = _active_key()
         envelope = {"version": 1, "kid": kid, "delivery_id": delivery, "initiative_id": initiative, "recipient_id": recipient,
                     "position": position, "activity_id": aid, "sender_id": principal.principal_id,
@@ -231,10 +247,17 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
         sig = _signature(envelope, signing_key)
         cur.execute("""INSERT INTO work.inbox_deliveries (delivery_id,initiative_id,recipient_id,position,activity_id,sender_id,sender_role,envelope,signature)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (delivery, initiative, recipient, position, aid, principal.principal_id, role, _json(envelope), sig))
+        if extra is not None:
+            context = {"kind": extra[0], "in_reply_to": extra[1], "thread_id": thread}
+            cur.execute("""INSERT INTO work.inbox_message_context (delivery_id,kind,in_reply_to,thread_id,kid,signature)
+                VALUES (%s,%s,%s,%s,%s,%s)""", (delivery, extra[0], extra[1], thread, kid,
+                                                message_context.sign(envelope, context, signing_key)))
         append_event(conn, event_type="WORK_INBOX_MESSAGE", channel="API", producer_id="work-inbox:" + principal.principal_id,
                      idempotency_key=key, principal=principal, resource_type="INITIATIVE", resource_id=initiative,
                      metadata={"activity_id": aid, "delivery_id": delivery})
         response = {"delivery_id": delivery, "activity_id": aid, "position": position}
+        if thread is not None:
+            response["thread_id"] = thread
         save_receipt(conn, principal, key, "WORK_INBOX_CONTRIBUTE", initiative, digest, response)
         conn.commit()
         return response
@@ -242,19 +265,30 @@ def contribute(initiative_id: UUID, payload: Any = Body(...),
 
 @router.get("/api/v1/work-inbox/{initiative_id}/messages")
 def inbox(initiative_id: UUID, cursor: str | None = None, limit: int = Query(default=50, ge=1, le=100),
+          contract: int = Query(default=1, ge=1, le=2), view: Literal["all", "open"] = "all",
           principal: Principal = Depends(collaborator)):
+    """One page. Contract 1 responses keep exactly their original fields."""
+    if view == "open" and contract < 2:
+        raise HTTPException(status_code=422, detail={"code": "INBOX_CONTRACT_REQUIRED"})
     initiative = str(initiative_id)
     position = decode_cursor(cursor, principal_id=principal.principal_id, initiative_id=initiative)
     with get_conn() as conn:
         _grant(conn, initiative, principal.principal_id)
         cur = conn.cursor()
-        cur.execute("""SELECT d.envelope,d.signature,a.body,d.acknowledged_at,d.delivery_id::text,d.position,d.activity_id::text,d.sender_id::text,d.sender_role FROM work.inbox_deliveries d
+        scope = "d.initiative_id=%s AND d.recipient_id=%s AND d.position>%s"
+        if view == "open":
+            scope += " AND (" + message_context.OPEN_SQL + ")"
+        cur.execute(f"""SELECT d.envelope,d.signature,a.body,d.acknowledged_at,d.delivery_id::text,d.position,d.activity_id::text,d.sender_id::text,d.sender_role,
+            c.kind,c.in_reply_to::text,c.thread_id::text,c.kid,c.signature
+          FROM work.inbox_deliveries d
           JOIN work.initiative_activities a ON a.activity_id=d.activity_id
-          WHERE d.initiative_id=%s AND d.recipient_id=%s AND d.position>%s ORDER BY d.position LIMIT %s""",
+          LEFT JOIN work.inbox_message_context c ON c.delivery_id=d.delivery_id
+          WHERE {scope} ORDER BY d.position LIMIT %s""",
           (initiative, principal.principal_id, position, limit))
         items = []
         keys = _keyring()
-        for envelope, signature, body, ack, delivery_id, db_position, activity_id, sender_id, sender_role in cur.fetchall():
+        size = 0
+        for envelope, signature, body, ack, delivery_id, db_position, activity_id, sender_id, sender_role, *context_row in cur.fetchall():
             expected_scope = {"delivery_id": delivery_id, "initiative_id": initiative, "recipient_id": principal.principal_id, "position": db_position, "activity_id": activity_id, "sender_id": sender_id, "sender_role": sender_role}
             # Never project unverified envelope fields, including claimed sender.
             # The database position is independently scoped by the query and lets
@@ -268,18 +302,35 @@ def inbox(initiative_id: UUID, cursor: str | None = None, limit: int = Query(def
                          and hmac.compare_digest(envelope["body_sha256"], hashlib.sha256(body.encode()).hexdigest()))
             except (AttributeError, KeyError, TypeError, ValueError):
                 valid = False
+            context = None
+            if valid:
+                context, valid = message_context.verified(envelope, tuple(context_row), keys)
+            if valid:
+                redacted, withheld = _redacted_activity_body(body)
+                item = {"delivery_id": delivery_id, "position": db_position, "integrity_failed": False,
+                        "envelope": envelope, "signature": signature, "body": redacted,
+                        "body_withheld": withheld, "acknowledged": ack is not None}
+            else:
+                context = None
+                item = {"delivery_id": delivery_id, "position": db_position, "integrity_failed": True,
+                        "envelope": None, "signature": None, "body": None, "body_withheld": True,
+                        "acknowledged": ack is not None}
+            if contract == 2:
+                item["context"] = context
+            cost = len(json.dumps(item, ensure_ascii=False, separators=(",", ":")).encode())
+            if items and size + cost > PAGE_BYTES:
+                break  # the cursor stays on the last item returned
+            size += cost
             position = db_position
-            if not valid:
-                items.append({"delivery_id": delivery_id, "position": db_position, "integrity_failed": True,
-                              "envelope": None, "signature": None, "body": None, "body_withheld": True,
-                              "acknowledged": ack is not None})
-                continue
-            redacted, withheld = _redacted_activity_body(body)
-            items.append({"delivery_id": delivery_id, "position": db_position, "integrity_failed": False,
-                          "envelope": envelope, "signature": signature, "body": redacted,
-                          "body_withheld": withheld, "acknowledged": ack is not None})
+            items.append(item)
 
-        return {"messages": items, "next_cursor": encode_cursor(position, principal_id=principal.principal_id, initiative_id=initiative)}
+        page = {"messages": items, "next_cursor": encode_cursor(position, principal_id=principal.principal_id, initiative_id=initiative)}
+        if contract == 2:
+            cur.execute(f"""SELECT count(*) FROM work.inbox_deliveries d
+              LEFT JOIN work.inbox_message_context c ON c.delivery_id=d.delivery_id
+              WHERE {scope}""", (initiative, principal.principal_id, position))
+            page.update(remaining=cur.fetchone()[0], view=view)
+        return page
 
 
 @router.post("/api/v1/work-inbox/{initiative_id}/messages/{delivery_id}/ack")
@@ -306,3 +357,77 @@ def acknowledge(initiative_id: UUID, delivery_id: UUID, principal: Principal = D
 
         conn.commit()
     return {"delivery_id": str(delivery_id), "acknowledged_at": row[0].isoformat(), "meaning": "RECEIVED"}
+
+
+@router.get("/api/v1/work-inbox")
+def my_initiatives(principal: Principal = Depends(collaborator)):
+    """The caller's live grants, with enough position to poll without reading bodies."""
+    with get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"""SELECT i.initiative_id::text, i.initiative_key, g.participant_role, g.can_contribute,
+              (SELECT count(*) FROM work.inbox_deliveries d WHERE d.initiative_id=g.initiative_id
+                 AND d.recipient_id=g.principal_id AND d.acknowledged_at IS NULL),
+              COALESCE((SELECT last_position FROM work.inbox_positions n WHERE n.initiative_id=g.initiative_id
+                 AND n.recipient_id=g.principal_id), 0)
+            FROM work.collaboration_grants g
+            JOIN docplane.principals p ON p.principal_id = g.principal_id
+            JOIN work.initiatives i ON i.initiative_id = g.initiative_id
+            WHERE g.principal_id = %s AND {_LIVE_GRANT} ORDER BY i.initiative_key, i.initiative_id""",
+                    (principal.principal_id,))
+        rows = cur.fetchall()
+    return {"participant_id": principal.principal_id, "initiatives": [
+        {"initiative_id": iid, "initiative_key": _redacted_short_text(key, 96)[0], "role": role,
+         "can_contribute": write, "unacknowledged": unread, "latest_position": latest}
+        for iid, key, role, write, unread, latest in rows]}
+
+
+@router.get("/api/v1/work-inbox/{initiative_id}/participants")
+def participants(initiative_id: UUID, principal: Principal = Depends(collaborator)):
+    """Who the caller can address: live grants on an initiative it holds a grant on."""
+    initiative = str(initiative_id)
+    with get_conn() as conn:
+        _grant(conn, initiative, principal.principal_id)
+        cur = conn.cursor()
+        cur.execute(f"""SELECT p.principal_id::text, p.display_name, g.participant_role, g.can_contribute
+            FROM work.collaboration_grants g JOIN docplane.principals p ON p.principal_id = g.principal_id
+            WHERE g.initiative_id = %s AND {_LIVE_GRANT} ORDER BY p.display_name, p.principal_id""", (initiative,))
+        rows = cur.fetchall()
+    return {"participant_id": principal.principal_id, "participants": [
+        {"participant_id": pid, "name": _redacted_short_text(name, 200)[0], "role": role, "can_contribute": write}
+        for pid, name, role, write in rows]}
+
+
+@router.get("/api/v1/work-inbox/{initiative_id}/sent")
+def sent(initiative_id: UUID, delivery_id: UUID | None = None, limit: int = Query(default=50, ge=1, le=100),
+         principal: Principal = Depends(collaborator)):
+    """The caller's own deliveries: receipt, and the recipient's latest reply. No bodies."""
+    initiative = str(initiative_id)
+    only = str(delivery_id) if delivery_id else None
+    with get_conn() as conn:
+        _grant(conn, initiative, principal.principal_id)
+        cur = conn.cursor()
+        cur.execute("""SELECT d.envelope, d.delivery_id::text, d.activity_id::text, d.recipient_id::text, d.created_at,
+              d.acknowledged_at, c.kind, c.in_reply_to::text, c.thread_id::text, c.kid, c.signature,
+              reply.delivery_id, reply.kind, reply.created_at
+            FROM work.inbox_deliveries d
+            LEFT JOIN work.inbox_message_context c ON c.delivery_id = d.delivery_id
+            LEFT JOIN LATERAL (
+              SELECT r.delivery_id::text, rc.kind, r.created_at
+                FROM work.inbox_message_context rc JOIN work.inbox_deliveries r ON r.delivery_id = rc.delivery_id
+               WHERE r.initiative_id = d.initiative_id AND r.sender_id = d.recipient_id AND r.recipient_id = d.sender_id
+                 AND (rc.in_reply_to = d.delivery_id OR (c.kind = 'TASK' AND rc.thread_id = d.delivery_id))
+                 AND r.delivery_id <> d.delivery_id
+               ORDER BY r.position DESC LIMIT 1) reply ON true
+            WHERE d.initiative_id = %s AND d.sender_id = %s AND (%s::uuid IS NULL OR d.delivery_id = %s::uuid)
+            ORDER BY d.created_at DESC, d.delivery_id LIMIT %s""",
+                    (initiative, principal.principal_id, only, only, limit + 1))
+        rows = cur.fetchall()
+        keys = _keyring()
+        out = []
+        for row in rows[:limit]:
+            context, intact = message_context.verified(row[0], tuple(row[6:11]), keys)
+            out.append({"delivery_id": row[1], "activity_id": row[2], "recipient_id": row[3],
+                        "created_at": row[4], "acknowledged_at": row[5], "context": context if intact else None,
+                        "latest_reply": None if row[11] is None else
+                        {"delivery_id": row[11], "kind": row[12], "created_at": row[13]}})
+    return {"sent": out, "more": len(rows) > limit}

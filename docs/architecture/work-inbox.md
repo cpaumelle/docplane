@@ -29,6 +29,39 @@ to continue. Investigate such a failure before acting on the affected message. `
 resolve the task or notify the sender. Read from the beginning to replay, and
 use delivery IDs for deduplication. Cursors are positions, not authorization.
 
+## Contract 2
+
+Contract 2 is additive. Without `contract=2` a read returns exactly the contract 1
+fields, and the signed envelope is the same in both, so adapters and API images can be
+deployed or rolled back in either order.
+
+- A send may carry `kind` (`NOTE`, `TASK`, `QUESTION`, `ANSWER`, `PROGRESS`, `RESULT`,
+  `FAILED`, `DECLINED`, `CANCELLED`) and `in_reply_to`, a delivery between the same two
+  participants on the same initiative. DocPlane derives `thread_id`, stores the three as
+  context and signs them with a binding to the delivery. A task starts its own thread.
+  Only its recipient can report RESULT or FAILED; only its sender can cancel it.
+- `GET .../messages?contract=2` adds `context` to each message, and `remaining` and
+  `view` to the page. `view=open` returns only open work: tasks without a terminal
+  report, questions without an answer, and other messages not yet acknowledged.
+  Acknowledgement never closes a task, and a question never completes one.
+- `GET .../sent` shows the caller's own deliveries with receipt time and the recipient's
+  latest correlated reply, without bodies.
+- `GET .../participants` lists live participants on an initiative the caller holds.
+  `GET /api/v1/work-inbox` lists the caller's initiatives with unacknowledged count and
+  latest position, which is the feed to poll. A send deliberately does not change the
+  initiative's version or `updated_at`.
+- An identical retry returns its receipt even if the recipient's grant has since been
+  revoked. A new send to such a recipient returns `RECIPIENT_NOT_GRANTED`.
+- Pages stop before 700 KB as well as at `limit`. Continue until a page is empty.
+
+Bodies still pass the canonical secret scan: long hex such as full commit IDs and
+digests is refused. Send abbreviated identifiers.
+
+The context signature detects alteration. It cannot detect deletion of the context
+row, which makes a delivery read as a plain NOTE, and it needs database write access.
+
+## Configuration and boundaries
+
 Configure `DOCPLANE_WORK_INBOX_CURSOR_SECRET_FILE` and
 `DOCPLANE_WORK_INBOX_ACTIVE_KID_FILE` as protected files.
 `DOCPLANE_WORK_INBOX_SIGNING_KEYS_DIR` contains one protected file per key ID;
