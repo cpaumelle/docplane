@@ -37,17 +37,27 @@ def _decode(data: str) -> bytes:
     return base64.b64decode(data + "=" * (-len(data) % 4), altchars=b"-_", validate=True)
 
 
-def encode_cursor(sequence: int, *, principal_id: str, initiative_id: str) -> str:
+def _domain(view: str) -> bytes:
+    # An open-view cursor skips closed messages, so it must never continue a full read.
+    # Full-read cursors keep their original bytes for older images and clients.
+    if view == "all":
+        return b"docplane-work-inbox-cursor-v1\0"
+    if view == "open":
+        return b"docplane-work-inbox-open-cursor-v1\0"
+    raise ValueError("invalid view")
+
+
+def encode_cursor(sequence: int, *, principal_id: str, initiative_id: str, view: str = "all") -> str:
     if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 0:
         raise ValueError("invalid sequence")
     payload = json.dumps({"v": 1, "seq": sequence, "principal": str(UUID(principal_id)),
                           "initiative": str(UUID(initiative_id))},
                          sort_keys=True, separators=(",", ":")).encode("utf-8")
-    signature = hmac.new(_secret(), b"docplane-work-inbox-cursor-v1\0" + payload, hashlib.sha256).digest()
+    signature = hmac.new(_secret(), _domain(view) + payload, hashlib.sha256).digest()
     return _b64(payload) + "." + _b64(signature)
 
 
-def decode_cursor(cursor: str | None, *, principal_id: str, initiative_id: str) -> int:
+def decode_cursor(cursor: str | None, *, principal_id: str, initiative_id: str, view: str = "all") -> int:
     if cursor is None:
         return 0
     secret = _secret()  # Missing configuration is a service error, not a bad cursor.
@@ -58,7 +68,7 @@ def decode_cursor(cursor: str | None, *, principal_id: str, initiative_id: str) 
         payload, signature = _decode(encoded), _decode(encoded_signature)
         if _b64(payload) != encoded or _b64(signature) != encoded_signature:
             raise ValueError("non-canonical")
-        expected = hmac.new(secret, b"docplane-work-inbox-cursor-v1\0" + payload, hashlib.sha256).digest()
+        expected = hmac.new(secret, _domain(view) + payload, hashlib.sha256).digest()
         if not hmac.compare_digest(signature, expected):
             raise ValueError("signature")
         value = json.loads(payload)
