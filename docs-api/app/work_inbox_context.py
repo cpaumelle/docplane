@@ -19,6 +19,27 @@ NEEDS_PARENT = frozenset({"ANSWER", "PROGRESS", "RESULT", "FAILED", "DECLINED", 
 
 NO_CONTEXT = (None, None, None, None, None)
 
+# The delivery envelope's signature. Shared with the read path so every caller applies one rule.
+ENVELOPE_DOMAIN = b"docplane-inbox-envelope-v1\0"
+_ENVELOPE_SQL = """d.envelope, d.signature, d.activity_id::text, d.sender_role,
+              encode(sha256(convert_to(a.body, 'UTF8')), 'hex')"""
+
+
+def envelope_signature(envelope: dict[str, Any], secret: bytes) -> str:
+    content = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return hmac.new(secret, ENVELOPE_DOMAIN + content, hashlib.sha256).hexdigest()
+
+
+def envelope_intact(envelope: Any, signature: Any, body_digest: str, scope: dict[str, Any], keys: dict[str, bytes]) -> bool:
+    """The normal read's integrity rule: signed envelope, row scope and stored body all agree."""
+    try:
+        key = keys.get(envelope.get("kid")) if isinstance(envelope.get("kid"), str) else None
+        return (key is not None and all(envelope.get(k) == v for k, v in scope.items())
+                and hmac.compare_digest(envelope_signature(envelope, key), signature)
+                and hmac.compare_digest(envelope["body_sha256"], body_digest))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
+
 
 class Threads:
     """One participant's intact messages on one initiative, and what they close.
@@ -28,19 +49,23 @@ class Threads:
     """
 
     def __init__(self, cur, initiative: str, participant: str, keys: dict[str, bytes]):
-        cur.execute("""SELECT d.delivery_id::text, d.sender_id::text, d.recipient_id::text, d.position,
-              d.acknowledged_at, d.created_at, d.envelope->>'body_sha256',
+        cur.execute(f"""SELECT d.delivery_id::text, d.sender_id::text, d.recipient_id::text, d.position,
+              d.acknowledged_at, d.created_at, {_ENVELOPE_SQL},
               c.kind, c.in_reply_to::text, c.thread_id::text, c.kid, c.signature
             FROM work.inbox_deliveries d
+            JOIN work.initiative_activities a ON a.activity_id = d.activity_id
             LEFT JOIN work.inbox_message_context c ON c.delivery_id = d.delivery_id
             WHERE d.initiative_id = %s AND (d.sender_id = %s OR d.recipient_id = %s)
             ORDER BY d.position""", (initiative, participant, participant))
         self.participant, self.rows, self.replies = participant, {}, {}
-        for delivery, sender, recipient, position, ack, created, digest, *stored in cur.fetchall():
+        for delivery, sender, recipient, position, ack, created, envelope, signature, activity, role, digest, *stored in cur.fetchall():
             # Bind to the row's own scope, not to what its stored envelope claims.
-            bound = {"delivery_id": delivery, "initiative_id": initiative, "sender_id": sender,
-                     "recipient_id": recipient, "body_sha256": digest}
+            scope = {"delivery_id": delivery, "initiative_id": initiative, "sender_id": sender, "recipient_id": recipient,
+                     "position": position, "activity_id": activity, "sender_role": role}
+            whole = envelope_intact(envelope, signature, digest, scope, keys)
+            bound = {**{k: scope[k] for k in ("delivery_id", "initiative_id", "sender_id", "recipient_id")}, "body_sha256": digest}
             context, intact = verified(bound, tuple(stored), keys)
+            intact = intact and whole
             row = {"id": delivery, "sender": sender, "recipient": recipient, "position": position,
                    "acknowledged": ack is not None, "created_at": created, "intact": intact, **context}
             self.rows[delivery] = row
@@ -120,17 +145,23 @@ def thread_for(cur, *, initiative: str, sender: str, recipient: str, kind: str, 
         return delivery
 
     def load(ident: str) -> dict[str, Any] | None:
-        cur.execute("""SELECT d.sender_id::text, d.recipient_id::text, d.envelope->>'body_sha256',
+        cur.execute(f"""SELECT d.sender_id::text, d.recipient_id::text, d.position, {_ENVELOPE_SQL},
               c.kind, c.in_reply_to::text, c.thread_id::text, c.kid, c.signature
             FROM work.inbox_deliveries d
+            JOIN work.initiative_activities a ON a.activity_id = d.activity_id
             LEFT JOIN work.inbox_message_context c ON c.delivery_id = d.delivery_id
             WHERE d.delivery_id = %s AND d.initiative_id = %s""", (ident, initiative))
         row = cur.fetchone()
         if row is None or sorted((row[0], row[1])) != sorted((sender, recipient)):
             return None
-        context, intact = verified({"delivery_id": ident, "initiative_id": initiative, "sender_id": row[0],
-                                    "recipient_id": row[1], "body_sha256": row[2]}, tuple(row[3:]), keys)
-        return {"sender": row[0], "recipient": row[1], **context} if intact else None
+        sender_id, recipient_id, position, envelope, signature, activity, role, digest = row[:8]
+        scope = {"delivery_id": ident, "initiative_id": initiative, "sender_id": sender_id, "recipient_id": recipient_id,
+                 "position": position, "activity_id": activity, "sender_role": role}
+        context, intact = verified({"delivery_id": ident, "initiative_id": initiative, "sender_id": sender_id,
+                                    "recipient_id": recipient_id, "body_sha256": digest}, tuple(row[8:]), keys)
+        if not (intact and envelope_intact(envelope, signature, digest, scope, keys)):
+            return None
+        return {"sender": sender_id, "recipient": recipient_id, **context}
 
     found = load(parent)
     root = None

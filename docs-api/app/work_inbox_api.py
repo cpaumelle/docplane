@@ -89,9 +89,7 @@ def _active_key() -> tuple[str, bytes]:
     return kid, keys[kid]
 
 
-def _signature(envelope: dict[str, Any], secret: bytes) -> str:
-    content = json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-    return hmac.new(secret, b"docplane-inbox-envelope-v1\0" + content, hashlib.sha256).hexdigest()
+_signature = message_context.envelope_signature
 
 
 @router.post("/api/v1/bootstrap/work-participant-identities", status_code=201)
@@ -302,11 +300,8 @@ def inbox(initiative_id: UUID, cursor: str | None = None, limit: int = Query(def
             # a recipient progress past a damaged row without trusting it.
             valid = False
             try:
-                kid = envelope.get("kid")
-                key = keys.get(kid) if isinstance(kid, str) else None
-                valid = (key is not None and all(envelope.get(k) == v for k, v in expected_scope.items())
-                         and hmac.compare_digest(_signature(envelope, key), signature)
-                         and hmac.compare_digest(envelope["body_sha256"], hashlib.sha256(body.encode()).hexdigest()))
+                valid = message_context.envelope_intact(envelope, signature, hashlib.sha256(body.encode()).hexdigest(),
+                                                        expected_scope, keys)
             except (AttributeError, KeyError, TypeError, ValueError):
                 valid = False
             context = None

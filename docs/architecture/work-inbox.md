@@ -45,7 +45,8 @@ deployed or rolled back in either order.
   report, questions without an answer, and other messages not yet acknowledged.
   Acknowledgement never closes a task, and a question never completes one. A decline
   closes what it answers: decline a task by replying to the task itself.
-  Only intact context closes work. An open-view cursor cannot continue a full read.
+  Only a reply whose envelope, body and context all pass the read path's integrity
+  check can close work or appear as a reply. An open-view cursor cannot continue a full read.
 - `POST .../messages?contract=2` adds `replayed`, so a sender can tell an idempotent
   replay from a new delivery.
 - `GET .../sent` shows the caller's own deliveries with receipt time and the recipient's

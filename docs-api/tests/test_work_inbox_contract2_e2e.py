@@ -331,3 +331,31 @@ def test_every_sent_row_can_be_paged_to(lane):
             break
         before = page["sent"][-1]["delivery_id"]
     assert seen == sent[::-1]
+
+
+def test_a_reply_whose_body_fails_integrity_neither_closes_work_nor_reports(lane):
+    """Review of #241: correlation intact, stored body altered."""
+    task = lane.send("arch", "agent", kind="TASK")["delivery_id"]
+    result = lane.send("agent", "arch", kind="RESULT", in_reply_to=task)
+    lane.sql("UPDATE work.initiative_activities SET body='altered after send' WHERE activity_id=%s", (result["activity_id"],))
+    flagged = [m for m in lane.get("arch", contract=2)["messages"] if m["delivery_id"] == result["delivery_id"]]
+    assert flagged[0]["integrity_failed"]
+    assert lane.open("agent") == [task]
+    assert lane.get("arch", "/sent", delivery_id=task)["sent"][0]["latest_reply"] is None
+    assert lane.post("arch", "agent", kind="ANSWER", in_reply_to=result["delivery_id"]).status_code == 422
+
+
+def test_a_reply_whose_envelope_fails_integrity_neither_closes_work_nor_reports(lane):
+    task = lane.send("arch", "agent", kind="TASK")["delivery_id"]
+    result = lane.send("agent", "arch", kind="RESULT", in_reply_to=task)["delivery_id"]
+    lane.sql("UPDATE work.inbox_deliveries SET signature=repeat('0',64) WHERE delivery_id=%s", (result,))
+    assert lane.open("agent") == [task]
+    assert lane.get("arch", "/sent", delivery_id=task)["sent"][0]["latest_reply"] is None
+
+
+def test_a_question_answered_by_an_altered_reply_stays_open(lane):
+    task = lane.send("arch", "agent", kind="TASK")["delivery_id"]
+    question = lane.send("agent", "arch", kind="QUESTION", in_reply_to=task)["delivery_id"]
+    answer = lane.send("arch", "agent", kind="ANSWER", in_reply_to=question)
+    lane.sql("UPDATE work.initiative_activities SET body='altered' WHERE activity_id=%s", (answer["activity_id"],))
+    assert lane.open("arch") == [question]
