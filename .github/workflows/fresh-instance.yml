@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   verify:
-    runs-on: [self-hosted, linux, x64, charliehub]
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine

@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   link-tooling:
-    runs-on: [self-hosted, linux, x64, charliehub]
+    runs-on: ubuntu-latest
     container: python:3.11-bookworm
     steps:
       - uses: actions/checkout@v4
